@@ -71,11 +71,11 @@ export function getProductLimit(plan: string): number {
     case 'trial':
       return 1;
     case 'basic':
-      return 20;
-    case 'premium':
       return 50;
+    case 'premium':
+      return 200;
     case 'enterprise':
-      return 100;
+      return Infinity;
     default:
       return 1;
   }

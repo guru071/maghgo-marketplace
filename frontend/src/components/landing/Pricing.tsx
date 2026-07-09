@@ -28,7 +28,7 @@ export function Pricing() {
             <h3 className="card__title">Basic</h3>
             <div className="card__price">₹149<span>/mo</span></div>
             <ul className="card__features">
-              <li>Up to 20 products</li>
+              <li>Up to 50 products</li>
               <li>HD background removal</li>
               <li>Custom maghgo.goatecch.tech link</li>
               <li>Priority WhatsApp support</li>
@@ -42,7 +42,7 @@ export function Pricing() {
             <h3 className="card__title">Premium</h3>
             <div className="card__price">₹499<span>/mo</span></div>
             <ul className="card__features">
-              <li>Up to 50 products</li>
+              <li>Up to 200 products</li>
               <li>Everything in Basic</li>
               <li>Custom Domain Support</li>
               <li>Analytics Dashboard</li>
@@ -56,7 +56,7 @@ export function Pricing() {
             <h3 className="card__title">Enterprise</h3>
             <div className="card__price">₹2999<span>/mo</span></div>
             <ul className="card__features">
-              <li>Up to 100 products</li>
+              <li>Unlimited products</li>
               <li>Custom Web Design</li>
               <li>API Access</li>
               <li>Priority Support</li>

@@ -22,7 +22,14 @@ router.post('/razorpay', async (req: Request, res: Response) => {
       .update(body)
       .digest('hex');
 
-    if (signature !== expectedSignature) {
+    // Constant-time comparison to prevent timing attacks
+    const sigBuffer = Buffer.from(signature, 'utf8');
+    const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
+
+    if (
+      sigBuffer.length !== expectedBuffer.length ||
+      !crypto.timingSafeEqual(sigBuffer, expectedBuffer)
+    ) {
       console.warn('⚠️ Invalid Razorpay webhook signature');
       res.status(400).send('Invalid signature');
       return;

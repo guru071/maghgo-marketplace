@@ -14,6 +14,7 @@
   "description": "",
   "dependencies": {
     "@supabase/supabase-js": "^2.109.0",
+    "@types/ws": "^8.18.1",
     "axios": "^1.18.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -22,6 +23,7 @@
     "helmet": "^8.2.0",
     "morgan": "^1.11.0",
     "razorpay": "^2.9.6",
+    "ws": "^8.21.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

@@ -97,27 +97,28 @@ async function handleImageMessage(
       await sendReply(
         from,
         messageId,
-        `⚠️ *Limit Reached!*\n\nThe Free Trial only allows 1 product. To add up to 20 products, please upgrade to the *Basic Plan* (₹149/mo) here:\n\n🔗 ${paymentLink}`
+        `⚠️ *Limit Reached!*\n\nThe Free Trial only allows 1 product. To add up to 50 products, please upgrade to the *Basic Plan* (₹149/mo) here:\n\n🔗 ${paymentLink}`
       );
     } else if (merchant.subscription_plan === 'basic') {
       const paymentLink = await createPaymentLink(from, 499);
       await sendReply(
         from,
         messageId,
-        `⚠️ *Limit Reached!*\n\nThe Basic Plan allows a maximum of 20 products. To add up to 50 products, please upgrade to the *Premium Plan* (₹499/mo) here:\n\n🔗 ${paymentLink}`
+        `⚠️ *Limit Reached!*\n\nThe Basic Plan allows a maximum of 50 products. To add up to 200 products, please upgrade to the *Premium Plan* (₹499/mo) here:\n\n🔗 ${paymentLink}`
       );
     } else if (merchant.subscription_plan === 'premium') {
       const paymentLink = await createPaymentLink(from, 2999);
       await sendReply(
         from,
         messageId,
-        `⚠️ *Limit Reached!*\n\nThe Premium Plan allows a maximum of 50 products. To add up to 100 products and customize your web, please upgrade to the *Enterprise Plan* (₹2999/mo) here:\n\n🔗 ${paymentLink}`
+        `⚠️ *Limit Reached!*\n\nThe Premium Plan allows a maximum of 200 products. To add unlimited products and customize your web, please upgrade to the *Enterprise Plan* (₹2999/mo) here:\n\n🔗 ${paymentLink}`
       );
     } else if (merchant.subscription_plan === 'enterprise') {
+      // Enterprise is now unlimited, so this block theoretically won't be hit unless limit is changed
       await sendReply(
         from,
         messageId,
-        `⚠️ *Maximum Limit Reached!*\n\nYou have reached the absolute maximum of 100 products on the Enterprise Plan.\n\nTo add more capacity, please contact Maghgo Support directly for a custom plan.`
+        `⚠️ *Maximum Limit Reached!*\n\nYou have reached the absolute maximum product limit. Please contact Maghgo Support directly.`
       );
     }
     return;
