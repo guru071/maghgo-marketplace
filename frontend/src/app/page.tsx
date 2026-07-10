@@ -1,6 +1,7 @@
 import { Header } from '@/components/landing/Header';
 import { Hero } from '@/components/landing/Hero';
 import { WorkingModelDemo } from '@/components/landing/WorkingModelDemo';
+import { VisualBuilderShowcase } from '@/components/landing/VisualBuilderShowcase';
 import { HowItWorks } from '@/components/landing/HowItWorks';
 import { Pricing } from '@/components/landing/Pricing';
 
@@ -10,6 +11,7 @@ export default function LandingPage() {
       <Header />
       <Hero />
       <WorkingModelDemo />
+      <VisualBuilderShowcase />
       <HowItWorks />
       <Pricing />
       
