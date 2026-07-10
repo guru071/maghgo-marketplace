@@ -68,16 +68,18 @@ export async function createMerchant(
  */
 export function getProductLimit(plan: string): number {
   switch (plan) {
-    case 'trial':
-      return 1;
-    case 'basic':
-      return 50;
-    case 'premium':
-      return 200;
-    case 'enterprise':
-      return Infinity;
-    default:
-      return 1;
+    case 'trial': return 1;
+    case 'basic': return 50;
+    case 'starter': return 150;
+    case 'pro': return 300;
+    case 'advanced': return 600;
+    case 'premium': return 1000;
+    case 'business': return 2000;
+    case 'agency': return 5000;
+    case 'vip': return 15000;
+    case 'enterprise': return Infinity;
+    case 'custom': return Infinity;
+    default: return 1;
   }
 }
 
@@ -93,7 +95,7 @@ export function isSubscriptionActive(merchant: Merchant): boolean {
 /**
  * Reactivates the merchant's subscription for 30 days and sets them active.
  */
-export async function reactivateSubscription(phoneNumber: string, plan: 'basic' | 'premium' | 'enterprise'): Promise<void> {
+export async function reactivateSubscription(phoneNumber: string, plan: 'basic' | 'starter' | 'pro' | 'advanced' | 'premium' | 'business' | 'agency' | 'vip' | 'enterprise' | 'custom'): Promise<void> {
   // Fetch current merchant to check their existing expiry
   const { data: merchant, error: fetchError } = await supabase
     .from('merchants')

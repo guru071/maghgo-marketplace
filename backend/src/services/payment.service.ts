@@ -7,6 +7,32 @@ export const razorpay = new Razorpay({
   key_secret: env.RAZORPAY_KEY_SECRET,
 });
 
+export function getPlanFromAmount(amount: number): string {
+  // Monthly
+  if (amount === 149) return 'basic';
+  if (amount === 299) return 'starter';
+  if (amount === 499) return 'pro';
+  if (amount === 699) return 'advanced';
+  if (amount === 799) return 'premium';
+  if (amount === 999) return 'business';
+  if (amount === 1999) return 'agency';
+  if (amount === 2999) return 'vip';
+  if (amount === 4999) return 'enterprise';
+
+  // Yearly (15% discount)
+  if (amount === 1520) return 'basic'; // 149 * 0.85 * 12
+  if (amount === 3050) return 'starter'; // 299 * 0.85 * 12
+  if (amount === 5090) return 'pro'; // 499 * 0.85 * 12
+  if (amount === 7130) return 'advanced'; // 699 * 0.85 * 12
+  if (amount === 8150) return 'premium'; // 799 * 0.85 * 12
+  if (amount === 10190) return 'business'; // 999 * 0.85 * 12
+  if (amount === 20390) return 'agency'; // 1999 * 0.85 * 12
+  if (amount === 30590) return 'vip'; // 2999 * 0.85 * 12
+  if (amount === 50990) return 'enterprise'; // 4999 * 0.85 * 12
+
+  return 'basic'; // fallback
+}
+
 /**
  * Creates a unique Razorpay Payment Link for the merchant's subscription.
  * Pass the merchant's phone number so we can identify who paid in the webhook.
@@ -17,11 +43,14 @@ export const razorpay = new Razorpay({
  */
 export async function createPaymentLink(merchantPhone: string, amount: number): Promise<string> {
   try {
+    const planName = getPlanFromAmount(amount);
+    const isYearly = amount > 1000 && amount !== 1999 && amount !== 2999 && amount !== 4999;
+    
     const response = await razorpay.paymentLink.create({
       amount: amount * 100, // Razorpay expects amount in paise (1 INR = 100 paise)
       currency: 'INR',
       accept_partial: false,
-      description: amount === 4999 ? 'Maghgo Enterprise (30 Days)' : amount === 799 ? 'Maghgo Premium (30 Days)' : 'Maghgo Basic (30 Days)',
+      description: `Maghgo ${planName.charAt(0).toUpperCase() + planName.slice(1)} Plan (${isYearly ? '1 Year' : '30 Days'})`,
       customer: {
         contact: merchantPhone,
       },

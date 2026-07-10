@@ -6,7 +6,7 @@ export interface Merchant {
   store_description: string;
   store_logo_url: string | null;
   is_active: boolean;
-  subscription_plan: 'trial' | 'basic' | 'premium';
+  subscription_plan: 'trial' | 'basic' | 'starter' | 'pro' | 'advanced' | 'premium' | 'business' | 'agency' | 'vip' | 'enterprise' | 'custom';
   trial_ends_at: string;
   created_at: string;
 }

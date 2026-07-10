@@ -119,26 +119,11 @@ async function handleImageMessage(
         messageId,
         `⚠️ *Limit Reached!*\n\nThe Free Trial only allows 1 product. To add up to 50 products, please upgrade to the *Basic Plan* (₹149/mo) here:\n\n🔗 ${paymentLink}`
       );
-    } else if (merchant.subscription_plan === 'basic') {
-      const paymentLink = await createPaymentLink(from, 799);
+    } else {
       await sendReply(
         from,
         messageId,
-        `⚠️ *Limit Reached!*\n\nThe Basic Plan allows a maximum of 50 products. To add up to 200 products, please upgrade to the *Premium Plan* (₹799/mo) here:\n\n🔗 ${paymentLink}`
-      );
-    } else if (merchant.subscription_plan === 'premium') {
-      const paymentLink = await createPaymentLink(from, 4999);
-      await sendReply(
-        from,
-        messageId,
-        `⚠️ *Limit Reached!*\n\nThe Premium Plan allows a maximum of 200 products. To add unlimited products and customize your web, please upgrade to the *Enterprise Plan* (₹4999/mo) here:\n\n🔗 ${paymentLink}`
-      );
-    } else if (merchant.subscription_plan === 'enterprise') {
-      // Enterprise is now unlimited, so this block theoretically won't be hit unless limit is changed
-      await sendReply(
-        from,
-        messageId,
-        `⚠️ *Maximum Limit Reached!*\n\nYou have reached the absolute maximum product limit. Please contact Maghgo Support directly.`
+        `⚠️ *Plan Limit Reached!*\n\nYour current plan allows a maximum of ${limit} products. Please reply with "UPGRADE" to see higher tier plans and unlock more capacity.`
       );
     }
     return;

@@ -43,11 +43,13 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
         <ProductGrid products={products} onAddToCart={handleAddToCart} />
       </main>
       
-      <footer className="w-full py-6 mt-12 text-center border-t border-gray-200">
-        <p className="text-gray-500 text-sm">
-          Powered by <a href="https://goatech.tech" target="_blank" rel="noopener noreferrer" className="font-bold text-gray-800 hover:text-accent transition-colors">GOAT'ECH</a>
-        </p>
-      </footer>
+      {!['agency', 'vip', 'enterprise', 'custom'].includes(merchant.subscription_plan) && (
+        <footer className="w-full py-6 mt-12 text-center border-t border-gray-200">
+          <p className="text-gray-500 text-sm">
+            Powered by <a href="https://goatech.tech" target="_blank" rel="noopener noreferrer" className="font-bold text-gray-800 hover:text-accent transition-colors">GOAT'ECH</a>
+          </p>
+        </footer>
+      )}
 
       <CartDrawer storeName={merchant.store_name} phone={merchant.phone_number} />
       <FloatingCartButton />
