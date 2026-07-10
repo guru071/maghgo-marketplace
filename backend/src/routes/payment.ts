@@ -17,6 +17,12 @@ router.post('/razorpay', async (req: Request, res: Response) => {
       return;
     }
 
+    if (typeof signature !== 'string') {
+      console.warn('⚠️ Invalid Razorpay webhook signature format (array detected)');
+      res.status(400).send('Invalid signature format');
+      return;
+    }
+
     const expectedSignature = crypto
       .createHmac('sha256', env.RAZORPAY_WEBHOOK_SECRET)
       .update(body)
@@ -48,12 +54,12 @@ router.post('/razorpay', async (req: Request, res: Response) => {
       const status = paymentLink.status; // e.g., 'paid'
 
       // Security Check: Verify status and exact amount
-      if (status !== 'paid' || (amountPaid !== 14900 && amountPaid !== 49900 && amountPaid !== 299900)) {
+      if (status !== 'paid' || (amountPaid !== 14900 && amountPaid !== 79900 && amountPaid !== 499900)) {
         console.warn(`⚠️ Payment verification failed for ${merchantPhone}: Status=${status}, AmountPaid=${amountPaid}`);
         return; // Halt and do NOT reactivate
       }
       
-      const plan = amountPaid === 299900 ? 'enterprise' : amountPaid === 49900 ? 'premium' : 'basic';
+      const plan = amountPaid === 499900 ? 'enterprise' : amountPaid === 79900 ? 'premium' : 'basic';
 
       if (merchantPhone) {
         console.log(`✅ Payment verified successfully for merchant: ${merchantPhone} (Plan: ${plan})`);

@@ -94,9 +94,25 @@ export function isSubscriptionActive(merchant: Merchant): boolean {
  * Reactivates the merchant's subscription for 30 days and sets them active.
  */
 export async function reactivateSubscription(phoneNumber: string, plan: 'basic' | 'premium' | 'enterprise'): Promise<void> {
-  // Extending by 30 days
-  const newExpiry = new Date();
-  newExpiry.setDate(newExpiry.getDate() + 30);
+  // Fetch current merchant to check their existing expiry
+  const { data: merchant, error: fetchError } = await supabase
+    .from('merchants')
+    .select('trial_ends_at, is_active')
+    .eq('phone_number', phoneNumber)
+    .single();
+
+  if (fetchError) {
+    throw new Error(`Failed to fetch merchant for reactivation: ${fetchError.message}`);
+  }
+
+  const now = new Date();
+  const currentExpiry = new Date(merchant.trial_ends_at);
+  
+  // If they are currently active and expiry is in the future, add 30 days to their existing expiry.
+  // Otherwise, add 30 days from now.
+  const newExpiry = (merchant.is_active && currentExpiry > now) 
+    ? new Date(currentExpiry.getTime() + 30 * 24 * 60 * 60 * 1000)
+    : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
   const { error } = await supabase
     .from('merchants')

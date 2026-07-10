@@ -21,7 +21,7 @@ export async function createPaymentLink(merchantPhone: string, amount: number): 
       amount: amount * 100, // Razorpay expects amount in paise (1 INR = 100 paise)
       currency: 'INR',
       accept_partial: false,
-      description: amount === 2999 ? 'Maghgo Enterprise (30 Days)' : amount === 499 ? 'Maghgo Premium (30 Days)' : 'Maghgo Basic (30 Days)',
+      description: amount === 4999 ? 'Maghgo Enterprise (30 Days)' : amount === 799 ? 'Maghgo Premium (30 Days)' : 'Maghgo Basic (30 Days)',
       customer: {
         contact: merchantPhone,
       },

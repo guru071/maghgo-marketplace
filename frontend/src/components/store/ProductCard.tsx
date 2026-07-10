@@ -56,7 +56,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
       </div>
 
       <div className="product-card__body">
-        <h3 className="product-card__title">{product.title}</h3>
+        <h3 className="product-card__title">{product.title.replace(/#[\w]+/g, '').trim()}</h3>
         {product.description && (
           <p className="product-card__description">{product.description}</p>
         )}

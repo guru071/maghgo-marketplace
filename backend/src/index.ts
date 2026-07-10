@@ -10,9 +10,14 @@ import { errorHandler } from './middleware/error-handler';
 
 // ─── Express Application ────────────────────────────────────────────────────
 
+import { startCleanupJob } from './jobs/cleanup.job';
+
 const app = express();
 
-// ─── Global Middleware ───────────────────────────────────────────────────────
+// Initialize the daily cleanup cron job
+startCleanupJob();
+
+// ─── Middleware ──────────────────────────────────────────────────────────────
 
 // Security headers
 app.use(helmet());

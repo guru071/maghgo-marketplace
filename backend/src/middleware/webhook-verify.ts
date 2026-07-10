@@ -17,9 +17,9 @@ export function verifyWebhookSignature(
 ): void {
   const signature = req.headers['x-hub-signature-256'] as string | undefined;
 
-  if (!signature) {
-    console.warn('⚠️ Webhook request missing X-Hub-Signature-256 header');
-    res.status(401).json({ error: 'Missing signature header' });
+  if (!signature || typeof signature !== 'string') {
+    console.warn('⚠️ Webhook request missing or invalid X-Hub-Signature-256 header');
+    res.status(401).json({ error: 'Missing or invalid signature header' });
     return;
   }
 

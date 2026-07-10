@@ -48,12 +48,21 @@ async function processMessage(message: WhatsAppMessage): Promise<void> {
   const from = message.from;
   const messageId = message.id;
 
-  if (message.type === 'image') {
-    await handleImageMessage(from, messageId, message);
-  } else if (message.type === 'text' && message.text) {
-    await handleTextCommand(from, messageId, message.text.body);
+  try {
+    if (message.type === 'image') {
+      await handleImageMessage(from, messageId, message);
+    } else if (message.type === 'text' && message.text) {
+      await handleTextCommand(from, messageId, message.text.body);
+    }
+    // Silently ignore other message types
+  } catch (error) {
+    console.error(`❌ Error processing message from ${from}:`, error);
+    await sendReply(
+      from,
+      messageId,
+      '❌ Sorry, something went wrong on our end while processing your request. Please try again later.'
+    ).catch(e => console.error('Failed to send error fallback:', e));
   }
-  // Silently ignore other message types
 }
 
 // ─── Image Message Handler ───────────────────────────────────────────────────
@@ -78,12 +87,23 @@ async function handleImageMessage(
 
   // 1.5. Check if subscription is active
   if (!isSubscriptionActive(merchant)) {
-    const paymentLink = await createPaymentLink(from, 149);
-    await sendReply(
-      from,
-      messageId,
-      `⚠️ *Trial Expired!*\n\nYour 4-day free trial has ended. To keep your store active and continue adding products, please pay your monthly subscription of ₹149 (Basic Plan) here:\n\n🔗 ${paymentLink}`
-    );
+    if (merchant.subscription_plan === 'trial') {
+      const paymentLink = await createPaymentLink(from, 149);
+      await sendReply(
+        from,
+        messageId,
+        `⚠️ *Trial Expired!*\n\nYour 4-day free trial has ended. To keep your store active and continue adding products, please pay your monthly subscription of ₹149 (Basic Plan) here:\n\n🔗 ${paymentLink}`
+      );
+    } else {
+      // Determine the price based on their last plan to renew
+      const renewalAmount = merchant.subscription_plan === 'enterprise' ? 4999 : merchant.subscription_plan === 'premium' ? 799 : 149;
+      const paymentLink = await createPaymentLink(from, renewalAmount);
+      await sendReply(
+        from,
+        messageId,
+        `⚠️ *Subscription Expired!*\n\nYour monthly subscription has ended and your store is currently inactive. To reactivate your store and continue adding products, please renew your plan here:\n\n🔗 ${paymentLink}`
+      );
+    }
     return;
   }
 
@@ -100,18 +120,18 @@ async function handleImageMessage(
         `⚠️ *Limit Reached!*\n\nThe Free Trial only allows 1 product. To add up to 50 products, please upgrade to the *Basic Plan* (₹149/mo) here:\n\n🔗 ${paymentLink}`
       );
     } else if (merchant.subscription_plan === 'basic') {
-      const paymentLink = await createPaymentLink(from, 499);
+      const paymentLink = await createPaymentLink(from, 799);
       await sendReply(
         from,
         messageId,
-        `⚠️ *Limit Reached!*\n\nThe Basic Plan allows a maximum of 50 products. To add up to 200 products, please upgrade to the *Premium Plan* (₹499/mo) here:\n\n🔗 ${paymentLink}`
+        `⚠️ *Limit Reached!*\n\nThe Basic Plan allows a maximum of 50 products. To add up to 200 products, please upgrade to the *Premium Plan* (₹799/mo) here:\n\n🔗 ${paymentLink}`
       );
     } else if (merchant.subscription_plan === 'premium') {
-      const paymentLink = await createPaymentLink(from, 2999);
+      const paymentLink = await createPaymentLink(from, 4999);
       await sendReply(
         from,
         messageId,
-        `⚠️ *Limit Reached!*\n\nThe Premium Plan allows a maximum of 200 products. To add unlimited products and customize your web, please upgrade to the *Enterprise Plan* (₹2999/mo) here:\n\n🔗 ${paymentLink}`
+        `⚠️ *Limit Reached!*\n\nThe Premium Plan allows a maximum of 200 products. To add unlimited products and customize your web, please upgrade to the *Enterprise Plan* (₹4999/mo) here:\n\n🔗 ${paymentLink}`
       );
     } else if (merchant.subscription_plan === 'enterprise') {
       // Enterprise is now unlimited, so this block theoretically won't be hit unless limit is changed
@@ -132,13 +152,12 @@ async function handleImageMessage(
       from,
       messageId,
       '⚠️ Could not parse product details from your caption.\n\n' +
-      'Please use this format:\n' +
-      '📝 *Product Name Price*\n\n' +
+      'Please include a currency symbol (Rs, ₹, INR, MRP) before the price:\n' +
+      '📝 *Product Name Rs Price*\n\n' +
       'Examples:\n' +
       '• Red Cotton T-Shirt Rs 499\n' +
       '• Blue Jeans ₹1,299\n' +
-      '• Sneakers INR 2499\n' +
-      '• Kurta 999'
+      '• Sneakers INR 2499'
     );
     return;
   }
@@ -242,14 +261,40 @@ async function handleTextCommand(
     return;
   }
 
-  // If subscription is inactive, allow only HELP or STATUS, otherwise block
-  if (!isSubscriptionActive(merchant) && command !== 'HELP' && command !== 'STATUS') {
-    const paymentLink = await createPaymentLink(from, 149);
+  // ── UPGRADE ────────────────────────────────────────────────────────────
+  if (command.startsWith('UPGRADE')) {
+    const plan = command.split(' ')[1] || 'BASIC';
+    let amount = 149;
+    if (plan === 'PREMIUM') amount = 799;
+    if (plan === 'ENTERPRISE') amount = 4999;
+    
+    const paymentLink = await createPaymentLink(from, amount);
     await sendReply(
       from,
       messageId,
-      `⚠️ *Subscription Inactive!*\n\nYour plan has expired. To continue using Maghgo commands, please renew your subscription of ₹149 (Basic Plan) here:\n\n🔗 ${paymentLink}`
+      `🚀 *Upgrade to ${plan.charAt(0).toUpperCase() + plan.slice(1).toLowerCase()}*\n\nPlease complete your payment of ₹${amount} here to instantly unlock your account limits:\n\n🔗 ${paymentLink}`
     );
+    return;
+  }
+
+  // If subscription is inactive, allow only HELP or STATUS, otherwise block
+  if (!isSubscriptionActive(merchant) && command !== 'HELP' && command !== 'STATUS') {
+    if (merchant.subscription_plan === 'trial') {
+      const paymentLink = await createPaymentLink(from, 149);
+      await sendReply(
+        from,
+        messageId,
+        `⚠️ *Trial Expired!*\n\nYour 4-day free trial has ended. To continue using Maghgo commands, please upgrade to the Basic Plan (₹149/mo) here:\n\n🔗 ${paymentLink}`
+      );
+    } else {
+      const renewalAmount = merchant.subscription_plan === 'enterprise' ? 4999 : merchant.subscription_plan === 'premium' ? 799 : 149;
+      const paymentLink = await createPaymentLink(from, renewalAmount);
+      await sendReply(
+        from,
+        messageId,
+        `⚠️ *Subscription Expired!*\n\nYour monthly subscription has ended. To continue using Maghgo commands and reactivate your store, please renew your plan here:\n\n🔗 ${paymentLink}`
+      );
+    }
     return;
   }
 
@@ -326,6 +371,7 @@ async function handleTextCommand(
       `📋 *LIST* — View all your products\n` +
       `🗑️ *DELETE product name* — Remove a product\n` +
       `📊 *STATUS* — Store URL & product count\n` +
+      `🚀 *UPGRADE* — Unlock higher product limits\n` +
       `❓ *HELP* — Show this message`
     );
     return;

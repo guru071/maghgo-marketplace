@@ -32,32 +32,12 @@ const PREFIXED_PRICE_REGEX = new RegExp(
   'i'
 );
 
-/**
- * Fallback pattern: title followed by a standalone number at the end of the
- * string.  The title part must end with a non-digit so we don't accidentally
- * swallow part of the price into the title.
- *   "Kurta 999"
- */
-const BARE_PRICE_REGEX = new RegExp(
-  `^(.+?)\\s+${PRICE_NUMBER}\\s*$`
-);
-
-/**
- * Parse a WhatsApp image caption into a product title and price.
- *
- * @returns ParsedProduct if both title and price are found, otherwise `null`.
- */
 export function parseCaption(caption: string): ParsedProduct | null {
   const trimmed = caption.trim();
   if (!trimmed) return null;
 
-  // Try the explicit-prefix pattern first
-  let match = PREFIXED_PRICE_REGEX.exec(trimmed);
-
-  // Fall back to trailing bare number
-  if (!match) {
-    match = BARE_PRICE_REGEX.exec(trimmed);
-  }
+  // Try the explicit-prefix pattern
+  const match = PREFIXED_PRICE_REGEX.exec(trimmed);
 
   if (!match) return null;
 

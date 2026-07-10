@@ -18,9 +18,9 @@ export function Pricing() {
               <li>Basic background removal</li>
               <li>Custom maghgo.goatecch.tech link</li>
             </ul>
-            <Link href="#start">
+            <a href="https://wa.me/919876543210?text=REGISTER%20" target="_blank" rel="noopener noreferrer">
               <Button variant="secondary" className="w-full mt-6">Start Trial</Button>
-            </Link>
+            </a>
           </div>
           
           <div className="pricing__card pricing__card--featured">
@@ -33,37 +33,39 @@ export function Pricing() {
               <li>Custom maghgo.goatecch.tech link</li>
               <li>Priority WhatsApp support</li>
             </ul>
-            <Link href="#start">
+            <a href="https://wa.me/919876543210?text=REGISTER%20" target="_blank" rel="noopener noreferrer">
               <Button className="w-full mt-6">Get Basic</Button>
-            </Link>
+            </a>
           </div>
           
           <div className="pricing__card">
             <h3 className="card__title">Premium</h3>
-            <div className="card__price">₹499<span>/mo</span></div>
+            <div className="card__price">₹799<span>/mo</span></div>
+            <p className="card__desc">For growing businesses.</p>
             <ul className="card__features">
               <li>Up to 200 products</li>
               <li>Everything in Basic</li>
               <li>Custom Domain Support</li>
               <li>Analytics Dashboard</li>
             </ul>
-            <Link href="#start">
+            <a href="https://wa.me/919876543210?text=REGISTER%20" target="_blank" rel="noopener noreferrer">
               <Button variant="secondary" className="w-full mt-6">Get Premium</Button>
-            </Link>
+            </a>
           </div>
           
           <div className="pricing__card">
             <h3 className="card__title">Enterprise</h3>
-            <div className="card__price">₹2999<span>/mo</span></div>
+            <div className="card__price">₹4999<span>/mo</span></div>
+            <p className="card__desc">Unlimited scale.</p>
             <ul className="card__features">
               <li>Unlimited products</li>
               <li>Custom Web Design</li>
               <li>API Access</li>
               <li>Priority Support</li>
             </ul>
-            <Link href="#start">
+            <a href="https://wa.me/919876543210?text=REGISTER%20" target="_blank" rel="noopener noreferrer">
               <Button variant="secondary" className="w-full mt-6">Get Enterprise</Button>
-            </Link>
+            </a>
           </div>
         </div>
       </div>
