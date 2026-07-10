@@ -1870,3 +1870,230 @@ body.cart-open {
   0%, 80%, 100% { transform: scale(0); }
   40% { transform: scale(1); }
 }
+
+/* Working Model Demo Styles */
+.demo-section {
+  padding: 6rem 0;
+  background-color: var(--bg);
+}
+
+.demo-section__title {
+  text-align: center;
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+}
+
+.demo-section__subtitle {
+  text-align: center;
+  font-size: 1.125rem;
+  color: var(--text-secondary);
+  max-w: 600px;
+  margin: 0 auto 4rem;
+}
+
+.demo-section__split {
+  display: flex;
+  gap: 2rem;
+  max-width: 1000px;
+  margin: 0 auto;
+  align-items: stretch;
+}
+
+@media (max-width: 768px) {
+  .demo-section__split {
+    flex-direction: column;
+  }
+}
+
+/* WhatsApp Simulator */
+.demo-section__whatsapp {
+  flex: 1;
+  background: #E5DDD5;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--shadow-xl);
+  display: flex;
+  flex-direction: column;
+  height: 500px;
+}
+
+.demo-section__whatsapp-header {
+  background: #075E54;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: white;
+}
+
+.demo-section__whatsapp-avatar {
+  width: 40px;
+  height: 40px;
+  background: #ccc;
+  border-radius: 50%;
+  background-image: url('https://images.unsplash.com/photo-1549298916-b41d501d3772?w=100&q=80');
+  background-size: cover;
+}
+
+.demo-section__whatsapp-name {
+  display: flex;
+  flex-direction: column;
+}
+
+.demo-section__whatsapp-name strong {
+  font-size: 1rem;
+}
+
+.demo-section__whatsapp-name span {
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.demo-section__whatsapp-chat {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background-image: url('https://w0.peakpx.com/wallpaper/818/148/HD-wallpaper-whatsapp-background-cool-dark-green-new-theme-whatsapp.jpg');
+  background-size: cover;
+}
+
+.demo-section__whatsapp-msg {
+  max-width: 80%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  position: relative;
+  box-shadow: 0 1px 1px rgba(0,0,0,0.1);
+  white-space: pre-wrap;
+}
+
+.demo-section__whatsapp-msg--bot {
+  align-self: flex-start;
+  background: white;
+  border-top-left-radius: 0;
+}
+
+.demo-section__whatsapp-msg--user {
+  align-self: flex-end;
+  background: #DCF8C6;
+  border-top-right-radius: 0;
+}
+
+.demo-section__whatsapp-input-area {
+  display: flex;
+  padding: 12px;
+  background: #f0f0f0;
+  gap: 8px;
+}
+
+.demo-section__whatsapp-input {
+  flex: 1;
+  border: none;
+  border-radius: 24px;
+  padding: 12px 16px;
+  outline: none;
+}
+
+.demo-section__whatsapp-send {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #008f68;
+  color: white;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.demo-section__whatsapp-send:hover {
+  transform: scale(1.05);
+}
+
+/* Store Preview */
+.demo-section__store {
+  flex: 1;
+  background: white;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--shadow-xl);
+  display: flex;
+  flex-direction: column;
+  height: 500px;
+}
+
+.demo-section__store-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+}
+
+.demo-section__store-header h3 {
+  font-weight: 700;
+  margin: 0;
+}
+
+.demo-section__store-header span {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.demo-section__store-grid {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  align-content: start;
+}
+
+.demo-section__store-product {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: transform 0.3s;
+}
+
+.demo-section__store-product:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+}
+
+.demo-section__store-product-img {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+}
+
+.demo-section__store-product-info {
+  padding: 8px;
+}
+
+.demo-section__store-product-info h4 {
+  font-size: 0.875rem;
+  margin: 0 0 4px 0;
+  font-weight: 500;
+}
+
+.demo-section__store-product-info span {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+@keyframes popIn {
+  0% { transform: scale(0.8); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-pop-in {
+  animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}

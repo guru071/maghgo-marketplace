@@ -7,6 +7,7 @@ export interface Merchant {
   store_logo_url: string | null;
   is_active: boolean;
   subscription_plan: 'trial' | 'basic' | 'starter' | 'pro' | 'advanced' | 'premium' | 'business' | 'agency' | 'vip' | 'enterprise' | 'custom';
+  theme_config?: any;
   trial_ends_at: string;
   created_at: string;
 }

@@ -1,5 +1,6 @@
 import { Header } from '@/components/landing/Header';
 import { Hero } from '@/components/landing/Hero';
+import { WorkingModelDemo } from '@/components/landing/WorkingModelDemo';
 import { HowItWorks } from '@/components/landing/HowItWorks';
 import { Pricing } from '@/components/landing/Pricing';
 
@@ -8,6 +9,7 @@ export default function LandingPage() {
     <main className="landing-page">
       <Header />
       <Hero />
+      <WorkingModelDemo />
       <HowItWorks />
       <Pricing />
       

@@ -14,6 +14,9 @@ interface StoreClientProps {
   products: Product[];
 }
 
+import { Render } from "@puckeditor/core";
+import { config } from "@/puck.config";
+
 export function StoreClient({ merchant, products }: StoreClientProps) {
   const { addItem, items } = useCartStore();
 
@@ -30,7 +33,11 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
   if (!products || products.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <StoreHeader merchant={merchant} />
+        {merchant.theme_config ? (
+          <Render config={config} data={merchant.theme_config} />
+        ) : (
+          <StoreHeader merchant={merchant} />
+        )}
         <EmptyStore />
       </div>
     );
@@ -38,10 +45,16 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      <StoreHeader merchant={merchant} />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
-        <ProductGrid products={products} onAddToCart={handleAddToCart} />
-      </main>
+      {merchant.theme_config ? (
+        <Render config={config} data={merchant.theme_config} />
+      ) : (
+        <>
+          <StoreHeader merchant={merchant} />
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
+            <ProductGrid products={products} onAddToCart={handleAddToCart} />
+          </main>
+        </>
+      )}
       
       {!['agency', 'vip', 'enterprise', 'custom'].includes(merchant.subscription_plan) && (
         <footer className="w-full py-6 mt-12 text-center border-t border-gray-200">
