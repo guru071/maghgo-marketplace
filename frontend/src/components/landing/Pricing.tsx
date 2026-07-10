@@ -6,11 +6,11 @@ import Button from '@/components/ui/Button';
 export function Pricing() {
   const [isYearly, setIsYearly] = useState(false);
 
-  // Helper to calculate yearly price (20% off)
+  // Helper to calculate yearly price (15% off)
   const getPrice = (monthlyPrice: number) => {
     if (monthlyPrice === 0) return '₹0';
     if (isYearly) {
-      return `₹${Math.round(monthlyPrice * 0.8 * 12)}`;
+      return `₹${Math.round(monthlyPrice * 0.85 * 12)}`;
     }
     return `₹${monthlyPrice}`;
   };
@@ -25,15 +25,17 @@ export function Pricing() {
       description: 'Testing the waters.',
       features: ['1 Product', 'Basic AI', 'Maghgo domain'],
       buttonText: 'Start Free Trial',
-      buttonVariant: 'secondary' as const
+      buttonVariant: 'secondary' as const,
+      colorTheme: '#E5E7EB' // Gray
     },
     {
       name: 'Basic',
       monthlyPrice: 149,
       description: 'For small side-hustles.',
       features: ['Up to 50 Products', 'Standard Processing', 'Basic Store'],
-      buttonText: 'Start Free Trial', // Trial button requested
-      buttonVariant: 'secondary' as const
+      buttonText: 'Start Free Trial', 
+      buttonVariant: 'secondary' as const,
+      colorTheme: '#D1FAE5' // Emerald
     },
     {
       name: 'Starter',
@@ -41,7 +43,8 @@ export function Pricing() {
       description: 'For growing sellers.',
       features: ['Up to 150 Products', 'Priority AI', 'Basic Analytics'],
       buttonText: 'Get Starter',
-      buttonVariant: 'secondary' as const
+      buttonVariant: 'secondary' as const,
+      colorTheme: '#DBEAFE' // Blue
     },
     {
       name: 'Pro',
@@ -49,7 +52,8 @@ export function Pricing() {
       description: 'For established shops.',
       features: ['Up to 300 Products', 'Faster AI', 'Custom Domain'],
       buttonText: 'Get Pro',
-      buttonVariant: 'secondary' as const
+      buttonVariant: 'secondary' as const,
+      colorTheme: '#E0E7FF' // Indigo
     },
     {
       name: 'Advanced',
@@ -57,7 +61,8 @@ export function Pricing() {
       description: 'More features, more power.',
       features: ['Up to 600 Products', 'Custom Branding', 'SEO Tools'],
       buttonText: 'Get Advanced',
-      buttonVariant: 'secondary' as const
+      buttonVariant: 'secondary' as const,
+      colorTheme: '#F3E8FF' // Purple
     },
     {
       name: 'Premium',
@@ -66,7 +71,8 @@ export function Pricing() {
       features: ['Up to 1000 Products', 'Priority AI', 'Custom Domain', 'Full Analytics'],
       buttonText: 'Go Premium',
       buttonVariant: 'primary' as const,
-      featured: true
+      featured: true,
+      colorTheme: '#FFEDD5' // Orange (Featured)
     },
     {
       name: 'Business',
@@ -74,7 +80,8 @@ export function Pricing() {
       description: 'Scale your operations.',
       features: ['Up to 2000 Products', 'Team Accounts', 'API Access'],
       buttonText: 'Get Business',
-      buttonVariant: 'secondary' as const
+      buttonVariant: 'secondary' as const,
+      colorTheme: '#FCE7F3' // Pink
     },
     {
       name: 'Agency',
@@ -82,7 +89,8 @@ export function Pricing() {
       description: 'Managing multiple brands.',
       features: ['5 Storefronts', 'White-labeling', 'Dedicated AM'],
       buttonText: 'Get Agency',
-      buttonVariant: 'secondary' as const
+      buttonVariant: 'secondary' as const,
+      colorTheme: '#FEF3C7' // Amber
     },
     {
       name: 'VIP',
@@ -90,15 +98,17 @@ export function Pricing() {
       description: 'Maximum performance.',
       features: ['15 Storefronts', 'Custom AI Training', 'SLA Guarantee'],
       buttonText: 'Get VIP',
-      buttonVariant: 'secondary' as const
+      buttonVariant: 'secondary' as const,
+      colorTheme: '#ECFCCB' // Lime
     },
     {
       name: 'Enterprise',
       monthlyPrice: 4999,
       description: 'Unlimited scale.',
       features: ['Unlimited Products', 'Dedicated Support', 'Custom Integrations', 'White-label'],
-      buttonText: 'Start Free Trial', // Trial button requested
-      buttonVariant: 'secondary' as const
+      buttonText: 'Start Free Trial',
+      buttonVariant: 'secondary' as const,
+      colorTheme: '#CFFAFE' // Cyan
     },
     {
       name: 'Custom',
@@ -108,7 +118,8 @@ export function Pricing() {
       features: ['Tailored features', 'On-premise option', 'Bespoke UI'],
       buttonText: 'Contact Sales',
       buttonVariant: 'secondary' as const,
-      isCustom: true
+      isCustom: true,
+      colorTheme: '#F3F4F6' // Light Gray
     }
   ];
 
@@ -138,7 +149,7 @@ export function Pricing() {
             }} />
           </button>
           <span style={{ fontWeight: isYearly ? 'bold' : 'normal', color: isYearly ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
-            Yearly <span style={{ color: 'var(--success)', fontSize: '0.75rem', fontWeight: 'bold' }}>(Save 20%)</span>
+            Yearly <span style={{ color: 'var(--success)', fontSize: '0.75rem', fontWeight: 'bold' }}>(Save 15%)</span>
           </span>
         </div>
 
@@ -148,6 +159,10 @@ export function Pricing() {
             <div 
               key={index} 
               className={`pricing__card ${plan.featured ? 'pricing__card--featured' : ''}`}
+              style={{
+                borderTop: `6px solid ${plan.colorTheme}`,
+                backgroundColor: plan.featured ? '#fff' : '#fafafa'
+              }}
             >
               <h3 className="pricing__card-name">{plan.name}</h3>
               <div className="pricing__card-price">
