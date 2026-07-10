@@ -261,18 +261,36 @@ async function handleTextCommand(
     return;
   }
 
-  // ── UPGRADE ────────────────────────────────────────────────────────────
-  if (command.startsWith('UPGRADE')) {
-    const plan = command.split(' ')[1] || 'BASIC';
-    let amount = 149;
-    if (plan === 'PREMIUM') amount = 799;
-    if (plan === 'ENTERPRISE') amount = 4999;
+  // ── UPGRADE / BUY ────────────────────────────────────────────────────────────
+  if (command.startsWith('UPGRADE') || command.includes('I WANT TO BUY') || command.includes('I WANT TO START THE FREE TRIAL')) {
+    // Try to extract the price from the string (e.g. ₹799)
+    const priceMatch = command.match(/₹(\d+)/);
+    let amount = 149; // fallback basic
+    
+    if (priceMatch && priceMatch[1]) {
+      amount = parseInt(priceMatch[1], 10);
+    } else {
+      // Fallback for old UPGRADE commands
+      const plan = command.split(' ')[1] || 'BASIC';
+      if (plan === 'PREMIUM') amount = 799;
+      if (plan === 'ENTERPRISE') amount = 4999;
+    }
+    
+    if (amount === 0) {
+      // Free trial or custom - no payment link needed yet, or just send a contact message
+      await sendReply(
+        from,
+        messageId,
+        `🎉 Great! Your free trial or custom request is noted. To activate it, simply type *REGISTER Your Store Name*. If you already registered, you're good to go!`
+      );
+      return;
+    }
     
     const paymentLink = await createPaymentLink(from, amount);
     await sendReply(
       from,
       messageId,
-      `🚀 *Upgrade to ${plan.charAt(0).toUpperCase() + plan.slice(1).toLowerCase()}*\n\nPlease complete your payment of ₹${amount} here to instantly unlock your account limits:\n\n🔗 ${paymentLink}`
+      `🚀 *Upgrade your Maghgo Plan!*\n\nPlease complete your payment of ₹${amount} here to instantly unlock your account limits:\n\n🔗 ${paymentLink}`
     );
     return;
   }
