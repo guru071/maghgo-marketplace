@@ -6,6 +6,7 @@ import { env } from './config/env';
 import webhookRouter from './routes/webhook';
 import healthRouter from './routes/health';
 import { paymentRouter } from './routes/payment';
+import demoRouter from './routes/demo';
 import { errorHandler } from './middleware/error-handler';
 
 // ─── Express Application ────────────────────────────────────────────────────
@@ -48,6 +49,7 @@ app.use(express.json());
 
 app.use('/webhook', webhookRouter);
 app.use('/webhook', paymentRouter);
+app.use('/demo', demoRouter);
 app.use('/health', healthRouter);
 
 // ─── Error Handler ───────────────────────────────────────────────────────────
