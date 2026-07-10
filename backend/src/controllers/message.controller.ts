@@ -88,20 +88,27 @@ async function handleImageMessage(
   // 1.5. Check if subscription is active
   if (!isSubscriptionActive(merchant)) {
     if (merchant.subscription_plan === 'trial') {
-      const paymentLink = await createPaymentLink(from, 149);
+      const monthlyLink = await createPaymentLink(from, 99);
+      const yearlyLink = await createPaymentLink(from, 1010);
       await sendReply(
         from,
         messageId,
-        `⚠️ *Trial Expired!*\n\nYour 4-day free trial has ended. To keep your store active and continue adding products, please pay your monthly subscription of ₹149 (Basic Plan) here:\n\n🔗 ${paymentLink}`
+        `⚠️ *Trial Expired!*\n\nYour 4-day free trial has ended. To keep your store active and continue adding products, please choose a billing cycle for the Basic Plan:\n\n` +
+        `📅 *Pay Monthly (₹99/mo):*\n🔗 ${monthlyLink}\n\n` +
+        `🎉 *Pay Yearly (Save 15% - ₹1010/yr):*\n🔗 ${yearlyLink}`
       );
     } else {
       // Determine the price based on their last plan to renew
-      const renewalAmount = getAmountFromPlan(merchant.subscription_plan);
-      const paymentLink = await createPaymentLink(from, renewalAmount);
+      const monthlyAmount = getAmountFromPlan(merchant.subscription_plan, false);
+      const yearlyAmount = getAmountFromPlan(merchant.subscription_plan, true);
+      const monthlyLink = await createPaymentLink(from, monthlyAmount);
+      const yearlyLink = await createPaymentLink(from, yearlyAmount);
       await sendReply(
         from,
         messageId,
-        `⚠️ *Subscription Expired!*\n\nYour monthly subscription has ended and your store is currently inactive. To reactivate your store and continue adding products, please renew your plan here:\n\n🔗 ${paymentLink}`
+        `⚠️ *Subscription Expired!*\n\nYour subscription has ended and your store is currently inactive. To reactivate your store and continue adding products, please renew your plan:\n\n` +
+        `📅 *Pay Monthly (₹${monthlyAmount}/mo):*\n🔗 ${monthlyLink}\n\n` +
+        `🎉 *Pay Yearly (Save 15% - ₹${yearlyAmount}/yr):*\n🔗 ${yearlyLink}`
       );
     }
     return;
@@ -113,11 +120,14 @@ async function handleImageMessage(
 
   if (currentProductCount >= limit) {
     if (merchant.subscription_plan === 'trial') {
-      const paymentLink = await createPaymentLink(from, 99);
+      const monthlyLink = await createPaymentLink(from, 99);
+      const yearlyLink = await createPaymentLink(from, 1010);
       await sendReply(
         from,
         messageId,
-        `⚠️ *Limit Reached!*\n\nThe Free Trial only allows 1 product. To add up to 50 products, please upgrade to the *Basic Plan* (₹99/mo) here:\n\n🔗 ${paymentLink}`
+        `⚠️ *Limit Reached!*\n\nThe Free Trial only allows 1 product. To add up to 50 products, please upgrade to the *Basic Plan*. Choose a billing cycle:\n\n` +
+        `📅 *Pay Monthly (₹99/mo):*\n🔗 ${monthlyLink}\n\n` +
+        `🎉 *Pay Yearly (Save 15% - ₹1010/yr):*\n🔗 ${yearlyLink}`
       );
     } else {
       await sendReply(
@@ -250,17 +260,26 @@ async function handleTextCommand(
   if (command.startsWith('UPGRADE') || command.includes('I WANT TO BUY') || command.includes('I WANT TO START THE FREE TRIAL')) {
     // Try to extract the price from the string (e.g. ₹799)
     const priceMatch = command.match(/₹(\d+)/);
-    let amount = 149; // fallback basic
+    let plan = 'BASIC';
+    let amount = 99; // fallback basic
     
     if (priceMatch && priceMatch[1]) {
       amount = parseInt(priceMatch[1], 10);
+      // Try to reverse-engineer plan from amount (monthly)
+      const testPlans = ['basic', 'starter', 'pro', 'advanced', 'premium', 'business', 'agency', 'vip', 'enterprise'];
+      for (const p of testPlans) {
+        if (getAmountFromPlan(p, false) === amount) {
+          plan = p;
+          break;
+        }
+      }
     } else {
       // Fallback for old UPGRADE commands
-      const plan = command.split(' ')[1] || 'BASIC';
+      plan = command.split(' ')[1] || 'BASIC';
       amount = getAmountFromPlan(plan);
     }
     
-    if (amount === 0) {
+    if (amount === 0 || plan.toLowerCase() === 'custom' || plan.toLowerCase() === 'trial') {
       // Free trial or custom - no payment link needed yet, or just send a contact message
       await sendReply(
         from,
@@ -270,11 +289,17 @@ async function handleTextCommand(
       return;
     }
     
-    const paymentLink = await createPaymentLink(from, amount);
+    const monthlyAmount = getAmountFromPlan(plan, false);
+    const yearlyAmount = getAmountFromPlan(plan, true);
+    const monthlyLink = await createPaymentLink(from, monthlyAmount);
+    const yearlyLink = await createPaymentLink(from, yearlyAmount);
+
     await sendReply(
       from,
       messageId,
-      `🚀 *Upgrade your Maghgo Plan!*\n\nPlease complete your payment of ₹${amount} here to instantly unlock your account limits:\n\n🔗 ${paymentLink}`
+      `🚀 *Upgrade your Maghgo Plan!*\n\nPlease complete your payment for the *${plan.toUpperCase()} Plan* to unlock your limits:\n\n` +
+      `📅 *Pay Monthly (₹${monthlyAmount}/mo):*\n🔗 ${monthlyLink}\n\n` +
+      `🎉 *Pay Yearly (Save 15% - ₹${yearlyAmount}/yr):*\n🔗 ${yearlyLink}`
     );
     return;
   }
@@ -282,19 +307,26 @@ async function handleTextCommand(
   // If subscription is inactive, allow only HELP or STATUS, otherwise block
   if (!isSubscriptionActive(merchant) && command !== 'HELP' && command !== 'STATUS') {
     if (merchant.subscription_plan === 'trial') {
-      const paymentLink = await createPaymentLink(from, 99);
+      const monthlyLink = await createPaymentLink(from, 99);
+      const yearlyLink = await createPaymentLink(from, 1010);
       await sendReply(
         from,
         messageId,
-        `⚠️ *Trial Expired!*\n\nYour 4-day free trial has ended. To continue using Maghgo commands, please upgrade to the Basic Plan (₹99/mo) here:\n\n🔗 ${paymentLink}`
+        `⚠️ *Trial Expired!*\n\nYour 4-day free trial has ended. To continue using Maghgo commands, please choose a billing cycle for the Basic Plan:\n\n` +
+        `📅 *Pay Monthly (₹99/mo):*\n🔗 ${monthlyLink}\n\n` +
+        `🎉 *Pay Yearly (Save 15% - ₹1010/yr):*\n🔗 ${yearlyLink}`
       );
     } else {
-      const renewalAmount = getAmountFromPlan(merchant.subscription_plan);
-      const paymentLink = await createPaymentLink(from, renewalAmount);
+      const monthlyAmount = getAmountFromPlan(merchant.subscription_plan, false);
+      const yearlyAmount = getAmountFromPlan(merchant.subscription_plan, true);
+      const monthlyLink = await createPaymentLink(from, monthlyAmount);
+      const yearlyLink = await createPaymentLink(from, yearlyAmount);
       await sendReply(
         from,
         messageId,
-        `⚠️ *Subscription Expired!*\n\nYour monthly subscription has ended. To continue using Maghgo commands and reactivate your store, please renew your plan here:\n\n🔗 ${paymentLink}`
+        `⚠️ *Subscription Expired!*\n\nYour subscription has ended. To continue using Maghgo commands and reactivate your store, please renew your plan:\n\n` +
+        `📅 *Pay Monthly (₹${monthlyAmount}/mo):*\n🔗 ${monthlyLink}\n\n` +
+        `🎉 *Pay Yearly (Save 15% - ₹${yearlyAmount}/yr):*\n🔗 ${yearlyLink}`
       );
     }
     return;
