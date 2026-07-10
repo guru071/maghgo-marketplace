@@ -30,7 +30,7 @@ export function Pricing() {
     },
     {
       name: 'Basic',
-      monthlyPrice: 149,
+      monthlyPrice: 99,
       description: 'For small side-hustles.',
       features: ['Up to 50 Products', 'Standard Processing', 'Basic Store'],
       buttonText: 'Start Free Trial', 
@@ -39,7 +39,7 @@ export function Pricing() {
     },
     {
       name: 'Starter',
-      monthlyPrice: 299,
+      monthlyPrice: 149,
       description: 'For growing sellers.',
       features: ['Up to 150 Products', 'Priority AI', 'Basic Analytics'],
       buttonText: 'Get Starter',
@@ -48,7 +48,7 @@ export function Pricing() {
     },
     {
       name: 'Pro',
-      monthlyPrice: 499,
+      monthlyPrice: 249,
       description: 'For established shops.',
       features: ['Up to 300 Products', 'Faster AI', 'Custom Domain'],
       buttonText: 'Get Pro',
@@ -57,7 +57,7 @@ export function Pricing() {
     },
     {
       name: 'Advanced',
-      monthlyPrice: 699,
+      monthlyPrice: 349,
       description: 'More features, more power.',
       features: ['Up to 600 Products', 'Custom Branding', 'SEO Tools'],
       buttonText: 'Get Advanced',
@@ -66,7 +66,7 @@ export function Pricing() {
     },
     {
       name: 'Premium',
-      monthlyPrice: 799,
+      monthlyPrice: 499,
       description: 'The sweet spot for most businesses.',
       features: ['Up to 1000 Products', 'Priority AI', 'Custom Domain', 'Full Analytics'],
       buttonText: 'Go Premium',
@@ -76,7 +76,7 @@ export function Pricing() {
     },
     {
       name: 'Business',
-      monthlyPrice: 999,
+      monthlyPrice: 749,
       description: 'Scale your operations.',
       features: ['Up to 2000 Products', 'Team Accounts', 'API Access'],
       buttonText: 'Get Business',
@@ -85,7 +85,7 @@ export function Pricing() {
     },
     {
       name: 'Agency',
-      monthlyPrice: 1999,
+      monthlyPrice: 999,
       description: 'Managing multiple brands.',
       features: ['5 Storefronts', 'White-labeling', 'Dedicated AM'],
       buttonText: 'Get Agency',
@@ -94,7 +94,7 @@ export function Pricing() {
     },
     {
       name: 'VIP',
-      monthlyPrice: 2999,
+      monthlyPrice: 1499,
       description: 'Maximum performance.',
       features: ['15 Storefronts', 'Custom AI Training', 'SLA Guarantee'],
       buttonText: 'Get VIP',
@@ -103,7 +103,7 @@ export function Pricing() {
     },
     {
       name: 'Enterprise',
-      monthlyPrice: 4999,
+      monthlyPrice: 1999,
       description: 'Unlimited scale.',
       features: ['Unlimited Products', 'Dedicated Support', 'Custom Integrations', 'White-label'],
       buttonText: 'Start Free Trial',

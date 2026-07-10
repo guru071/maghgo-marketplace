@@ -56,7 +56,7 @@ router.post('/razorpay', async (req: Request, res: Response) => {
       const { getPlanFromAmount } = require('../services/payment.service');
       const plan = getPlanFromAmount(amountPaid / 100);
 
-      if (status !== 'paid' || (!plan || (plan === 'basic' && amountPaid / 100 !== 149 && amountPaid / 100 !== 1520))) {
+      if (status !== 'paid' || (!plan || (plan === 'basic' && amountPaid / 100 !== 99 && amountPaid / 100 !== 1010))) {
         // basic is the fallback, so if it's basic but the amount isn't exactly the basic amount, it's invalid
         console.warn(`⚠️ Payment verification failed for ${merchantPhone}: Status=${status}, AmountPaid=${amountPaid} is invalid`);
         return; // Halt and do NOT reactivate

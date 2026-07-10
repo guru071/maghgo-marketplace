@@ -9,26 +9,26 @@ export const razorpay = new Razorpay({
 
 export function getPlanFromAmount(amount: number): string {
   // Monthly
-  if (amount === 149) return 'basic';
-  if (amount === 299) return 'starter';
-  if (amount === 499) return 'pro';
-  if (amount === 699) return 'advanced';
-  if (amount === 799) return 'premium';
-  if (amount === 999) return 'business';
-  if (amount === 1999) return 'agency';
-  if (amount === 2999) return 'vip';
-  if (amount === 4999) return 'enterprise';
+  if (amount === 99) return 'basic';
+  if (amount === 149) return 'starter';
+  if (amount === 249) return 'pro';
+  if (amount === 349) return 'advanced';
+  if (amount === 499) return 'premium';
+  if (amount === 749) return 'business';
+  if (amount === 999) return 'agency';
+  if (amount === 1499) return 'vip';
+  if (amount === 1999) return 'enterprise';
 
   // Yearly (15% discount)
-  if (amount === 1520) return 'basic'; // 149 * 0.85 * 12
-  if (amount === 3050) return 'starter'; // 299 * 0.85 * 12
-  if (amount === 5090) return 'pro'; // 499 * 0.85 * 12
-  if (amount === 7130) return 'advanced'; // 699 * 0.85 * 12
-  if (amount === 8150) return 'premium'; // 799 * 0.85 * 12
-  if (amount === 10190) return 'business'; // 999 * 0.85 * 12
-  if (amount === 20390) return 'agency'; // 1999 * 0.85 * 12
-  if (amount === 30590) return 'vip'; // 2999 * 0.85 * 12
-  if (amount === 50990) return 'enterprise'; // 4999 * 0.85 * 12
+  if (amount === 1010) return 'basic'; // 99 * 0.85 * 12
+  if (amount === 1520) return 'starter'; // 149 * 0.85 * 12
+  if (amount === 2540) return 'pro'; // 249 * 0.85 * 12
+  if (amount === 3560) return 'advanced'; // 349 * 0.85 * 12
+  if (amount === 5090) return 'premium'; // 499 * 0.85 * 12
+  if (amount === 7640) return 'business'; // 749 * 0.85 * 12
+  if (amount === 10190) return 'agency'; // 999 * 0.85 * 12
+  if (amount === 15290) return 'vip'; // 1499 * 0.85 * 12
+  if (amount === 20390) return 'enterprise'; // 1999 * 0.85 * 12
 
   return 'basic'; // fallback
 }
