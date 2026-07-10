@@ -173,6 +173,14 @@ export function InteractiveDemo() {
               <div className="demo-premium-border"></div>
             )}
           </div>
+          
+          <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+            <a href={`/demo/store?plan=${plan.toLowerCase()}`}>
+              <Button className="btn--primary btn--large" style={{ width: '100%' }}>
+                Enter My Demo Store 🚀
+              </Button>
+            </a>
+          </div>
         </div>
       </div>
     </section>
