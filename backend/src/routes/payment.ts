@@ -53,8 +53,9 @@ router.post('/razorpay', async (req: Request, res: Response) => {
       const amountPaid = paymentLink.amount_paid; // in paise
       const status = paymentLink.status; // e.g., 'paid'
 
-      const { getPlanFromAmount } = require('../services/payment.service');
+      const { getPlanFromAmount, getAmountFromPlan } = require('../services/payment.service');
       const plan = getPlanFromAmount(amountPaid / 100);
+      const isYearly = (amountPaid / 100) === getAmountFromPlan(plan, true);
 
       if (status !== 'paid' || (!plan || (plan === 'basic' && amountPaid / 100 !== 99 && amountPaid / 100 !== 1010))) {
         // basic is the fallback, so if it's basic but the amount isn't exactly the basic amount, it's invalid
@@ -63,10 +64,10 @@ router.post('/razorpay', async (req: Request, res: Response) => {
       }
 
       if (merchantPhone) {
-        console.log(`✅ Payment verified successfully for merchant: ${merchantPhone} (Plan: ${plan})`);
+        console.log(`✅ Payment verified successfully for merchant: ${merchantPhone} (Plan: ${plan}, Yearly: ${isYearly})`);
         
         // 3. Reactivate subscription ONLY AFTER verification
-        await reactivateSubscription(merchantPhone, plan);
+        await reactivateSubscription(merchantPhone, plan, isYearly);
 
         // 4. Send success message via WhatsApp
         // Since we don't have a messageId, we send a direct message (not a reply)
@@ -79,7 +80,7 @@ router.post('/razorpay', async (req: Request, res: Response) => {
             to: merchantPhone,
             type: 'text',
             text: {
-              body: `🎉 *Payment Successful!*\n\nThank you for subscribing to the Maghgo *${plan.toUpperCase()}* plan. Your store has been reactivated for the next 30 days. You can now continue adding products!`,
+              body: `🎉 *Payment Successful!*\n\nThank you for subscribing to the Maghgo *${plan.toUpperCase()}* plan. Your store has been reactivated for the next ${isYearly ? '365' : '30'} days. You can now continue adding products!`,
             },
           },
           {

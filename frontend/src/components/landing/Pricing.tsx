@@ -18,22 +18,14 @@ export function Pricing() {
   const period = isYearly ? '/yr' : '/mo';
 
   const plans = [
-    {
-      name: 'Free Trial',
-      monthlyPrice: 0,
-      period: '/4 days',
-      description: 'Testing the waters.',
-      features: ['1 Product', 'Basic AI', 'Maghgo domain'],
-      buttonText: 'Start Free Trial',
-      buttonVariant: 'secondary' as const,
-      colorTheme: '#E5E7EB' // Gray
-    },
+    // Free Trial Removed
+
     {
       name: 'Basic',
       monthlyPrice: 99,
       description: 'For small side-hustles.',
       features: ['Up to 50 Products', 'Standard Processing', 'Basic Store'],
-      buttonText: 'Start Free Trial', 
+      buttonText: 'Get Basic', 
       buttonVariant: 'secondary' as const,
       colorTheme: '#D1FAE5' // Emerald
     },
@@ -127,7 +119,7 @@ export function Pricing() {
     <section id="pricing" className="pricing">
       <div className="container">
         <h2 className="pricing__title">Plans for Every Seller</h2>
-        <p className="pricing__subtitle">Start for free, upgrade when you need to grow.</p>
+        <p className="pricing__subtitle">Start instantly with any plan to grow your business.</p>
         
         {/* Monthly / Yearly Toggle */}
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginBottom: '3rem' }}>
@@ -183,7 +175,7 @@ export function Pricing() {
               </ul>
               
               <a 
-                href={`https://wa.me/919876543210?text=${encodeURIComponent(`Hi Maghgo, I want to ${plan.buttonText.toLowerCase().includes('trial') ? 'start the free trial for' : 'buy'} the ${plan.name} Plan (${getPrice(plan.monthlyPrice)}${plan.period || period}).`)}`} 
+                href={`https://wa.me/919876543210?text=${encodeURIComponent(`REGISTER [Type your store name here] - ${plan.name.toUpperCase()}`)}`} 
                 target="_blank" 
                 rel="noopener noreferrer" 
                 style={{ width: '100%', marginTop: 'auto' }}

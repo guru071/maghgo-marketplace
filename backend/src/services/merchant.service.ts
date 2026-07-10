@@ -45,9 +45,9 @@ export async function createMerchant(
         phone_number: phoneNumber,
         store_name: storeName,
         store_slug: storeSlug,
-        subscription_plan: 'trial',
-        is_active: true,
-        trial_ends_at: trialEndsAt.toISOString(),
+        subscription_plan: 'inactive',
+        is_active: false,
+        trial_ends_at: new Date(0).toISOString(),
       },
     ])
     .select('*')
@@ -68,7 +68,6 @@ export async function createMerchant(
  */
 export function getProductLimit(plan: string): number {
   switch (plan) {
-    case 'trial': return 1;
     case 'basic': return 50;
     case 'starter': return 150;
     case 'pro': return 300;
@@ -95,7 +94,11 @@ export function isSubscriptionActive(merchant: Merchant): boolean {
 /**
  * Reactivates the merchant's subscription for 30 days and sets them active.
  */
-export async function reactivateSubscription(phoneNumber: string, plan: 'basic' | 'starter' | 'pro' | 'advanced' | 'premium' | 'business' | 'agency' | 'vip' | 'enterprise' | 'custom'): Promise<void> {
+export async function reactivateSubscription(
+  phoneNumber: string, 
+  plan: 'basic' | 'starter' | 'pro' | 'advanced' | 'premium' | 'business' | 'agency' | 'vip' | 'enterprise' | 'custom',
+  isYearly: boolean = false
+): Promise<void> {
   // Fetch current merchant to check their existing expiry
   const { data: merchant, error: fetchError } = await supabase
     .from('merchants')
@@ -109,12 +112,13 @@ export async function reactivateSubscription(phoneNumber: string, plan: 'basic' 
 
   const now = new Date();
   const currentExpiry = new Date(merchant.trial_ends_at);
+  const daysToAdd = isYearly ? 365 : 30;
   
-  // If they are currently active and expiry is in the future, add 30 days to their existing expiry.
-  // Otherwise, add 30 days from now.
+  // If they are currently active and expiry is in the future, add days to their existing expiry.
+  // Otherwise, add days from now.
   const newExpiry = (merchant.is_active && currentExpiry > now) 
-    ? new Date(currentExpiry.getTime() + 30 * 24 * 60 * 60 * 1000)
-    : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    ? new Date(currentExpiry.getTime() + daysToAdd * 24 * 60 * 60 * 1000)
+    : new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
 
   const { error } = await supabase
     .from('merchants')

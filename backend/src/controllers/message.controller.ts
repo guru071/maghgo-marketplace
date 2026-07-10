@@ -87,15 +87,11 @@ async function handleImageMessage(
 
   // 1.5. Check if subscription is active
   if (!isSubscriptionActive(merchant)) {
-    if (merchant.subscription_plan === 'trial') {
-      const monthlyLink = await createPaymentLink(from, 99);
-      const yearlyLink = await createPaymentLink(from, 1010);
+    if (merchant.subscription_plan === 'inactive' || merchant.subscription_plan === 'trial') {
       await sendReply(
         from,
         messageId,
-        `⚠️ *Trial Expired!*\n\nYour 4-day free trial has ended. To keep your store active and continue adding products, please choose a billing cycle for the Basic Plan:\n\n` +
-        `📅 *Pay Monthly (₹99/mo):*\n🔗 ${monthlyLink}\n\n` +
-        `🎉 *Pay Yearly (Save 15% - ₹1010/yr):*\n🔗 ${yearlyLink}`
+        `⚠️ *Store Inactive!*\n\nYour store is reserved but not yet active. Please reply with "UPGRADE" to select your plan and complete your payment.`
       );
     } else {
       // Determine the price based on their last plan to renew
@@ -119,15 +115,11 @@ async function handleImageMessage(
   const limit = getProductLimit(merchant.subscription_plan);
 
   if (currentProductCount >= limit) {
-    if (merchant.subscription_plan === 'trial') {
-      const monthlyLink = await createPaymentLink(from, 99);
-      const yearlyLink = await createPaymentLink(from, 1010);
+    if (merchant.subscription_plan === 'inactive' || merchant.subscription_plan === 'trial') {
       await sendReply(
         from,
         messageId,
-        `⚠️ *Limit Reached!*\n\nThe Free Trial only allows 1 product. To add up to 50 products, please upgrade to the *Basic Plan*. Choose a billing cycle:\n\n` +
-        `📅 *Pay Monthly (₹99/mo):*\n🔗 ${monthlyLink}\n\n` +
-        `🎉 *Pay Yearly (Save 15% - ₹1010/yr):*\n🔗 ${yearlyLink}`
+        `⚠️ *Store Inactive!*\n\nYour store is reserved but not yet active. Please reply with "UPGRADE" to select your plan and complete your payment.`
       );
     } else {
       await sendReply(
@@ -214,9 +206,23 @@ async function handleTextCommand(
 
   // ── REGISTER ───────────────────────────────────────────────────────────
   if (command.startsWith('REGISTER ')) {
-    const storeName = text.trim().substring(9).trim();
-    if (!storeName) {
-      await sendReply(from, messageId, '⚠️ Please specify your store name.\n\nExample: REGISTER Ramesh Mobiles');
+    const input = text.substring(9).trim();
+    let storeName = input;
+    let requestedPlan = 'BASIC';
+    
+    if (input.includes('-')) {
+      const parts = input.split('-');
+      storeName = parts[0].trim();
+      requestedPlan = parts[1].trim().toUpperCase();
+      
+      // Basic sanitization
+      if (!['BASIC', 'STARTER', 'PRO', 'ADVANCED', 'PREMIUM', 'BUSINESS', 'AGENCY', 'VIP', 'ENTERPRISE', 'CUSTOM'].includes(requestedPlan)) {
+        requestedPlan = 'BASIC';
+      }
+    }
+
+    if (!storeName || storeName.toUpperCase() === '[TYPE YOUR STORE NAME HERE]') {
+      await sendReply(from, messageId, '⚠️ Please replace the brackets with your actual store name.\n\nExample: REGISTER Ramesh Mobiles - BASIC');
       return;
     }
 
@@ -231,13 +237,23 @@ async function handleTextCommand(
       const storeSlug = storeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
       const newMerchant = await createMerchant(from, storeName, storeSlug);
       
+      if (requestedPlan === 'CUSTOM') {
+        await sendReply(from, messageId, `🎉 *Welcome to Maghgo!*\n\nYour store *${newMerchant.store_name}* has been reserved.\n\nOur team will contact you shortly to set up your Custom plan.`);
+        return;
+      }
+
+      const monthlyAmount = getAmountFromPlan(requestedPlan, false);
+      const yearlyAmount = getAmountFromPlan(requestedPlan, true);
+      const monthlyLink = await createPaymentLink(from, monthlyAmount);
+      const yearlyLink = await createPaymentLink(from, yearlyAmount);
+
       await sendReply(
         from,
         messageId,
-        `🎉 *Welcome to Maghgo!*\n\nYour store *${newMerchant.store_name}* has been successfully created.\n\n` +
-        `Your 4-day free trial starts now.\n\n` +
-        `🔗 *Your Store Link:*\n${env.FRONTEND_URL}/${newMerchant.store_slug}\n\n` +
-        `📸 *Next Step:* Send a product photo with a caption (e.g. "Red Shirt ₹499") to add your first product!`
+        `🎉 *Welcome to Maghgo!*\n\nYour store *${newMerchant.store_name}* has been reserved.\n\n` +
+        `🚀 To activate your store and start adding products, please complete your payment for the *${requestedPlan} Plan*:\n\n` +
+        `📅 *Pay Monthly (₹${monthlyAmount}/mo):*\n🔗 ${monthlyLink}\n\n` +
+        `🎉 *Pay Yearly (Save 15% - ₹${yearlyAmount}/yr):*\n🔗 ${yearlyLink}`
       );
     } catch (err: any) {
       await sendReply(from, messageId, `❌ ${err.message || 'Failed to create store.'}`);
@@ -279,12 +295,12 @@ async function handleTextCommand(
       amount = getAmountFromPlan(plan);
     }
     
-    if (amount === 0 || plan.toLowerCase() === 'custom' || plan.toLowerCase() === 'trial') {
-      // Free trial or custom - no payment link needed yet, or just send a contact message
+    if (amount === 0 || plan.toLowerCase() === 'custom') {
+      // Custom plan - no payment link needed yet, or just send a contact message
       await sendReply(
         from,
         messageId,
-        `🎉 Great! Your free trial or custom request is noted. To activate it, simply type *REGISTER Your Store Name*. If you already registered, you're good to go!`
+        `🎉 Great! Your custom request is noted. If you haven't registered yet, simply type *REGISTER Your Store Name*. If you already registered, you're good to go!`
       );
       return;
     }
@@ -306,15 +322,11 @@ async function handleTextCommand(
 
   // If subscription is inactive, allow only HELP or STATUS, otherwise block
   if (!isSubscriptionActive(merchant) && command !== 'HELP' && command !== 'STATUS') {
-    if (merchant.subscription_plan === 'trial') {
-      const monthlyLink = await createPaymentLink(from, 99);
-      const yearlyLink = await createPaymentLink(from, 1010);
+    if (merchant.subscription_plan === 'inactive' || merchant.subscription_plan === 'trial') {
       await sendReply(
         from,
         messageId,
-        `⚠️ *Trial Expired!*\n\nYour 4-day free trial has ended. To continue using Maghgo commands, please choose a billing cycle for the Basic Plan:\n\n` +
-        `📅 *Pay Monthly (₹99/mo):*\n🔗 ${monthlyLink}\n\n` +
-        `🎉 *Pay Yearly (Save 15% - ₹1010/yr):*\n🔗 ${yearlyLink}`
+        `⚠️ *Store Inactive!*\n\nYour store is reserved but not yet active. Please reply with "UPGRADE" to select your plan and complete your payment.`
       );
     } else {
       const monthlyAmount = getAmountFromPlan(merchant.subscription_plan, false);
