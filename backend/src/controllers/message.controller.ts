@@ -7,7 +7,7 @@ import { removeBackground } from '../services/media.service';
 import { uploadImage } from '../services/storage.service';
 import { createProduct, getProducts, deleteProduct, getProductCount } from '../services/product.service';
 import { triggerRevalidation } from '../services/revalidate.service';
-import { createPaymentLink } from '../services/payment.service';
+import { createPaymentLink, getAmountFromPlan } from '../services/payment.service';
 import { env } from '../config/env';
 
 // ─── Message Controller ──────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ async function handleImageMessage(
       );
     } else {
       // Determine the price based on their last plan to renew
-      const renewalAmount = merchant.subscription_plan === 'enterprise' ? 4999 : merchant.subscription_plan === 'premium' ? 799 : 149;
+      const renewalAmount = getAmountFromPlan(merchant.subscription_plan);
       const paymentLink = await createPaymentLink(from, renewalAmount);
       await sendReply(
         from,
@@ -113,11 +113,11 @@ async function handleImageMessage(
 
   if (currentProductCount >= limit) {
     if (merchant.subscription_plan === 'trial') {
-      const paymentLink = await createPaymentLink(from, 149);
+      const paymentLink = await createPaymentLink(from, 99);
       await sendReply(
         from,
         messageId,
-        `⚠️ *Limit Reached!*\n\nThe Free Trial only allows 1 product. To add up to 50 products, please upgrade to the *Basic Plan* (₹149/mo) here:\n\n🔗 ${paymentLink}`
+        `⚠️ *Limit Reached!*\n\nThe Free Trial only allows 1 product. To add up to 50 products, please upgrade to the *Basic Plan* (₹99/mo) here:\n\n🔗 ${paymentLink}`
       );
     } else {
       await sendReply(
@@ -257,8 +257,7 @@ async function handleTextCommand(
     } else {
       // Fallback for old UPGRADE commands
       const plan = command.split(' ')[1] || 'BASIC';
-      if (plan === 'PREMIUM') amount = 799;
-      if (plan === 'ENTERPRISE') amount = 4999;
+      amount = getAmountFromPlan(plan);
     }
     
     if (amount === 0) {
@@ -283,14 +282,14 @@ async function handleTextCommand(
   // If subscription is inactive, allow only HELP or STATUS, otherwise block
   if (!isSubscriptionActive(merchant) && command !== 'HELP' && command !== 'STATUS') {
     if (merchant.subscription_plan === 'trial') {
-      const paymentLink = await createPaymentLink(from, 149);
+      const paymentLink = await createPaymentLink(from, 99);
       await sendReply(
         from,
         messageId,
-        `⚠️ *Trial Expired!*\n\nYour 4-day free trial has ended. To continue using Maghgo commands, please upgrade to the Basic Plan (₹149/mo) here:\n\n🔗 ${paymentLink}`
+        `⚠️ *Trial Expired!*\n\nYour 4-day free trial has ended. To continue using Maghgo commands, please upgrade to the Basic Plan (₹99/mo) here:\n\n🔗 ${paymentLink}`
       );
     } else {
-      const renewalAmount = merchant.subscription_plan === 'enterprise' ? 4999 : merchant.subscription_plan === 'premium' ? 799 : 149;
+      const renewalAmount = getAmountFromPlan(merchant.subscription_plan);
       const paymentLink = await createPaymentLink(from, renewalAmount);
       await sendReply(
         from,

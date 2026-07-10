@@ -33,6 +33,36 @@ export function getPlanFromAmount(amount: number): string {
   return 'basic'; // fallback
 }
 
+export function getAmountFromPlan(plan: string, isYearly = false): number {
+  if (isYearly) {
+    switch (plan.toLowerCase()) {
+      case 'basic': return 1010;
+      case 'starter': return 1520;
+      case 'pro': return 2540;
+      case 'advanced': return 3560;
+      case 'premium': return 5090;
+      case 'business': return 7640;
+      case 'agency': return 10190;
+      case 'vip': return 15290;
+      case 'enterprise': return 20390;
+      default: return 1010;
+    }
+  }
+
+  switch (plan.toLowerCase()) {
+    case 'basic': return 99;
+    case 'starter': return 149;
+    case 'pro': return 249;
+    case 'advanced': return 349;
+    case 'premium': return 499;
+    case 'business': return 749;
+    case 'agency': return 999;
+    case 'vip': return 1499;
+    case 'enterprise': return 1999;
+    default: return 99;
+  }
+}
+
 /**
  * Creates a unique Razorpay Payment Link for the merchant's subscription.
  * Pass the merchant's phone number so we can identify who paid in the webhook.

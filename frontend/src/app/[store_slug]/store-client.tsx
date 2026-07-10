@@ -17,6 +17,8 @@ interface StoreClientProps {
 import { Render } from "@puckeditor/core";
 import { config } from "@/puck.config";
 
+import { StoreContext } from '@/components/store/StoreContext';
+
 export function StoreClient({ merchant, products }: StoreClientProps) {
   const { addItem, items } = useCartStore();
 
@@ -34,7 +36,9 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         {merchant.theme_config ? (
-          <Render config={config} data={merchant.theme_config} />
+          <StoreContext.Provider value={{ products: [], onAddToCart: handleAddToCart }}>
+            <Render config={config} data={merchant.theme_config} />
+          </StoreContext.Provider>
         ) : (
           <StoreHeader merchant={merchant} />
         )}
@@ -46,7 +50,9 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       {merchant.theme_config ? (
-        <Render config={config} data={merchant.theme_config} />
+        <StoreContext.Provider value={{ products, onAddToCart: handleAddToCart }}>
+          <Render config={config} data={merchant.theme_config} />
+        </StoreContext.Provider>
       ) : (
         <>
           <StoreHeader merchant={merchant} />

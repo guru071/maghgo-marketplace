@@ -1,5 +1,6 @@
 import React from "react";
 import type { Config } from "@puckeditor/core";
+import { StoreContext } from "@/components/store/StoreContext";
 
 // Define the shape of our blocks
 export type Props = {
@@ -54,27 +55,52 @@ export const config: Config<Props> = {
         columns: 3,
         showPrices: true,
       },
-      render: ({ columns, showPrices }) => (
-        <div style={{ padding: "2rem" }}>
-          <div style={{ 
-            display: "grid", 
-            gridTemplateColumns: `repeat(${columns}, 1fr)`, 
-            gap: "1.5rem" 
-          }}>
-            {/* Placeholder Products for Builder */}
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} style={{ border: "1px solid #eee", borderRadius: "8px", padding: "1rem" }}>
-                <div style={{ width: "100%", aspectRatio: "1", backgroundColor: "#f3f4f6", borderRadius: "4px", marginBottom: "1rem" }} />
-                <h3 style={{ margin: "0 0 0.5rem 0", fontSize: "1rem" }}>Product Title {i}</h3>
-                {showPrices && <span style={{ fontWeight: "bold", color: "#E07A5F" }}>₹999</span>}
-              </div>
-            ))}
+      render: ({ columns, showPrices }) => {
+        // eslint-disable-next-line react-hooks/rules-of-hooks
+        const storeCtx = React.useContext(StoreContext);
+        const hasLiveProducts = storeCtx && storeCtx.products.length > 0;
+
+        return (
+          <div style={{ padding: "2rem" }}>
+            <div style={{ 
+              display: "grid", 
+              gridTemplateColumns: `repeat(${columns}, 1fr)`, 
+              gap: "1.5rem" 
+            }}>
+              {hasLiveProducts ? (
+                // Render Live Products
+                storeCtx.products.map((p: any) => (
+                  <div key={p.id} style={{ border: "1px solid #eee", borderRadius: "8px", padding: "1rem", display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ width: "100%", aspectRatio: "1", backgroundImage: `url(${p.processed_image_url || p.original_image_url})`, backgroundSize: 'cover', backgroundPosition: 'center', borderRadius: "4px", marginBottom: "1rem" }} />
+                    <h3 style={{ margin: "0 0 0.5rem 0", fontSize: "1rem" }}>{p.title}</h3>
+                    {showPrices && <span style={{ fontWeight: "bold", color: "#E07A5F", marginBottom: "1rem" }}>{p.currency}{p.price}</span>}
+                    <button 
+                      onClick={() => storeCtx.onAddToCart(p)}
+                      style={{ marginTop: 'auto', backgroundColor: '#1A1A2E', color: '#fff', border: 'none', padding: '0.5rem', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      Add to Cart
+                    </button>
+                  </div>
+                ))
+              ) : (
+                // Render Placeholders for Builder
+                [1, 2, 3, 4, 5, 6].map((i) => (
+                  <div key={i} style={{ border: "1px solid #eee", borderRadius: "8px", padding: "1rem" }}>
+                    <div style={{ width: "100%", aspectRatio: "1", backgroundColor: "#f3f4f6", borderRadius: "4px", marginBottom: "1rem" }} />
+                    <h3 style={{ margin: "0 0 0.5rem 0", fontSize: "1rem" }}>Product Title {i}</h3>
+                    {showPrices && <span style={{ fontWeight: "bold", color: "#E07A5F" }}>₹999</span>}
+                  </div>
+                ))
+              )}
+            </div>
+            {!hasLiveProducts && (
+              <p style={{ textAlign: 'center', color: '#666', margin: '2rem 0 0', fontStyle: 'italic' }}>
+                Note: Live products will automatically load here from your WhatsApp.
+              </p>
+            )}
           </div>
-          <p style={{ textAlign: 'center', color: '#666', margin: '2rem 0 0', fontStyle: 'italic' }}>
-            Note: Live products will automatically load here from your WhatsApp.
-          </p>
-        </div>
-      ),
+        );
+      },
     },
     Banner: {
       fields: {
