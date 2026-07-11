@@ -10,7 +10,7 @@ export function Header() {
           <div className="header__logo-wrapper">
             <img src="/logo.jpg" alt="Maghgo Logo" className="header__logo" />
           </div>
-          <span className="header__name">Maghgo</span>
+          <span className="header__name"><span color='blue'>MAGH</span><span color='orange'>GO</span></span>
         </Link>
         <nav className="header__nav">
           <Link href="/#how-it-works" className="header__link">How it Works</Link>
