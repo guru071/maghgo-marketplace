@@ -1123,8 +1123,6 @@ p {
   font-size: var(--fs-lg);
   font-weight: 800;
   letter-spacing: -0.03em;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
 }
 
 .header__nav {
