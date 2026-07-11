@@ -18,9 +18,7 @@ export function Header() {
           <Link href="/demo" className="header__link" style={{ color: 'var(--accent)' }}>Live Demo</Link>
         </nav>
         <div className="header__actions">
-          <a href="https://wa.me/919876543210?text=REGISTER%20" target="_blank" rel="noopener noreferrer">
-            <Button className="btn--primary">Get Started</Button>
-          </a>
+          {/* Action buttons removed as requested */}
         </div>
       </div>
     </header>
