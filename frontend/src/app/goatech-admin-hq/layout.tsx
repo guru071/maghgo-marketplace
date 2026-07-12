@@ -18,8 +18,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <LayoutDashboard className="w-5 h-5 text-gray-500" />
             <span className="font-medium">Dashboard</span>
           </Link>
-          <Link href="/goatech-admin-hq/themes" className="flex items-center gap-3 px-3 py-2 text-blue-700 bg-blue-50 rounded-lg transition-colors">
-            <Palette className="w-5 h-5 text-blue-600" />
+          <Link href="/goatech-admin-hq/themes" className="flex items-center gap-3 px-3 py-2 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
+            <Palette className="w-5 h-5 text-gray-500" />
             <span className="font-medium">Themes</span>
           </Link>
           <Link href="/goatech-admin-hq/merchants" className="flex items-center gap-3 px-3 py-2 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
