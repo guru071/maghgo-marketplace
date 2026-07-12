@@ -48,20 +48,11 @@ export default function DashboardBilling() {
           <div className="flex justify-between items-center mb-4">
             <div>
               <div className="text-sm font-semibold text-accent uppercase tracking-wider mb-1">Active Plan</div>
-              <div className="text-3xl font-black text-gray-900">{planName}</div>
+              <div className="text-3xl font-black text-gray-900">{planName === 'TRIAL' ? 'STARTER' : planName}</div>
             </div>
-            {isTrial && (
-              <div className="bg-orange-100 text-orange-800 text-xs font-bold px-3 py-1 rounded-full">
-                TRIAL ACTIVE
-              </div>
-            )}
           </div>
           <div className="text-sm text-gray-600">
-            {isTrial ? (
-              <p>Your starter plan will expire on <strong>{trialEnds}</strong>.</p>
-            ) : (
-              <p>Your subscription is currently active until <strong>{trialEnds}</strong>.</p>
-            )}
+            <p>Your subscription is currently active.</p>
           </div>
         </div>
 
