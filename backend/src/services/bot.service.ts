@@ -1,4 +1,4 @@
-import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, Channel } from './merchant.service';
+import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, Channel } from './merchant.service';
 import { parseCaption } from './parser.service';
 import { removeBackground } from './media.service';
 import { uploadImage } from './storage.service';
@@ -146,9 +146,35 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     return;
   }
 
+  if (command.startsWith('LINK')) {
+    const code = command.substring(4).trim().toUpperCase();
+    
+    // If they provided a code, they are trying to link THIS channel to an existing store.
+    if (code) {
+      try {
+        const linkedMerchant = await linkChannelToMerchant(code, channel, senderId);
+        await sendReply(`✅ *Successfully Linked!*\n\nThis account is now securely linked to your store: *${linkedMerchant.store_name}*.\n\nYou can now manage your store, add products, and check your status directly from here. Try typing *STATUS*.`);
+      } catch (err: any) {
+        await sendReply(`❌ ${err.message || 'Failed to link account.'}\n\nPlease make sure you generated the code from your original channel and that it hasn't expired.`);
+      }
+      return;
+    }
+  }
+
   const merchant = await getMerchantByChannel(channel, senderId);
   if (!merchant) {
-    await sendReply('❌ You\'re not registered yet on Maghgo.\n\nTo create your store instantly, reply with:\n\n*REGISTER Your Store Name*\n\nExample: REGISTER Ramesh Mobiles');
+    await sendReply('❌ You\'re not registered yet on Maghgo.\n\nTo create your store instantly, reply with:\n\n*REGISTER Your Store Name*\n\nIf you already have a store and want to link this account to it, reply with your link code (e.g. *LINK A9F3K2*).');
+    return;
+  }
+
+  // If they typed LINK without a code, they are trying to generate a code to use elsewhere.
+  if (command === 'LINK') {
+    try {
+      const code = await generateLinkCode(channel, senderId);
+      await sendReply(`🔗 *Multi-Channel Link Code*\n\nYour secure link code is: *${code}*\n\nTo manage this store from another app (like Instagram or Messenger), message our bot on that app with this exact text:\n\nLINK ${code}\n\n_Note: This code will expire once used._`);
+    } catch (err: any) {
+      await sendReply('❌ Failed to generate link code. Please try again later.');
+    }
     return;
   }
 

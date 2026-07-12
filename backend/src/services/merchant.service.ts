@@ -123,3 +123,66 @@ export async function reactivateSubscription(
     throw new Error(`Failed to reactivate subscription: ${error.message}`);
   }
 }
+
+export async function generateLinkCode(channel: Channel, senderId: string): Promise<string> {
+  let column = 'phone_number';
+  if (channel === 'instagram') column = 'instagram_id';
+  if (channel === 'messenger') column = 'messenger_id';
+
+  // Generate a random 6 character alphanumeric code
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+
+  const { error } = await supabase
+    .from('merchants')
+    .update({ link_code: code })
+    .eq(column, senderId);
+
+  if (error) {
+    throw new Error(`Failed to generate link code: ${error.message}`);
+  }
+
+  return code;
+}
+
+export async function linkChannelToMerchant(
+  code: string,
+  newChannel: Channel,
+  newSenderId: string
+): Promise<Merchant> {
+  // 1. Find merchant by link code
+  const { data: merchant, error: lookupError } = await supabase
+    .from('merchants')
+    .select('*')
+    .eq('link_code', code.toUpperCase())
+    .single();
+
+  if (lookupError || !merchant) {
+    throw new Error('Invalid or expired link code.');
+  }
+
+  // 2. Update the merchant with the new channel ID
+  let updateData: any = {};
+  if (newChannel === 'instagram') updateData.instagram_id = newSenderId;
+  if (newChannel === 'messenger') updateData.messenger_id = newSenderId;
+  if (newChannel === 'whatsapp' || newChannel === 'sms') updateData.phone_number = newSenderId;
+
+  // Clear the link code after successful linking for security
+  updateData.link_code = null;
+
+  const { data: updatedMerchant, error: updateError } = await supabase
+    .from('merchants')
+    .update(updateData)
+    .eq('id', merchant.id)
+    .select('*')
+    .single();
+
+  if (updateError) {
+    throw new Error(`Failed to link channel: ${updateError.message}`);
+  }
+
+  return updatedMerchant as Merchant;
+}
