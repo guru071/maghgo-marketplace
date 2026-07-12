@@ -22,13 +22,13 @@ export function HowItWorks() {
   return (
     <section id="how-it-works" className="how-it-works">
       <div className="how-it-works__container">
-        <h2 className="how-it-works__heading">How It Works</h2>
-        <div className="how-it-works__steps">
+        <h2 className="how-it-works__title">How It Works</h2>
+        <div className="how-it-works__grid">
           {steps.map((step, index) => (
             <div key={index} className="how-it-works__step">
-              <div className="step__number">{step.number}</div>
-              <h3 className="step__title">{step.title}</h3>
-              <p className="step__description">{step.description}</p>
+              <div className="how-it-works__step-number">{step.number}</div>
+              <h3 className="how-it-works__step-title">{step.title}</h3>
+              <p className="how-it-works__step-text">{step.description}</p>
             </div>
           ))}
         </div>

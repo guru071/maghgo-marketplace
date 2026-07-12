@@ -44,16 +44,17 @@ export default function CheckoutButton({ phone, storeName, items, instagramHandl
       </a>
 
       {igLink && (
-        <a
-          href={igLink}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(message);
+            window.open(igLink, '_blank');
+          }}
           className="btn btn--primary btn--full bg-pink-600 hover:bg-pink-700"
           aria-label="Order via Instagram DM"
         >
           <Camera className="w-5 h-5 mr-2" />
-          Order via Instagram DM
-        </a>
+          Copy Order & Open Instagram
+        </button>
       )}
       
       <div className="grid grid-cols-2 gap-3">

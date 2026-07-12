@@ -1,11 +1,12 @@
-import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, Channel } from './merchant.service';
+import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, toggleStoreStatus, Channel } from './merchant.service';
 import { parseCaption } from './parser.service';
 import { removeBackground } from './media.service';
 import { uploadImage } from './storage.service';
-import { createProduct, getProducts, deleteProduct, getProductCount } from './product.service';
+import { createProduct, getProducts, deleteProduct, getProductCount, updateProductPrice, deleteAllProducts } from './product.service';
 import { triggerRevalidation } from './revalidate.service';
-import { createPaymentLink, getAmountFromPlan } from './payment.service';
+import { createPaymentLink, getAmountFromPlan, getPlanFromAmount } from './payment.service';
 import { env } from '../config/env';
+import jwt from 'jsonwebtoken';
 
 export interface BotMessage {
   channel: Channel;
@@ -146,7 +147,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     return;
   }
 
-  if (command.startsWith('LINK')) {
+  if (command.startsWith('LINK ') || command === 'LINK') {
     const code = command.substring(4).trim().toUpperCase();
     
     // If they provided a code, they are trying to link THIS channel to an existing store.
@@ -185,15 +186,13 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     
     if (priceMatch && priceMatch[1]) {
       amount = parseInt(priceMatch[1], 10);
-      const testPlans = ['basic', 'starter', 'pro', 'advanced', 'premium', 'business', 'agency', 'vip', 'enterprise'];
-      for (const p of testPlans) {
-        if ((await getAmountFromPlan(p as any, false)) === amount) {
-          plan = p;
-          break;
-        }
+      const matchedPlan = await getPlanFromAmount(amount);
+      if (matchedPlan) {
+        plan = matchedPlan;
       }
     } else {
       plan = command.split(' ')[1] || 'BASIC';
+      plan = plan.toLowerCase(); // Ensure plan is lowercased for getAmountFromPlan
       amount = await getAmountFromPlan(plan as any);
     }
     
@@ -224,6 +223,14 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     return;
   }
 
+  if (command === 'LOGIN') {
+    // Generate JWT token valid for 24 hours
+    const token = jwt.sign({ merchantId: merchant.id }, env.JWT_SECRET, { expiresIn: '24h' });
+    const dashboardUrl = `${env.FRONTEND_URL}/dashboard?token=${token}`;
+    await sendReply(`🔐 *Merchant Dashboard Login*\n\nClick the link below to securely access your store dashboard on the web:\n\n🔗 ${dashboardUrl}\n\n_Note: This link will expire in 24 hours. Do not share it with anyone._`);
+    return;
+  }
+
   if (command === 'LIST') {
     const products = await getProducts(merchant.id);
     if (products.length === 0) {
@@ -251,6 +258,62 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     return;
   }
 
+  if (command.startsWith('EDIT ')) {
+    const editMatch = text.trim().substring(5).trim().match(/(.+)-\s*[₹rRsS$€£]+\s*([\d,]+)/i);
+    if (!editMatch) {
+      await sendReply('⚠️ Invalid EDIT format.\n\nExample: EDIT Red Cotton T-Shirt - ₹399');
+      return;
+    }
+    const titleToEdit = editMatch[1].trim();
+    const newPrice = parseInt(editMatch[2].replace(/,/g, ''), 10);
+    
+    if (!titleToEdit || isNaN(newPrice)) {
+      await sendReply('⚠️ Please specify a valid product name and price.');
+      return;
+    }
+    const updatedCount = await updateProductPrice(merchant.id, titleToEdit, newPrice);
+    if (updatedCount === 0) {
+      await sendReply(`❌ No product found matching "*${titleToEdit}*".`);
+    } else {
+      await sendReply(`✅ Updated ${updatedCount} product(s) matching "*${titleToEdit}*" to ₹${newPrice.toLocaleString('en-IN')}.`);
+      await triggerRevalidation(merchant.store_slug);
+    }
+    return;
+  }
+
+  if (command.startsWith('DESCRIBE ')) {
+    const description = text.trim().substring(9).trim();
+    if (!description) {
+      await sendReply('⚠️ Please provide a description.\n\nExample: DESCRIBE We sell the best quality shoes in Mumbai.');
+      return;
+    }
+    await updateStoreDescription(merchant.id, description);
+    await sendReply(`✅ Store description updated successfully!`);
+    await triggerRevalidation(merchant.store_slug);
+    return;
+  }
+
+  if (command === 'PAUSE') {
+    await toggleStoreStatus(merchant.id, false);
+    await sendReply(`⏸️ Your store is now **PAUSED**. Customers will not be able to view products or place orders.\n\nReply with *RESUME* to bring your store back online.`);
+    await triggerRevalidation(merchant.store_slug);
+    return;
+  }
+
+  if (command === 'RESUME') {
+    await toggleStoreStatus(merchant.id, true);
+    await sendReply(`▶️ Your store is now **ACTIVE** and ready to receive orders!`);
+    await triggerRevalidation(merchant.store_slug);
+    return;
+  }
+
+  if (command === 'CLEAR CATALOG') {
+    const deletedCount = await deleteAllProducts(merchant.id);
+    await sendReply(`🗑️ Your catalog has been cleared. Removed ${deletedCount} products.`);
+    await triggerRevalidation(merchant.store_slug);
+    return;
+  }
+
   if (command === 'STATUS') {
     const count = await getProductCount(merchant.id);
     const storeUrl = `${env.FRONTEND_URL}/${merchant.store_slug}`;
@@ -259,7 +322,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   }
 
   if (command === 'HELP') {
-    await sendReply(`📖 *Maghgo Commands*\n\n📸 *Add Product:* Send an image with caption\n   Format: Product Name Price\n   Example: Red Cotton T-Shirt ₹499\n\n📋 *LIST* — View all your products\n🗑️ *DELETE product name* — Remove a product\n📊 *STATUS* — Store URL & product count\n🚀 *UPGRADE* — Unlock higher product limits\n❓ *HELP* — Show this message`);
+    await sendReply(`📖 *Maghgo Commands*\n\n📸 *Add Product:* Send an image with caption\n   Format: Product Name Price\n   Example: Red Cotton T-Shirt ₹499\n\n✏️ *EDIT product name - ₹price* — Change price\n📋 *LIST* — View all your products\n🗑️ *DELETE product name* — Remove a product\n🧨 *CLEAR CATALOG* — Delete all products\n\n📝 *DESCRIBE your text* — Set store description\n⏸️ *PAUSE / RESUME* — Turn store offline/online\n📊 *STATUS* — Store URL & product count\n🚀 *UPGRADE* — Unlock higher product limits\n❓ *HELP* — Show this message`);
     return;
   }
 

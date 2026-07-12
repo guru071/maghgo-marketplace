@@ -8,7 +8,7 @@ import { Pricing } from '@/components/landing/Pricing';
 
 import { createServerSupabaseClient } from '@/lib/supabase-server';
 
-export const revalidate = 0; // Ensure fresh settings are fetched
+export const revalidate = 60; // Ensure fresh settings are fetched
 
 export default async function LandingPage() {
   const supabase = createServerSupabaseClient();

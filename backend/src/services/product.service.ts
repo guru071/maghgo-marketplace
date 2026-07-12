@@ -95,3 +95,47 @@ export async function getProductCount(merchantId: string): Promise<number> {
 
   return count ?? 0;
 }
+
+/**
+ * Update the price of an existing product by title.
+ */
+export async function updateProductPrice(
+  merchantId: string,
+  title: string,
+  newPrice: number
+): Promise<number> {
+  const escapedTitle = title.replace(/[%_\\]/g, '\\$&');
+
+  const { data, error } = await supabase
+    .from('products')
+    .update({ price: newPrice })
+    .eq('merchant_id', merchantId)
+    .ilike('title', `%${escapedTitle}%`)
+    .eq('is_available', true)
+    .select();
+
+  if (error) {
+    throw new Error(`Failed to update product price: ${error.message}`);
+  }
+
+  return data?.length ?? 0;
+}
+
+/**
+ * Soft-delete all products for a merchant (Clear Catalog)
+ */
+export async function deleteAllProducts(merchantId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('products')
+    .update({ is_available: false })
+    .eq('merchant_id', merchantId)
+    .eq('is_available', true)
+    .select();
+
+  if (error) {
+    throw new Error(`Failed to clear catalog: ${error.message}`);
+  }
+
+  return data?.length ?? 0;
+}
+

@@ -69,18 +69,43 @@ router.post('/razorpay', async (req: Request, res: Response) => {
         const now = new Date();
         const daysToAdd = isYearly ? 365 : 30;
         
-        // Fetch the merchant to get their current trial_ends_at
+        // Parameterize the string to prevent PostgREST injection
         const { data: merchant, error: fetchError } = await supabase
           .from('merchants')
           .select('id, trial_ends_at, is_active, phone_number, instagram_id, messenger_id')
-          .or(`phone_number.eq.${senderId},instagram_id.eq.${senderId},messenger_id.eq.${senderId}`)
+          .or(`phone_number.eq."${senderId}",instagram_id.eq."${senderId}",messenger_id.eq."${senderId}"`)
           .single();
           
         if (merchant && !fetchError) {
+          // Idempotency Check: Verify if this payment ID was already processed
+          const paymentId = paymentLink.id || payload.payload.payment.entity.id;
+          const { data: existingPayment } = await supabase
+            .from('payments')
+            .select('id')
+            .eq('razorpay_payment_id', paymentId)
+            .maybeSingle();
+
+          if (existingPayment) {
+            console.log(`⚠️ Payment ${paymentId} already processed. Skipping.`);
+            res.sendStatus(200);
+            return;
+          }
+
           const currentExpiry = new Date(merchant.trial_ends_at);
           const newExpiry = (merchant.is_active && currentExpiry > now) 
             ? new Date(currentExpiry.getTime() + daysToAdd * 24 * 60 * 60 * 1000)
             : new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
+
+          // Track the payment in audit log
+          await supabase.from('payments').insert({
+            merchant_id: merchant.id,
+            razorpay_payment_id: paymentId,
+            razorpay_payment_link_id: paymentLink.id,
+            amount: amountPaid / 100,
+            plan: plan,
+            is_yearly: isYearly,
+            status: status
+          });
 
           await supabase
             .from('merchants')

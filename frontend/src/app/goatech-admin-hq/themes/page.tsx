@@ -70,12 +70,6 @@ export default async function ThemesDashboard() {
                     </span>
                   </div>
                   <p className="text-sm text-gray-500 mb-4 line-clamp-2">{theme.description}</p>
-                  
-                  <div className="flex justify-end border-t border-gray-100 pt-3">
-                    <button className="text-sm text-blue-600 font-medium hover:text-blue-800">
-                      Edit Theme
-                    </button>
-                  </div>
                 </div>
               </div>
             );

@@ -41,7 +41,7 @@ export default function StoreHeader({ merchant }: StoreHeaderProps) {
           )}
           {merchant.facebook_url && (
             <a 
-              href={merchant.facebook_url.startsWith('http') ? merchant.facebook_url : `https://${merchant.facebook_url}`}
+              href={merchant.facebook_url.startsWith('http') ? merchant.facebook_url : `https://facebook.com/${merchant.facebook_url}`}
               target="_blank" 
               rel="noopener noreferrer"
               className="text-gray-400 hover:text-blue-600 transition-colors"

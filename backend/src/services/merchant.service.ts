@@ -186,3 +186,26 @@ export async function linkChannelToMerchant(
 
   return updatedMerchant as Merchant;
 }
+
+export async function updateStoreDescription(merchantId: string, description: string): Promise<void> {
+  const { error } = await supabase
+    .from('merchants')
+    .update({ store_description: description })
+    .eq('id', merchantId);
+
+  if (error) {
+    throw new Error(`Failed to update store description: ${error.message}`);
+  }
+}
+
+export async function toggleStoreStatus(merchantId: string, isActive: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('merchants')
+    .update({ is_active: isActive })
+    .eq('id', merchantId);
+
+  if (error) {
+    throw new Error(`Failed to toggle store status: ${error.message}`);
+  }
+}
+

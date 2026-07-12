@@ -22,9 +22,12 @@ const envSchema = z.object({
 
   // Supabase
   SUPABASE_URL: z.string().url('SUPABASE_URL must be a valid URL'),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY is required'),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'Supabase service role key is required'),
 
-  // Remove.bg
+  // JWT Secret
+  JWT_SECRET: z.string().default('maghgo-super-secret-key-change-in-production'),
+
+  // Frontend URL for generating links
   REMOVEBG_API_KEY: z.string().min(1, 'REMOVEBG_API_KEY is required'),
 
   // Frontend / ISR

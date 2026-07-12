@@ -22,7 +22,7 @@ export function startCleanupJob() {
       const { data, error } = await supabase
         .from('merchants')
         .delete()
-        .eq('subscription_plan', 'trial')
+        .in('subscription_plan', ['trial', 'inactive'])
         .lt('trial_ends_at', tenDaysAgo.toISOString())
         .select('phone_number, store_name'); // Return deleted rows for logging
 

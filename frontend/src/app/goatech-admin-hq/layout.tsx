@@ -40,12 +40,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </Link>
         </nav>
 
-        <div className="p-4 border-t border-gray-200">
-          <button className="flex w-full items-center gap-3 px-3 py-2 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
-            <LogOut className="w-5 h-5 text-gray-500" />
-            <span className="font-medium">Log Out</span>
-          </button>
-        </div>
       </aside>
 
       {/* Main Content */}

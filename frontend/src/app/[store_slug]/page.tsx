@@ -21,8 +21,8 @@ const DEMO_MERCHANT = {
   store_logo_url: null,
   is_active: true,
   subscription_plan: 'premium' as const,
-  trial_ends_at: new Date().toISOString(),
-  created_at: new Date().toISOString(),
+  trial_ends_at: '2030-01-01T00:00:00.000Z',
+  created_at: '2026-01-01T00:00:00.000Z',
   instagram_handle: 'goatech.tech',
   facebook_url: 'goatech',
   x_handle: 'goatechHQ',
@@ -40,7 +40,7 @@ const DEMO_PRODUCTS = [
     description: '',
     is_available: true,
     sort_order: 1,
-    created_at: new Date().toISOString(),
+    created_at: '2026-01-01T00:00:00.000Z',
   },
   {
     id: 'prod-2',
@@ -53,7 +53,7 @@ const DEMO_PRODUCTS = [
     description: '',
     is_available: true,
     sort_order: 2,
-    created_at: new Date().toISOString(),
+    created_at: '2026-01-01T00:00:00.000Z',
   },
   {
     id: 'prod-3',
@@ -66,7 +66,7 @@ const DEMO_PRODUCTS = [
     description: '',
     is_available: true,
     sort_order: 3,
-    created_at: new Date().toISOString(),
+    created_at: '2026-01-01T00:00:00.000Z',
   }
 ];
 
