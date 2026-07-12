@@ -18,8 +18,8 @@ export function middleware(req: NextRequest) {
 
       // Super simple hardcoded admin credentials for now
       // In production, these should be environment variables
-      const ADMIN_USER = process.env.ADMIN_USER || 'admin';
-      const ADMIN_PASS = process.env.ADMIN_PASS || 'maghgo2026';
+      const ADMIN_USER = process.env.ADMIN_USERNAME || 'admin';
+      const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'admin';
 
       if (user === ADMIN_USER && pwd === ADMIN_PASS) {
         return NextResponse.next();
