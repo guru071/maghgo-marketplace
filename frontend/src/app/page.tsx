@@ -3,6 +3,7 @@ import { Hero } from '@/components/landing/Hero';
 import { WorkingModelDemo } from '@/components/landing/WorkingModelDemo';
 import { VisualBuilderShowcase } from '@/components/landing/VisualBuilderShowcase';
 import { HowItWorks } from '@/components/landing/HowItWorks';
+import { ThemesShowcase } from '@/components/landing/ThemesShowcase';
 import { Pricing } from '@/components/landing/Pricing';
 
 import { createServerSupabaseClient } from '@/lib/supabase-server';
@@ -44,6 +45,7 @@ export default async function LandingPage() {
       <WorkingModelDemo />
       <VisualBuilderShowcase />
       <HowItWorks />
+      <ThemesShowcase />
       <Pricing enabledPlatforms={enabledPlatforms} plans={plans || []} />
       
       <footer className="footer">
