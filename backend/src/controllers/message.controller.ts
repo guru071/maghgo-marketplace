@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { WhatsAppWebhookPayload } from '../types/whatsapp';
 import { processBotMessage, BotMessage } from '../services/bot.service';
 import { getMediaUrl, downloadMedia, sendReply as sendWhatsappReply } from '../services/whatsapp.service';
+import { sendMetaReply, downloadMetaMedia } from '../services/meta.service';
 
 export function handleIncomingMessage(req: Request, res: Response): void {
   console.log('📬 Webhook received:', JSON.stringify(req.body, null, 2));
@@ -11,6 +12,10 @@ export function handleIncomingMessage(req: Request, res: Response): void {
 
   if (body.object === 'whatsapp_business_account') {
     handleWhatsapp(body as WhatsAppWebhookPayload);
+  } else if (body.object === 'instagram') {
+    handleInstagram(body);
+  } else if (body.object === 'page') {
+    handleMessenger(body);
   }
 }
 
@@ -45,8 +50,13 @@ function handleWhatsapp(body: WhatsAppWebhookPayload) {
             }
 
             await processBotMessage(botMsg);
-          } catch (err) {
-            console.error('Error processing WA message', err);
+          } catch (err: any) {
+            console.error('❌ Error processing WA message:');
+            if (err.response && err.response.data) {
+              console.error('Meta API Error Details:', JSON.stringify(err.response.data, null, 2));
+            } else {
+              console.error(err);
+            }
           }
         });
       }
@@ -54,4 +64,94 @@ function handleWhatsapp(body: WhatsAppWebhookPayload) {
   }
 }
 
+function handleInstagram(body: any) {
+  for (const entry of body.entry) {
+    for (const messaging of entry.messaging) {
+      if (!messaging.message) continue;
+      
+      setImmediate(async () => {
+        try {
+          const senderId = messaging.sender.id;
+          const message = messaging.message;
+          const isImage = message.attachments && message.attachments[0]?.type === 'image';
 
+          const botMsg: BotMessage = {
+            channel: 'instagram',
+            senderId,
+            messageId: message.mid,
+            type: isImage ? 'image' : 'text',
+            text: message.text,
+            sendReply: async (text: string) => {
+              await sendMetaReply(senderId, text);
+            }
+          };
+
+          if (isImage) {
+            const url = message.attachments[0].payload.url;
+            const buffer = await downloadMetaMedia(url);
+            botMsg.image = {
+              caption: message.text,
+              mime_type: 'image/jpeg',
+              buffer
+            };
+          }
+
+          await processBotMessage(botMsg);
+        } catch (err: any) {
+          console.error('❌ Error processing IG message:');
+          if (err.response && err.response.data) {
+            console.error('Meta API Error Details:', JSON.stringify(err.response.data, null, 2));
+          } else {
+            console.error(err);
+          }
+        }
+      });
+    }
+  }
+}
+
+function handleMessenger(body: any) {
+  for (const entry of body.entry) {
+    for (const messaging of entry.messaging) {
+      if (!messaging.message) continue;
+      
+      setImmediate(async () => {
+        try {
+          const senderId = messaging.sender.id;
+          const message = messaging.message;
+          const isImage = message.attachments && message.attachments[0]?.type === 'image';
+
+          const botMsg: BotMessage = {
+            channel: 'messenger',
+            senderId,
+            messageId: message.mid,
+            type: isImage ? 'image' : 'text',
+            text: message.text,
+            sendReply: async (text: string) => {
+              await sendMetaReply(senderId, text);
+            }
+          };
+
+          if (isImage) {
+            const url = message.attachments[0].payload.url;
+            const buffer = await downloadMetaMedia(url);
+            botMsg.image = {
+              caption: message.text,
+              mime_type: 'image/jpeg',
+              buffer
+            };
+          }
+
+          await processBotMessage(botMsg);
+        } catch (err: any) {
+          console.error('❌ Error processing Messenger message:');
+          if (err.response && err.response.data) {
+            console.error('Meta API Error Details:', JSON.stringify(err.response.data, null, 2));
+          } else {
+            console.error(err);
+          }
+        }
+      });
+    }
+  }
+}
