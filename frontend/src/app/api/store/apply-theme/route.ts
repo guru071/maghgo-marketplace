@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase-server';
+import { createAdminSupabaseClient } from '@/lib/supabase-admin';
 
 export async function POST(req: Request) {
   try {
@@ -8,10 +8,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing store_slug or theme_id' }, { status: 400 });
     }
 
-    const supabase = createServerSupabaseClient();
+    const supabaseAdmin = createAdminSupabaseClient();
 
     // Fetch the theme config
-    const { data: theme, error: themeError } = await supabase
+    const { data: theme, error: themeError } = await supabaseAdmin
       .from('themes')
       .select('config')
       .eq('id', theme_id)
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     }
 
     // Apply the config to the merchant
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseAdmin
       .from('merchants')
       .update({ theme_config: theme.config })
       .eq('store_slug', store_slug);

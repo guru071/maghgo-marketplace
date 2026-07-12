@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase-server';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminSupabaseClient } from '@/lib/supabase-admin';
 
 export async function POST(request: Request) {
   try {
@@ -14,12 +13,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Since this is just a quick API for the builder (and we don't have proper auth yet),
-    // we use the anon key if we can't get a service role key. 
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    const supabaseAdmin = createAdminSupabaseClient();
 
     const { error } = await supabaseAdmin
       .from('merchants')
@@ -41,7 +35,7 @@ export async function POST(request: Request) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-revalidate-secret': process.env.REVALIDATION_SECRET || '',
+          'x-revalidation-secret': process.env.REVALIDATION_SECRET || '',
         },
         body: JSON.stringify({ path: `/${store_slug}` }),
       });

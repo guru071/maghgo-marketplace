@@ -11,6 +11,18 @@ import { paymentRouter } from './routes/payment';
 import demoRouter from './routes/demo';
 import { errorHandler } from './middleware/error-handler';
 
+// ─── Process Error Handling ──────────────────────────────────────────────────
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Promise Rejection at:', promise, 'reason:', reason);
+  Sentry.captureException(reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  Sentry.captureException(error);
+  process.exit(1);
+});
+
 // ─── Express Application ────────────────────────────────────────────────────
 
 import { startCleanupJob } from './jobs/cleanup.job';
@@ -25,9 +37,9 @@ if (env.SENTRY_DSN) {
       nodeProfilingIntegration(),
     ],
     // Tracing
-    tracesSampleRate: 1.0, //  Capture 100% of the transactions
+    tracesSampleRate: env.NODE_ENV === 'production' ? 0.1 : 1.0,
     // Set sampling rate for profiling - this is relative to tracesSampleRate
-    profilesSampleRate: 1.0,
+    profilesSampleRate: env.NODE_ENV === 'production' ? 0.1 : 1.0,
   });
 }
 
@@ -39,8 +51,8 @@ startCleanupJob();
 // Security headers
 app.use(helmet());
 
-// CORS
-app.use(cors());
+// CORS - restrict to frontend URL
+app.use(cors({ origin: env.FRONTEND_URL, credentials: true }));
 
 // Request logging
 app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
@@ -52,6 +64,7 @@ app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(
   '/webhook',
   express.json({
+    limit: '100kb',
     verify: (req: any, _res, buf) => {
       req.rawBody = buf;
     },
@@ -59,7 +72,7 @@ app.use(
 );
 
 // All other routes use standard JSON parsing
-app.use(express.json());
+app.use(express.json({ limit: '100kb' }));
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
@@ -71,7 +84,9 @@ app.use('/health', healthRouter);
 // ─── Error Handler ───────────────────────────────────────────────────────────
 
 // The error handler must be before any other error middleware and after all controllers
-Sentry.setupExpressErrorHandler(app);
+if (env.SENTRY_DSN) {
+  Sentry.setupExpressErrorHandler(app);
+}
 
 app.use(errorHandler);
 

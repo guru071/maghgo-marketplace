@@ -1,11 +1,14 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
+import { useParams } from 'next/navigation';
 import { useCartStore } from '@/stores/cart';
 
 export default function FloatingCartButton() {
+  const params = useParams();
+  const storeSlug = params.store_slug as string;
   const { toggleCart, getItemCount } = useCartStore();
-  const count = getItemCount();
+  const count = getItemCount(storeSlug);
   const badgeRef = useRef<HTMLSpanElement>(null);
   const prevCount = useRef(count);
 

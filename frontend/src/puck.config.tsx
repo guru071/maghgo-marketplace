@@ -3,6 +3,55 @@ import type { Config } from "@puckeditor/core";
 import { DropZone } from "@puckeditor/core";
 import { StoreContext } from "@/components/store/StoreContext";
 
+const ProductGridComponent = ({ columns, showPrices, cardBg, gap }: any) => {
+  const storeCtx = React.useContext(StoreContext);
+  const hasLiveProducts = storeCtx && storeCtx.products.length > 0;
+
+  return (
+    <div style={{ padding: "2rem 0", width: "100%" }}>
+      <div style={{ 
+        display: "grid", 
+        gridTemplateColumns: `repeat(auto-fill, minmax(${columns === 4 ? '200px' : columns === 3 ? '250px' : '300px'}, 1fr))`, 
+        gap: gap 
+      }}>
+        {hasLiveProducts ? (
+          // Render Live Products
+          storeCtx.products.map((p: any) => (
+            <div key={p.id} style={{ backgroundColor: cardBg, border: "1px solid #eee", borderRadius: "12px", padding: "16px", display: 'flex', flexDirection: 'column', transition: "transform 0.2s", cursor: "pointer" }}>
+              <div style={{ width: "100%", aspectRatio: "1", backgroundImage: `url(${p.processed_image_url || p.original_image_url})`, backgroundSize: 'cover', backgroundPosition: 'center', borderRadius: "8px", marginBottom: "16px" }} />
+              <h3 style={{ margin: "0 0 8px 0", fontSize: "1.1rem", fontWeight: "600", color: "#1A1A2E" }}>{p.title}</h3>
+              {showPrices && <span style={{ fontWeight: "700", color: "#E07A5F", fontSize: "1.2rem", marginBottom: "16px" }}>{p.currency}{p.price}</span>}
+              <button 
+                onClick={() => storeCtx.onAddToCart(p)}
+                style={{ marginTop: 'auto', backgroundColor: '#25D366', color: '#fff', border: 'none', padding: '12px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: "100%" }}
+              >
+                Add to Cart
+              </button>
+            </div>
+          ))
+        ) : (
+          // Render Placeholders for Builder
+          [1, 2, 3, 4].map((i) => (
+            <div key={i} style={{ backgroundColor: cardBg, border: "1px solid #eee", borderRadius: "12px", padding: "16px", display: 'flex', flexDirection: 'column' }}>
+              <div style={{ width: "100%", aspectRatio: "1", backgroundColor: "#f3f4f6", borderRadius: "8px", marginBottom: "16px" }} />
+              <h3 style={{ margin: "0 0 8px 0", fontSize: "1.1rem", color: "#1A1A2E", fontWeight: "600" }}>Sample Product {i}</h3>
+              {showPrices && <span style={{ fontWeight: "700", color: "#E07A5F", fontSize: "1.2rem", marginBottom: "16px" }}>₹999</span>}
+              <button style={{ marginTop: 'auto', backgroundColor: '#25D366', color: '#fff', border: 'none', padding: '12px', borderRadius: '8px', cursor: 'not-allowed', fontWeight: 'bold', width: "100%" }}>
+                Add to Cart
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+      {!hasLiveProducts && (
+        <p style={{ textAlign: 'center', color: '#9CA3AF', margin: '2rem 0 0', fontStyle: 'italic' }}>
+          * Your live products will automatically populate this grid.
+        </p>
+      )}
+    </div>
+  );
+};
+
 export type Props = {
   // Layouts
   Section: { bgColor: string; bgImage?: string; paddingTop: string; paddingBottom: string; alignItems: "flex-start" | "center" | "flex-end" | "stretch" };
@@ -382,55 +431,7 @@ export const config: Config<Props> = {
         cardBg: "#ffffff",
         showPrices: true,
       },
-      render: ({ columns, showPrices, cardBg, gap }) => {
-        // eslint-disable-next-line react-hooks/rules-of-hooks
-        const storeCtx = React.useContext(StoreContext);
-        const hasLiveProducts = storeCtx && storeCtx.products.length > 0;
-
-        return (
-          <div style={{ padding: "2rem 0", width: "100%" }}>
-            <div style={{ 
-              display: "grid", 
-              gridTemplateColumns: `repeat(auto-fill, minmax(${columns === 4 ? '200px' : columns === 3 ? '250px' : '300px'}, 1fr))`, 
-              gap: gap 
-            }}>
-              {hasLiveProducts ? (
-                // Render Live Products
-                storeCtx.products.map((p: any) => (
-                  <div key={p.id} style={{ backgroundColor: cardBg, border: "1px solid #eee", borderRadius: "12px", padding: "16px", display: 'flex', flexDirection: 'column', transition: "transform 0.2s", cursor: "pointer" }}>
-                    <div style={{ width: "100%", aspectRatio: "1", backgroundImage: `url(${p.processed_image_url || p.original_image_url})`, backgroundSize: 'cover', backgroundPosition: 'center', borderRadius: "8px", marginBottom: "16px" }} />
-                    <h3 style={{ margin: "0 0 8px 0", fontSize: "1.1rem", fontWeight: "600", color: "#1A1A2E" }}>{p.title}</h3>
-                    {showPrices && <span style={{ fontWeight: "700", color: "#E07A5F", fontSize: "1.2rem", marginBottom: "16px" }}>{p.currency}{p.price}</span>}
-                    <button 
-                      onClick={() => storeCtx.onAddToCart(p)}
-                      style={{ marginTop: 'auto', backgroundColor: '#25D366', color: '#fff', border: 'none', padding: '12px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: "100%" }}
-                    >
-                      Add to Cart
-                    </button>
-                  </div>
-                ))
-              ) : (
-                // Render Placeholders for Builder
-                [1, 2, 3, 4].map((i) => (
-                  <div key={i} style={{ backgroundColor: cardBg, border: "1px solid #eee", borderRadius: "12px", padding: "16px", display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ width: "100%", aspectRatio: "1", backgroundColor: "#f3f4f6", borderRadius: "8px", marginBottom: "16px" }} />
-                    <h3 style={{ margin: "0 0 8px 0", fontSize: "1.1rem", color: "#1A1A2E", fontWeight: "600" }}>Sample Product {i}</h3>
-                    {showPrices && <span style={{ fontWeight: "700", color: "#E07A5F", fontSize: "1.2rem", marginBottom: "16px" }}>₹999</span>}
-                    <button style={{ marginTop: 'auto', backgroundColor: '#25D366', color: '#fff', border: 'none', padding: '12px', borderRadius: '8px', cursor: 'not-allowed', fontWeight: 'bold', width: "100%" }}>
-                      Add to Cart
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-            {!hasLiveProducts && (
-              <p style={{ textAlign: 'center', color: '#9CA3AF', margin: '2rem 0 0', fontStyle: 'italic' }}>
-                * Your live products will automatically populate this grid.
-              </p>
-            )}
-          </div>
-        );
-      },
+      render: (props) => <ProductGridComponent {...props} />,
     },
     Banner: {
       fields: {

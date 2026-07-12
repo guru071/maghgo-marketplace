@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase-server';
+import { createAdminSupabaseClient } from '@/lib/supabase-admin';
 
 const MINIMALIST_CONFIG = {
   content: [
@@ -48,23 +48,23 @@ const themes = [
 ];
 
 export async function GET() {
-  const supabase = createServerSupabaseClient();
+  const supabaseAdmin = createAdminSupabaseClient();
   const results = [];
 
   try {
     for (const theme of themes) {
-      const { data: existing } = await supabase.from('themes').select('id').eq('name', theme.name).single();
+      const { data: existing } = await supabaseAdmin.from('themes').select('id').eq('name', theme.name).single();
       if (existing) {
-        await supabase.from('themes').update({ config: theme.config }).eq('id', existing.id);
+        await supabaseAdmin.from('themes').update({ config: theme.config }).eq('id', existing.id);
         results.push(`Updated theme: ${theme.name}`);
       } else {
-        await supabase.from('themes').insert(theme as any);
+        await supabaseAdmin.from('themes').insert(theme as any);
         results.push(`Inserted theme: ${theme.name}`);
       }
     }
     
     // Also apply Cyberpunk to demo-123 for immediate verification
-    const { error: applyErr } = await supabase
+    const { error: applyErr } = await supabaseAdmin
       .from('merchants')
       .update({ theme_config: CYBERPUNK_CONFIG as any })
       .eq('store_slug', 'demo');

@@ -61,11 +61,14 @@ export async function deleteProduct(
   merchantId: string,
   title: string
 ): Promise<number> {
+  // Escape ILIKE wildcards to prevent injection
+  const escapedTitle = title.replace(/[%_\\]/g, '\\$&');
+
   const { data, error } = await supabase
     .from('products')
     .update({ is_available: false })
     .eq('merchant_id', merchantId)
-    .ilike('title', `%${title}%`)
+    .ilike('title', `%${escapedTitle}%`)
     .eq('is_available', true)
     .select();
 

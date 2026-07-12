@@ -5,86 +5,112 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { CartItem } from '@/types';
 
 interface CartState {
-  items: CartItem[];
+  // Store items keyed by storeSlug
+  carts: Record<string, CartItem[]>;
   isOpen: boolean;
 
   // Actions
-  addItem: (item: Omit<CartItem, 'quantity'>) => void;
-  removeItem: (id: string) => void;
-  updateQuantity: (id: string, quantity: number) => void;
-  clearCart: () => void;
+  addItem: (storeSlug: string, item: Omit<CartItem, 'quantity'>) => void;
+  removeItem: (storeSlug: string, id: string) => void;
+  updateQuantity: (storeSlug: string, id: string, quantity: number) => void;
+  clearCart: (storeSlug: string) => void;
 
   // Drawer
   toggleCart: () => void;
   openCart: () => void;
   closeCart: () => void;
 
-  // Computed
-  getTotal: () => number;
-  getItemCount: () => number;
+  // Computed - requires storeSlug
+  getTotal: (storeSlug: string) => number;
+  getItemCount: (storeSlug: string) => number;
+  getItems: (storeSlug: string) => CartItem[];
 }
 
 export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
-      items: [],
+      carts: {},
       isOpen: false,
 
-      addItem: (newItem) => {
+      addItem: (storeSlug, newItem) => {
         set((state) => {
-          const existing = state.items.find((item) => item.id === newItem.id);
+          const storeItems = state.carts[storeSlug] || [];
+          const existing = storeItems.find((item) => item.id === newItem.id);
+          
+          let newStoreItems;
           if (existing) {
-            return {
-              items: state.items.map((item) =>
-                item.id === newItem.id
-                  ? { ...item, quantity: item.quantity + 1 }
-                  : item
-              ),
-            };
+            newStoreItems = storeItems.map((item) =>
+              item.id === newItem.id
+                ? { ...item, quantity: item.quantity + 1 }
+                : item
+            );
+          } else {
+            newStoreItems = [...storeItems, { ...newItem, quantity: 1 }];
           }
-          return { items: [...state.items, { ...newItem, quantity: 1 }] };
+
+          return { carts: { ...state.carts, [storeSlug]: newStoreItems } };
         });
       },
 
-      removeItem: (id) => {
-        set((state) => ({
-          items: state.items.filter((item) => item.id !== id),
-        }));
+      removeItem: (storeSlug, id) => {
+        set((state) => {
+          const storeItems = state.carts[storeSlug] || [];
+          return {
+            carts: {
+              ...state.carts,
+              [storeSlug]: storeItems.filter((item) => item.id !== id),
+            },
+          };
+        });
       },
 
-      updateQuantity: (id, quantity) => {
+      updateQuantity: (storeSlug, id, quantity) => {
         if (quantity <= 0) {
-          get().removeItem(id);
+          get().removeItem(storeSlug, id);
           return;
         }
-        set((state) => ({
-          items: state.items.map((item) =>
-            item.id === id ? { ...item, quantity } : item
-          ),
-        }));
+        set((state) => {
+          const storeItems = state.carts[storeSlug] || [];
+          return {
+            carts: {
+              ...state.carts,
+              [storeSlug]: storeItems.map((item) =>
+                item.id === id ? { ...item, quantity } : item
+              ),
+            },
+          };
+        });
       },
 
-      clearCart: () => set({ items: [] }),
+      clearCart: (storeSlug) => set((state) => ({ 
+        carts: { ...state.carts, [storeSlug]: [] } 
+      })),
 
       toggleCart: () => set((state) => ({ isOpen: !state.isOpen })),
       openCart: () => set({ isOpen: true }),
       closeCart: () => set({ isOpen: false }),
 
-      getTotal: () => {
-        return get().items.reduce(
+      getItems: (storeSlug) => {
+        return get().carts[storeSlug] || [];
+      },
+
+      getTotal: (storeSlug) => {
+        const storeItems = get().carts[storeSlug] || [];
+        return storeItems.reduce(
           (sum, item) => sum + item.price * item.quantity,
           0
         );
       },
 
-      getItemCount: () => {
-        return get().items.reduce((sum, item) => sum + item.quantity, 0);
+      getItemCount: (storeSlug) => {
+        const storeItems = get().carts[storeSlug] || [];
+        return storeItems.reduce((sum, item) => sum + item.quantity, 0);
       },
     }),
     {
       name: 'maghgo-cart',
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ items: state.items }),
+      partialize: (state) => ({ carts: state.carts }),
     }
   )
 );

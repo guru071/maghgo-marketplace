@@ -20,8 +20,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
   const handleAdd = useCallback(() => {
     onAddToCart(product);
     setIsAdded(true);
-    const timer = setTimeout(() => setIsAdded(false), 800);
-    return () => clearTimeout(timer);
+    setTimeout(() => setIsAdded(false), 800);
   }, [onAddToCart, product]);
 
   return (

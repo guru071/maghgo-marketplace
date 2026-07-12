@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { env } from '../config/env';
-import { reactivateSubscription } from '../services/merchant.service';
-import { sendReply } from '../services/whatsapp.service';
+import { getPlanFromAmount, getAmountFromPlan } from '../services/payment.service';
+import { supabase } from '../db/supabase';
+import axios from 'axios';
 
 const router = Router();
 
@@ -41,9 +42,6 @@ router.post('/razorpay', async (req: Request, res: Response) => {
       return;
     }
 
-    // Always ACK quickly
-    res.sendStatus(200);
-
     const payload = JSON.parse(body.toString());
 
     // 2. We only care about payment_link.paid
@@ -53,29 +51,20 @@ router.post('/razorpay', async (req: Request, res: Response) => {
       const amountPaid = paymentLink.amount_paid; // in paise
       const status = paymentLink.status; // e.g., 'paid'
 
-      const { getPlanFromAmount, getAmountFromPlan } = require('../services/payment.service');
       const plan = await getPlanFromAmount(amountPaid / 100);
+      const monthlyAmount = await getAmountFromPlan(plan, false);
       const yearlyAmount = await getAmountFromPlan(plan, true);
       const isYearly = (amountPaid / 100) === yearlyAmount;
 
-      if (status !== 'paid' || (!plan || (plan === 'basic' && amountPaid / 100 !== 99 && amountPaid / 100 !== 1010))) {
-        // basic is the fallback, so if it's basic but the amount isn't exactly the basic amount, it's invalid
-        console.warn(`⚠️ Payment verification failed for ${senderId}: Status=${status}, AmountPaid=${amountPaid} is invalid`);
+      // Strict validation: amount must exactly match either the monthly or yearly price of the detected plan
+      if (status !== 'paid' || !plan || ((amountPaid / 100) !== monthlyAmount && (amountPaid / 100) !== yearlyAmount)) {
+        console.warn(`⚠️ Payment verification failed for ${senderId}: Status=${status}, AmountPaid=${amountPaid} is invalid for Plan=${plan}`);
+        res.status(400).send('Invalid payment amount for plan');
         return; // Halt and do NOT reactivate
       }
 
       if (senderId) {
         console.log(`✅ Payment verified successfully for merchant: ${senderId} (Plan: ${plan}, Yearly: ${isYearly})`);
-        
-        // Check if senderId is a phone number or an instagram/messenger ID
-        // The webhook doesn't strictly know the channel, but reactivateSubscription needs it.
-        // Wait, reactivateSubscription needs (channel, senderId). 
-        // We can infer channel: if it's all digits (with optional +), it's WhatsApp/SMS. Otherwise, we can try to guess or let the service handle it.
-        const isPhone = /^\\+?[1-9]\\d{9,14}$/.test(senderId);
-        let channel: 'whatsapp' | 'instagram' | 'messenger' = 'whatsapp';
-        // We can just try to reactivate by checking all columns, or pass a special channel 'any' to merchant.service.
-        // But since reactivateSubscription takes (channel, senderId, plan, isYearly), let's just do it directly here using supabase.
-        const { supabase } = require('../db/supabase');
         
         const now = new Date();
         const daysToAdd = isYearly ? 365 : 30;
@@ -104,7 +93,6 @@ router.post('/razorpay', async (req: Request, res: Response) => {
             
           // 4. Send success message via WhatsApp (if they have a phone number)
           if (merchant.phone_number) {
-            const axios = require('axios');
             await axios.post(
               `https://graph.facebook.com/v21.0/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
               {
@@ -129,9 +117,11 @@ router.post('/razorpay', async (req: Request, res: Response) => {
         }
       }
     }
+    
+    // Send 200 OK after successful processing
+    res.sendStatus(200);
   } catch (error) {
     console.error('❌ Error processing Razorpay webhook:', error);
-    // Note: Don't send 500 if we already sent 200, we should only log it since we fire-and-forget inside the handler
     if (!res.headersSent) {
       res.status(500).send('Internal Server Error');
     }

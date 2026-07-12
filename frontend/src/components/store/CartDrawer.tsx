@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useCallback } from 'react';
+import { useParams } from 'next/navigation';
 import { useCartStore } from '@/stores/cart';
 import { formatPrice } from '@/lib/utils';
 import CartItemComponent from './CartItem';
@@ -14,7 +15,10 @@ interface CartDrawerProps {
 }
 
 export default function CartDrawer({ phone, storeName, currency = 'INR', instagramHandle }: CartDrawerProps) {
-  const { items, isOpen, closeCart, updateQuantity, removeItem, getTotal } = useCartStore();
+  const params = useParams();
+  const storeSlug = params.store_slug as string;
+  const { isOpen, closeCart, updateQuantity, removeItem, getTotal, getItems } = useCartStore();
+  const items = getItems(storeSlug);
 
   // Escape key handler
   const handleKeyDown = useCallback(
@@ -43,7 +47,7 @@ export default function CartDrawer({ phone, storeName, currency = 'INR', instagr
 
   if (!isOpen) return null;
 
-  const total = getTotal();
+  const total = getTotal(storeSlug);
 
   return (
     <>
@@ -97,12 +101,12 @@ export default function CartDrawer({ phone, storeName, currency = 'INR', instagr
             </div>
           ) : (
             items.map((item) => (
-              <CartItemComponent
-                key={item.id}
-                item={item}
-                onUpdateQuantity={updateQuantity}
-                onRemove={removeItem}
-              />
+                <CartItemComponent
+                  key={item.id}
+                  item={item}
+                  onUpdateQuantity={(id, qty) => updateQuantity(storeSlug, id, qty)}
+                  onRemove={(id) => removeItem(storeSlug, id)}
+                />
             ))
           )}
         </div>

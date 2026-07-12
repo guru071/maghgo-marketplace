@@ -54,3 +54,43 @@ export function verifyWebhookSignature(
 
   next();
 }
+
+/**
+ * Express middleware that verifies the X-Twilio-Signature header.
+ */
+export function verifyTwilioWebhookSignature(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const signature = req.headers['x-twilio-signature'] as string | undefined;
+
+  if (!signature) {
+    console.warn('⚠️ Twilio webhook request missing signature');
+    res.status(401).json({ error: 'Missing signature header' });
+    return;
+  }
+
+  const twilioAuthToken = env.TWILIO_AUTH_TOKEN;
+  
+  if (!twilioAuthToken) {
+    // If Twilio isn't configured, we shouldn't accept webhooks
+    console.warn('⚠️ TWILIO_AUTH_TOKEN not configured, rejecting Twilio webhook');
+    res.status(500).json({ error: 'Server configuration error' });
+    return;
+  }
+
+  const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+  const params = req.body || {};
+
+  const twilio = require('twilio');
+  const isValid = twilio.validateRequest(twilioAuthToken, signature, url, params);
+
+  if (!isValid) {
+    console.warn('⚠️ Twilio signature verification failed');
+    res.status(401).json({ error: 'Invalid signature' });
+    return;
+  }
+
+  next();
+}

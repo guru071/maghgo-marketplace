@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* ============================================================
    MAGHGO — Premium E-Commerce Design System
    ============================================================ */
