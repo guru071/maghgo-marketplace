@@ -4,6 +4,7 @@ import { processBotMessage, BotMessage } from '../services/bot.service';
 import { getMediaUrl, downloadMedia, sendReply as sendWhatsappReply } from '../services/whatsapp.service';
 
 export function handleIncomingMessage(req: Request, res: Response): void {
+  console.log('📬 Webhook received:', JSON.stringify(req.body, null, 2));
   res.sendStatus(200);
 
   const body = req.body;
