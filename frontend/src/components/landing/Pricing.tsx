@@ -2,9 +2,22 @@
 
 import React, { useState } from 'react';
 import Button from '@/components/ui/Button';
+import { MessageCircle, MessageSquare, Camera, X } from 'lucide-react';
 
-export function Pricing() {
+export function Pricing({ 
+  enabledPlatforms = {
+    whatsapp_enabled: true,
+    instagram_enabled: true,
+    messenger_enabled: true,
+    sms_enabled: true
+  },
+  plans = []
+}: { 
+  enabledPlatforms?: any,
+  plans?: any[]
+}) {
   const [isYearly, setIsYearly] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
 
   // Helper to calculate yearly price (15% off)
   const getPrice = (monthlyPrice: number) => {
@@ -16,104 +29,6 @@ export function Pricing() {
   };
 
   const period = isYearly ? '/yr' : '/mo';
-
-  const plans = [
-    // Free Trial Removed
-
-    {
-      name: 'Basic',
-      monthlyPrice: 99,
-      description: 'For small side-hustles.',
-      features: ['Up to 50 Products', 'Standard Processing', 'Basic Store'],
-      buttonText: 'Get Basic', 
-      buttonVariant: 'secondary' as const,
-      colorTheme: '#D1FAE5' // Emerald
-    },
-    {
-      name: 'Starter',
-      monthlyPrice: 149,
-      description: 'For growing sellers.',
-      features: ['Up to 150 Products', 'Priority AI', 'Basic Analytics'],
-      buttonText: 'Get Starter',
-      buttonVariant: 'secondary' as const,
-      colorTheme: '#DBEAFE' // Blue
-    },
-    {
-      name: 'Pro',
-      monthlyPrice: 249,
-      description: 'For established shops.',
-      features: ['Up to 300 Products', 'Faster AI', 'Custom Domain'],
-      buttonText: 'Get Pro',
-      buttonVariant: 'secondary' as const,
-      colorTheme: '#E0E7FF' // Indigo
-    },
-    {
-      name: 'Advanced',
-      monthlyPrice: 349,
-      description: 'More features, more power.',
-      features: ['Up to 600 Products', 'Custom Branding', 'SEO Tools'],
-      buttonText: 'Get Advanced',
-      buttonVariant: 'secondary' as const,
-      colorTheme: '#F3E8FF' // Purple
-    },
-    {
-      name: 'Premium',
-      monthlyPrice: 499,
-      description: 'The sweet spot for most businesses.',
-      features: ['Up to 1000 Products', 'Priority AI', 'Custom Domain', 'Full Analytics'],
-      buttonText: 'Go Premium',
-      buttonVariant: 'primary' as const,
-      featured: true,
-      colorTheme: '#FFEDD5' // Orange (Featured)
-    },
-    {
-      name: 'Business',
-      monthlyPrice: 749,
-      description: 'Scale your operations.',
-      features: ['Up to 2000 Products', 'Team Accounts', 'API Access'],
-      buttonText: 'Get Business',
-      buttonVariant: 'secondary' as const,
-      colorTheme: '#FCE7F3' // Pink
-    },
-    {
-      name: 'Agency',
-      monthlyPrice: 999,
-      description: 'Managing multiple brands.',
-      features: ['5 Storefronts', 'White-labeling', 'Dedicated AM'],
-      buttonText: 'Get Agency',
-      buttonVariant: 'secondary' as const,
-      colorTheme: '#FEF3C7' // Amber
-    },
-    {
-      name: 'VIP',
-      monthlyPrice: 1499,
-      description: 'Maximum performance.',
-      features: ['15 Storefronts', 'Custom AI Training', 'SLA Guarantee'],
-      buttonText: 'Get VIP',
-      buttonVariant: 'secondary' as const,
-      colorTheme: '#ECFCCB' // Lime
-    },
-    {
-      name: 'Enterprise',
-      monthlyPrice: 1999,
-      description: 'Unlimited scale.',
-      features: ['Unlimited Products', 'Dedicated Support', 'Custom Integrations', 'White-label'],
-      buttonText: 'Start Free Trial',
-      buttonVariant: 'secondary' as const,
-      colorTheme: '#CFFAFE' // Cyan
-    },
-    {
-      name: 'Custom',
-      monthlyPrice: 0,
-      period: '',
-      description: 'Need something specific?',
-      features: ['Tailored features', 'On-premise option', 'Bespoke UI'],
-      buttonText: 'Contact Sales',
-      buttonVariant: 'secondary' as const,
-      isCustom: true,
-      colorTheme: '#F3F4F6' // Light Gray
-    }
-  ];
 
   return (
     <section id="pricing" className="pricing">
@@ -158,13 +73,13 @@ export function Pricing() {
             >
               <h3 className="pricing__card-name">{plan.name}</h3>
               <div className="pricing__card-price">
-                {plan.isCustom ? 'Let\'s Talk' : getPrice(plan.monthlyPrice)}
-                {!plan.isCustom && <span>{plan.period || period}</span>}
+                {plan.is_custom ? 'Let\'s Talk' : getPrice(plan.monthly_price)}
+                {!plan.is_custom && <span>{period}</span>}
               </div>
               <p className="pricing__card-desc">{plan.description}</p>
               
               <ul className="pricing__card-features">
-                {plan.features.map((feature, i) => (
+                {plan.features?.map((feature: string, i: number) => (
                   <li key={i} className="pricing__card-feature">
                     <svg viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -174,20 +89,116 @@ export function Pricing() {
                 ))}
               </ul>
               
-              <a 
-                href={`https://wa.me/919876543210?text=${encodeURIComponent(`REGISTER [Type your store name here] - ${plan.name.toUpperCase()}`)}`} 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                style={{ width: '100%', marginTop: 'auto' }}
-              >
-                <Button variant={plan.buttonVariant} className="btn--full">
-                  {plan.buttonText}
+              <div style={{ width: '100%', marginTop: 'auto' }}>
+                <Button 
+                  variant={plan.button_variant || 'secondary'} 
+                  className="btn--full"
+                  onClick={() => setSelectedPlan(plan.name)}
+                >
+                  {plan.is_custom ? 'Contact Sales' : `Get ${plan.name}`}
                 </Button>
-              </a>
+              </div>
             </div>
           ))}
         </div>
       </div>
+
+      {/* Multi-Channel Selection Modal */}
+      {selectedPlan && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => setSelectedPlan(null)}
+        >
+          <div 
+            className="bg-white rounded-2xl w-full max-w-md p-6 relative shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            <button 
+              onClick={() => setSelectedPlan(null)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X size={24} />
+            </button>
+            
+            <div className="text-center mb-6">
+              <h3 className="text-2xl font-bold text-gray-900">How do you want to build?</h3>
+              <p className="text-gray-500 mt-2">Select your preferred chat platform to register for the {selectedPlan} plan.</p>
+            </div>
+
+            <div className="space-y-3">
+              {enabledPlatforms.whatsapp_enabled && (
+                <a 
+                  href={`https://wa.me/919876543210?text=${encodeURIComponent(`REGISTER [Type your store name here] - ${selectedPlan.toUpperCase()}`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center p-4 rounded-xl border border-gray-200 hover:border-[#25D366] hover:bg-[#25D366]/5 transition-all group"
+                >
+                  <div className="w-12 h-12 flex items-center justify-center rounded-full bg-[#25D366]/10 text-[#25D366] group-hover:bg-[#25D366] group-hover:text-white transition-colors">
+                    <MessageCircle size={24} />
+                  </div>
+                  <div className="ml-4 text-left">
+                    <span className="block font-semibold text-gray-900">WhatsApp</span>
+                    <span className="text-sm text-gray-500">Fastest and most popular</span>
+                  </div>
+                </a>
+              )}
+
+              {enabledPlatforms.instagram_enabled && (
+                <a 
+                  href="https://ig.me/m/goatech.tech"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center p-4 rounded-xl border border-gray-200 hover:border-pink-500 hover:bg-pink-50 transition-all group"
+                >
+                  <div className="w-12 h-12 flex items-center justify-center rounded-full bg-pink-100 text-pink-600 group-hover:bg-gradient-to-tr group-hover:from-yellow-400 group-hover:via-pink-500 group-hover:to-purple-500 group-hover:text-white transition-all">
+                    <Camera size={24} />
+                  </div>
+                  <div className="ml-4 text-left">
+                    <span className="block font-semibold text-gray-900">Instagram DM</span>
+                    <span className="text-sm text-gray-500">Build your store via Insta</span>
+                  </div>
+                </a>
+              )}
+
+              {enabledPlatforms.messenger_enabled && (
+                <a 
+                  href="https://m.me/goatech.tech"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center p-4 rounded-xl border border-gray-200 hover:border-blue-600 hover:bg-blue-50 transition-all group"
+                >
+                  <div className="w-12 h-12 flex items-center justify-center rounded-full bg-blue-100 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                    <MessageSquare size={24} />
+                  </div>
+                  <div className="ml-4 text-left">
+                    <span className="block font-semibold text-gray-900">Messenger</span>
+                    <span className="text-sm text-gray-500">Use Facebook Messenger</span>
+                  </div>
+                </a>
+              )}
+
+              {enabledPlatforms.sms_enabled && (
+                <a 
+                  href={`sms:+919876543210?body=${encodeURIComponent(`REGISTER [Type your store name here] - ${selectedPlan.toUpperCase()}`)}`}
+                  className="w-full flex items-center p-4 rounded-xl border border-gray-200 hover:border-gray-800 hover:bg-gray-50 transition-all group"
+                >
+                  <div className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-100 text-gray-600 group-hover:bg-gray-800 group-hover:text-white transition-colors">
+                    <MessageSquare size={24} />
+                  </div>
+                  <div className="ml-4 text-left">
+                    <span className="block font-semibold text-gray-900">SMS / Text</span>
+                    <span className="text-sm text-gray-500">No internet required</span>
+                  </div>
+                </a>
+              )}
+            </div>
+            
+            <div className="mt-6 text-center text-sm text-gray-400">
+              Just send the pre-filled message to instantly build your store!
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

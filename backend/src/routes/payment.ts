@@ -49,47 +49,84 @@ router.post('/razorpay', async (req: Request, res: Response) => {
     // 2. We only care about payment_link.paid
     if (payload.event === 'payment_link.paid') {
       const paymentLink = payload.payload.payment_link.entity;
-      const merchantPhone = paymentLink.notes?.merchant_phone;
+      const senderId = paymentLink.notes?.sender_id || paymentLink.notes?.merchant_phone; // support both
       const amountPaid = paymentLink.amount_paid; // in paise
       const status = paymentLink.status; // e.g., 'paid'
 
       const { getPlanFromAmount, getAmountFromPlan } = require('../services/payment.service');
-      const plan = getPlanFromAmount(amountPaid / 100);
-      const isYearly = (amountPaid / 100) === getAmountFromPlan(plan, true);
+      const plan = await getPlanFromAmount(amountPaid / 100);
+      const yearlyAmount = await getAmountFromPlan(plan, true);
+      const isYearly = (amountPaid / 100) === yearlyAmount;
 
       if (status !== 'paid' || (!plan || (plan === 'basic' && amountPaid / 100 !== 99 && amountPaid / 100 !== 1010))) {
         // basic is the fallback, so if it's basic but the amount isn't exactly the basic amount, it's invalid
-        console.warn(`⚠️ Payment verification failed for ${merchantPhone}: Status=${status}, AmountPaid=${amountPaid} is invalid`);
+        console.warn(`⚠️ Payment verification failed for ${senderId}: Status=${status}, AmountPaid=${amountPaid} is invalid`);
         return; // Halt and do NOT reactivate
       }
 
-      if (merchantPhone) {
-        console.log(`✅ Payment verified successfully for merchant: ${merchantPhone} (Plan: ${plan}, Yearly: ${isYearly})`);
+      if (senderId) {
+        console.log(`✅ Payment verified successfully for merchant: ${senderId} (Plan: ${plan}, Yearly: ${isYearly})`);
         
-        // 3. Reactivate subscription ONLY AFTER verification
-        await reactivateSubscription(merchantPhone, plan, isYearly);
+        // Check if senderId is a phone number or an instagram/messenger ID
+        // The webhook doesn't strictly know the channel, but reactivateSubscription needs it.
+        // Wait, reactivateSubscription needs (channel, senderId). 
+        // We can infer channel: if it's all digits (with optional +), it's WhatsApp/SMS. Otherwise, we can try to guess or let the service handle it.
+        const isPhone = /^\\+?[1-9]\\d{9,14}$/.test(senderId);
+        let channel: 'whatsapp' | 'instagram' | 'messenger' = 'whatsapp';
+        // We can just try to reactivate by checking all columns, or pass a special channel 'any' to merchant.service.
+        // But since reactivateSubscription takes (channel, senderId, plan, isYearly), let's just do it directly here using supabase.
+        const { supabase } = require('../db/supabase');
+        
+        const now = new Date();
+        const daysToAdd = isYearly ? 365 : 30;
+        
+        // Fetch the merchant to get their current trial_ends_at
+        const { data: merchant, error: fetchError } = await supabase
+          .from('merchants')
+          .select('id, trial_ends_at, is_active, phone_number, instagram_id, messenger_id')
+          .or(`phone_number.eq.${senderId},instagram_id.eq.${senderId},messenger_id.eq.${senderId}`)
+          .single();
+          
+        if (merchant && !fetchError) {
+          const currentExpiry = new Date(merchant.trial_ends_at);
+          const newExpiry = (merchant.is_active && currentExpiry > now) 
+            ? new Date(currentExpiry.getTime() + daysToAdd * 24 * 60 * 60 * 1000)
+            : new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
 
-        // 4. Send success message via WhatsApp
-        // Since we don't have a messageId, we send a direct message (not a reply)
-        const axios = require('axios');
-        await axios.post(
-          `https://graph.facebook.com/v21.0/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
-          {
-            messaging_product: 'whatsapp',
-            recipient_type: 'individual',
-            to: merchantPhone,
-            type: 'text',
-            text: {
-              body: `🎉 *Payment Successful!*\n\nThank you for subscribing to the Maghgo *${plan.toUpperCase()}* plan. Your store has been reactivated for the next ${isYearly ? '365' : '30'} days. You can now continue adding products!`,
-            },
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${env.WHATSAPP_TOKEN}`,
-              'Content-Type': 'application/json',
-            },
+          await supabase
+            .from('merchants')
+            .update({
+              is_active: true,
+              subscription_plan: plan,
+              trial_ends_at: newExpiry.toISOString(),
+            })
+            .eq('id', merchant.id);
+            
+          // 4. Send success message via WhatsApp (if they have a phone number)
+          if (merchant.phone_number) {
+            const axios = require('axios');
+            await axios.post(
+              `https://graph.facebook.com/v21.0/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+              {
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: merchant.phone_number,
+                type: 'text',
+                text: {
+                  body: `🎉 *Payment Successful!*\n\nThank you for subscribing to the Maghgo *${plan.toUpperCase()}* plan. Your store has been reactivated for the next ${isYearly ? '365' : '30'} days. You can now continue adding products!`,
+                },
+              },
+              {
+                headers: {
+                  Authorization: `Bearer ${env.WHATSAPP_TOKEN}`,
+                  'Content-Type': 'application/json',
+                },
+              }
+            ).catch((e: any) => console.error('Failed to send WhatsApp payment confirmation:', e));
           }
-        );
+        } else {
+           console.error(`⚠️ Could not find merchant for senderId: ${senderId}`);
+        }
       }
     }
   } catch (error) {

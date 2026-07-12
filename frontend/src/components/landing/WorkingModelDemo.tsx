@@ -48,7 +48,7 @@ export function WorkingModelDemo() {
       // Simulate Bot Reply
       setMessages(prev => [...prev, { 
         sender: 'bot', 
-        text: `✅ Product added successfully!\n\n📦 ${title}\n💰 ₹${price}\n\n🔗 View store: maghgo.com/demo` 
+        text: `✅ Product added successfully!\n\n📦 ${title}\n💰 ₹${price}\n\n🔗 View store: maghgo.goatech.tech/demo` 
       }]);
 
       // Instantly add to Web Store (right side)
@@ -109,7 +109,7 @@ export function WorkingModelDemo() {
           <div className="demo-section__store">
             <div className="demo-section__store-header">
               <h3>Demo Store</h3>
-              <span>maghgo.com/demo</span>
+              <span>maghgo.goatech.tech/demo</span>
             </div>
             
             <div className="demo-section__store-grid">

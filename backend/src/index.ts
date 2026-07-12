@@ -1,3 +1,5 @@
+import * as Sentry from '@sentry/node';
+import { nodeProfilingIntegration } from '@sentry/profiling-node';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -14,6 +16,20 @@ import { errorHandler } from './middleware/error-handler';
 import { startCleanupJob } from './jobs/cleanup.job';
 
 const app = express();
+
+// ─── Sentry Initialization (AI Error Tracking) ───────────────────────────────
+if (env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: env.SENTRY_DSN,
+    integrations: [
+      nodeProfilingIntegration(),
+    ],
+    // Tracing
+    tracesSampleRate: 1.0, //  Capture 100% of the transactions
+    // Set sampling rate for profiling - this is relative to tracesSampleRate
+    profilesSampleRate: 1.0,
+  });
+}
 
 // Initialize the daily cleanup cron job
 startCleanupJob();
@@ -53,6 +69,9 @@ app.use('/demo', demoRouter);
 app.use('/health', healthRouter);
 
 // ─── Error Handler ───────────────────────────────────────────────────────────
+
+// The error handler must be before any other error middleware and after all controllers
+Sentry.setupExpressErrorHandler(app);
 
 app.use(errorHandler);
 

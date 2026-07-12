@@ -3,11 +3,13 @@
 import React from 'react';
 import { CartItem as CartItemType } from '@/types';
 import { generateWhatsAppLink, generateCheckoutMessage } from '@/lib/utils';
+import { Camera, MessageSquare, Phone } from 'lucide-react';
 
 interface CheckoutButtonProps {
   phone: string;
   storeName: string;
   items: CartItemType[];
+  instagramHandle?: string;
 }
 
 /** WhatsApp SVG icon */
@@ -19,22 +21,59 @@ function WhatsAppIcon() {
   );
 }
 
-export default function CheckoutButton({ phone, storeName, items }: CheckoutButtonProps) {
+export default function CheckoutButton({ phone, storeName, items, instagramHandle }: CheckoutButtonProps) {
   if (items.length === 0) return null;
 
   const message = generateCheckoutMessage(storeName, items);
-  const link = generateWhatsAppLink(phone, message);
+  const waLink = generateWhatsAppLink(phone, message);
+  const smsLink = `sms:${phone}?body=${encodeURIComponent(message)}`;
+  const telLink = `tel:${phone}`;
+  const igLink = instagramHandle ? `https://ig.me/m/${instagramHandle.replace('@', '')}` : null;
 
   return (
-    <a
-      href={link}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="checkout-btn"
-      aria-label="Complete order via WhatsApp"
-    >
-      <WhatsAppIcon />
-      Order via WhatsApp
-    </a>
+    <div className="flex flex-col gap-3">
+      <a
+        href={waLink}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="btn btn--whatsapp btn--full"
+        aria-label="Complete order via WhatsApp"
+      >
+        <WhatsAppIcon />
+        Order via WhatsApp
+      </a>
+
+      {igLink && (
+        <a
+          href={igLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn btn--primary btn--full bg-pink-600 hover:bg-pink-700"
+          aria-label="Order via Instagram DM"
+        >
+          <Camera className="w-5 h-5 mr-2" />
+          Order via Instagram DM
+        </a>
+      )}
+      
+      <div className="grid grid-cols-2 gap-3">
+        <a
+          href={smsLink}
+          className="btn btn--secondary w-full"
+          aria-label="Order via SMS"
+        >
+          <MessageSquare className="w-4 h-4" />
+          SMS
+        </a>
+        <a
+          href={telLink}
+          className="btn btn--secondary w-full"
+          aria-label="Call Store"
+        >
+          <Phone className="w-4 h-4" />
+          Call
+        </a>
+      </div>
+    </div>
   );
 }

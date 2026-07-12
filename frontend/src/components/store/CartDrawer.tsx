@@ -10,9 +10,10 @@ interface CartDrawerProps {
   phone: string;
   storeName: string;
   currency?: string;
+  instagramHandle?: string;
 }
 
-export default function CartDrawer({ phone, storeName, currency = 'INR' }: CartDrawerProps) {
+export default function CartDrawer({ phone, storeName, currency = 'INR', instagramHandle }: CartDrawerProps) {
   const { items, isOpen, closeCart, updateQuantity, removeItem, getTotal } = useCartStore();
 
   // Escape key handler
@@ -115,7 +116,7 @@ export default function CartDrawer({ phone, storeName, currency = 'INR' }: CartD
                 {formatPrice(total, currency)}
               </span>
             </div>
-            <CheckoutButton phone={phone} storeName={storeName} items={items} />
+            <CheckoutButton phone={phone} storeName={storeName} items={items} instagramHandle={instagramHandle} />
           </div>
         )}
       </aside>

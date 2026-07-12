@@ -88,7 +88,7 @@ This guide explains exactly what you need, where to get it, and how to find it.
 5. To get the `RAZORPAY_WEBHOOK_SECRET`:
    - Go to **Account & Settings** → **Webhooks**.
    - Click **Add New Webhook**.
-   - Set the URL to your deployed backend URL: `https://your-backend.com/webhook/razorpay`.
+   - Set the URL to your deployed backend URL: `https://your-backend.com/payment/razorpay`.
    - Create a random password and enter it in the **Secret** field. This is your `RAZORPAY_WEBHOOK_SECRET`.
    - Check the `payment_link.paid` event and save.
 
@@ -100,3 +100,4 @@ These are variables you create yourself; you don't get them from any third-party
 
 - `WEBHOOK_VERIFY_TOKEN`: Create a random, secure password (e.g., `my_super_secret_webhook_123`). You will enter this same password in the Meta Dashboard when you configure your Webhook, and also put it in your backend `.env`.
 - `REVALIDATION_SECRET`: Create another random password (e.g., `update_my_store_123`). This must be exactly the same in both your frontend `.env` and backend `.env`. It proves that your backend has permission to force the frontend to refresh the product catalog.
+- `FRONTEND_URL`: Your live frontend domain (e.g., `https://your-frontend-domain.com`). Used by the backend to trigger ISR revalidation.

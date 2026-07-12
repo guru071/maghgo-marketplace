@@ -14,7 +14,7 @@ Maghgo is a platform that lets local shop owners create stunning e-commerce webs
 
 1. **Merchant sends a photo** with caption like `"Red Cotton T-Shirt Rs 499"` to the Maghgo WhatsApp bot
 2. **AI processes the image** — removes messy backgrounds, makes it look professional
-3. **Product goes live instantly** on their custom web store at `maghgo.com/store-name`
+3. **Product goes live instantly** on their custom web store at `maghgo.goatech.tech/store-name`
 4. **Customers browse & checkout** — orders are sent directly to the merchant via WhatsApp
 
 ## Architecture

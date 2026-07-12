@@ -70,7 +70,7 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
         </footer>
       )}
 
-      <CartDrawer storeName={merchant.store_name} phone={merchant.phone_number} />
+      <CartDrawer storeName={merchant.store_name} phone={merchant.phone_number} instagramHandle={merchant.instagram_handle} />
       <FloatingCartButton />
     </div>
   );

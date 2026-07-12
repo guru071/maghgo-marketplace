@@ -23,6 +23,9 @@ const DEMO_MERCHANT = {
   subscription_plan: 'premium' as const,
   trial_ends_at: new Date().toISOString(),
   created_at: new Date().toISOString(),
+  instagram_handle: 'goatech.tech',
+  facebook_url: 'goatech',
+  x_handle: 'goatechHQ',
 };
 
 const DEMO_PRODUCTS = [

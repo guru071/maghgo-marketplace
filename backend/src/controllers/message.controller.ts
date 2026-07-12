@@ -1,432 +1,141 @@
 import { Request, Response } from 'express';
-import { WhatsAppWebhookPayload, WhatsAppMessage } from '../types/whatsapp';
-import { getMerchantByPhone, isSubscriptionActive, createMerchant, getProductLimit } from '../services/merchant.service';
-import { parseCaption } from '../services/parser.service';
-import { getMediaUrl, downloadMedia, sendReply } from '../services/whatsapp.service';
-import { removeBackground } from '../services/media.service';
-import { uploadImage } from '../services/storage.service';
-import { createProduct, getProducts, deleteProduct, getProductCount } from '../services/product.service';
-import { triggerRevalidation } from '../services/revalidate.service';
-import { createPaymentLink, getAmountFromPlan } from '../services/payment.service';
-import { env } from '../config/env';
+import { WhatsAppWebhookPayload } from '../types/whatsapp';
+import { processBotMessage, BotMessage } from '../services/bot.service';
+import { getMediaUrl, downloadMedia, sendReply as sendWhatsappReply } from '../services/whatsapp.service';
+import { sendMetaReply, downloadMetaMedia } from '../services/meta.service';
 
-// ─── Message Controller ──────────────────────────────────────────────────────
-
-/**
- * Handle incoming WhatsApp webhook messages.
- * Returns 200 immediately and processes asynchronously.
- */
 export function handleIncomingMessage(req: Request, res: Response): void {
-  // Always ACK the webhook immediately to prevent retries
   res.sendStatus(200);
 
-  const body = req.body as WhatsAppWebhookPayload;
+  const body = req.body;
 
-  // Guard: only process WhatsApp messages
-  if (body.object !== 'whatsapp_business_account') return;
+  if (body.object === 'whatsapp_business_account') {
+    handleWhatsapp(body as WhatsAppWebhookPayload);
+  } else if (body.object === 'instagram') {
+    handleInstagram(body);
+  } else if (body.object === 'page') {
+    handleMessenger(body);
+  }
+}
 
+function handleWhatsapp(body: WhatsAppWebhookPayload) {
   for (const entry of body.entry) {
     for (const change of entry.changes) {
       const messages = change.value.messages;
       if (!messages || messages.length === 0) continue;
 
       for (const message of messages) {
-        // Fire-and-forget — errors are logged inside processMessage
-        setImmediate(() => {
-          processMessage(message).catch((err) => {
-            console.error('❌ Error processing message:', err);
-          });
+        setImmediate(async () => {
+          try {
+            const botMsg: BotMessage = {
+              channel: 'whatsapp',
+              senderId: message.from,
+              messageId: message.id,
+              type: message.type === 'image' ? 'image' : 'text',
+              text: message.text?.body,
+              sendReply: async (text: string) => {
+                await sendWhatsappReply(message.from, message.id, text);
+              }
+            };
+
+            if (message.type === 'image' && message.image) {
+              const mediaUrl = await getMediaUrl(message.image.id);
+              const buffer = await downloadMedia(mediaUrl);
+              botMsg.image = {
+                caption: message.image.caption,
+                mime_type: message.image.mime_type,
+                buffer
+              };
+            }
+
+            await processBotMessage(botMsg);
+          } catch (err) {
+            console.error('Error processing WA message', err);
+          }
         });
       }
     }
   }
 }
 
-// ─── Async Message Processor ─────────────────────────────────────────────────
-
-async function processMessage(message: WhatsAppMessage): Promise<void> {
-  const from = message.from;
-  const messageId = message.id;
-
-  try {
-    if (message.type === 'image') {
-      await handleImageMessage(from, messageId, message);
-    } else if (message.type === 'text' && message.text) {
-      await handleTextCommand(from, messageId, message.text.body);
-    }
-    // Silently ignore other message types
-  } catch (error) {
-    console.error(`❌ Error processing message from ${from}:`, error);
-    await sendReply(
-      from,
-      messageId,
-      '❌ Sorry, something went wrong on our end while processing your request. Please try again later.'
-    ).catch(e => console.error('Failed to send error fallback:', e));
-  }
-}
-
-// ─── Image Message Handler ───────────────────────────────────────────────────
-
-async function handleImageMessage(
-  from: string,
-  messageId: string,
-  message: WhatsAppMessage
-): Promise<void> {
-  const image = message.image!;
-
-  // 1. Look up merchant
-  const merchant = await getMerchantByPhone(from);
-  if (!merchant) {
-    await sendReply(
-      from,
-      messageId,
-      '❌ You\'re not registered yet on Maghgo.\n\nTo create your store instantly, reply with:\n\n*REGISTER Your Store Name*\n\nExample: REGISTER Ramesh Mobiles'
-    );
-    return;
-  }
-
-  // 1.5. Check if subscription is active
-  if (!isSubscriptionActive(merchant)) {
-    if (merchant.subscription_plan === 'inactive' || merchant.subscription_plan === 'trial') {
-      await sendReply(
-        from,
-        messageId,
-        `⚠️ *Store Inactive!*\n\nYour store is reserved but not yet active. Please reply with "UPGRADE" to select your plan and complete your payment.`
-      );
-    } else {
-      // Determine the price based on their last plan to renew
-      const monthlyAmount = getAmountFromPlan(merchant.subscription_plan, false);
-      const yearlyAmount = getAmountFromPlan(merchant.subscription_plan, true);
-      const monthlyLink = await createPaymentLink(from, monthlyAmount);
-      const yearlyLink = await createPaymentLink(from, yearlyAmount);
-      await sendReply(
-        from,
-        messageId,
-        `⚠️ *Subscription Expired!*\n\nYour subscription has ended and your store is currently inactive. To reactivate your store and continue adding products, please renew your plan:\n\n` +
-        `📅 *Pay Monthly (₹${monthlyAmount}/mo):*\n🔗 ${monthlyLink}\n\n` +
-        `🎉 *Pay Yearly (Save 15% - ₹${yearlyAmount}/yr):*\n🔗 ${yearlyLink}`
-      );
-    }
-    return;
-  }
-
-  // 1.6 Check Product Limits based on Plan
-  const currentProductCount = await getProductCount(merchant.id);
-  const limit = getProductLimit(merchant.subscription_plan);
-
-  if (currentProductCount >= limit) {
-    if (merchant.subscription_plan === 'inactive' || merchant.subscription_plan === 'trial') {
-      await sendReply(
-        from,
-        messageId,
-        `⚠️ *Store Inactive!*\n\nYour store is reserved but not yet active. Please reply with "UPGRADE" to select your plan and complete your payment.`
-      );
-    } else {
-      await sendReply(
-        from,
-        messageId,
-        `⚠️ *Plan Limit Reached!*\n\nYour current plan allows a maximum of ${limit} products. Please reply with "UPGRADE" to see higher tier plans and unlock more capacity.`
-      );
-    }
-    return;
-  }
-
-  // 2. Parse caption
-  const caption = image.caption || '';
-  const parsed = parseCaption(caption);
-  if (!parsed) {
-    await sendReply(
-      from,
-      messageId,
-      '⚠️ Could not parse product details from your caption.\n\n' +
-      'Please include a currency symbol (Rs, ₹, INR, MRP) before the price:\n' +
-      '📝 *Product Name Rs Price*\n\n' +
-      'Examples:\n' +
-      '• Red Cotton T-Shirt Rs 499\n' +
-      '• Blue Jeans ₹1,299\n' +
-      '• Sneakers INR 2499'
-    );
-    return;
-  }
-
-  // 3. Download media (2-step: get URL → download binary)
-  const mediaUrl = await getMediaUrl(image.id);
-  const imageBuffer = await downloadMedia(mediaUrl);
-
-  // 4. Remove background
-  let processedBuffer: Buffer;
-  try {
-    processedBuffer = await removeBackground(imageBuffer);
-  } catch (err) {
-    console.warn('⚠️ Background removal failed, using original image:', err instanceof Error ? err.message : err);
-    processedBuffer = imageBuffer;
-  }
-
-  // 5. Generate a temporary product ID for storage paths
-  const productId = crypto.randomUUID();
-
-  // 6. Upload both original and processed images
-  const [originalUrl, processedUrl] = await Promise.all([
-    uploadImage(merchant.id, productId, imageBuffer, image.mime_type, '-original'),
-    uploadImage(merchant.id, productId, processedBuffer, 'image/png', '-processed'),
-  ]);
-
-  // 7. Save product to database
-  const product = await createProduct(
-    merchant.id,
-    parsed.title,
-    parsed.price,
-    originalUrl,
-    processedUrl
-  );
-
-  // 8. Send confirmation reply
-  const storeUrl = `${env.FRONTEND_URL}/${merchant.store_slug}`;
-  await sendReply(
-    from,
-    messageId,
-    `✅ *Product added successfully!*\n\n` +
-    `📦 *${product.title}*\n` +
-    `💰 ₹${product.price.toLocaleString('en-IN')}\n\n` +
-    `🔗 View your store: ${storeUrl}`
-  );
-
-  // 9. Trigger ISR revalidation
-  await triggerRevalidation(merchant.store_slug);
-}
-
-// ─── Text Command Handler ────────────────────────────────────────────────────
-
-async function handleTextCommand(
-  from: string,
-  messageId: string,
-  text: string
-): Promise<void> {
-  const command = text.trim().toUpperCase();
-
-  // ── REGISTER ───────────────────────────────────────────────────────────
-  if (command.startsWith('REGISTER ')) {
-    const input = text.substring(9).trim();
-    let storeName = input;
-    let requestedPlan = 'BASIC';
-    
-    if (input.includes('-')) {
-      const parts = input.split('-');
-      storeName = parts[0].trim();
-      requestedPlan = parts[1].trim().toUpperCase();
+function handleInstagram(body: any) {
+  for (const entry of body.entry) {
+    for (const messaging of entry.messaging) {
+      if (!messaging.message) continue;
       
-      // Basic sanitization
-      if (!['BASIC', 'STARTER', 'PRO', 'ADVANCED', 'PREMIUM', 'BUSINESS', 'AGENCY', 'VIP', 'ENTERPRISE', 'CUSTOM'].includes(requestedPlan)) {
-        requestedPlan = 'BASIC';
-      }
-    }
+      setImmediate(async () => {
+        try {
+          const senderId = messaging.sender.id;
+          const message = messaging.message;
+          const isImage = message.attachments && message.attachments[0]?.type === 'image';
 
-    if (!storeName || storeName.toUpperCase() === '[TYPE YOUR STORE NAME HERE]') {
-      await sendReply(from, messageId, '⚠️ Please replace the brackets with your actual store name.\n\nExample: REGISTER Ramesh Mobiles - BASIC');
-      return;
-    }
+          const botMsg: BotMessage = {
+            channel: 'instagram',
+            senderId,
+            messageId: message.mid,
+            type: isImage ? 'image' : 'text',
+            text: message.text,
+            sendReply: async (text: string) => {
+              await sendMetaReply(senderId, text);
+            }
+          };
 
-    // Check if already registered
-    const existing = await getMerchantByPhone(from);
-    if (existing) {
-      await sendReply(from, messageId, `✅ You already have a store registered: *${existing.store_name}*\n\nLink: ${env.FRONTEND_URL}/${existing.store_slug}`);
-      return;
-    }
+          if (isImage) {
+            const url = message.attachments[0].payload.url;
+            const buffer = await downloadMetaMedia(url);
+            botMsg.image = {
+              caption: message.text,
+              mime_type: 'image/jpeg',
+              buffer
+            };
+          }
 
-    try {
-      const storeSlug = storeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
-      const newMerchant = await createMerchant(from, storeName, storeSlug);
-      
-      if (requestedPlan === 'CUSTOM') {
-        await sendReply(from, messageId, `🎉 *Welcome to Maghgo!*\n\nYour store *${newMerchant.store_name}* has been reserved.\n\nOur team will contact you shortly to set up your Custom plan.`);
-        return;
-      }
-
-      const monthlyAmount = getAmountFromPlan(requestedPlan, false);
-      const yearlyAmount = getAmountFromPlan(requestedPlan, true);
-      const monthlyLink = await createPaymentLink(from, monthlyAmount);
-      const yearlyLink = await createPaymentLink(from, yearlyAmount);
-
-      await sendReply(
-        from,
-        messageId,
-        `🎉 *Welcome to Maghgo!*\n\nYour store *${newMerchant.store_name}* has been reserved.\n\n` +
-        `🚀 To activate your store and start adding products, please complete your payment for the *${requestedPlan} Plan*:\n\n` +
-        `📅 *Pay Monthly (₹${monthlyAmount}/mo):*\n🔗 ${monthlyLink}\n\n` +
-        `🎉 *Pay Yearly (Save 15% - ₹${yearlyAmount}/yr):*\n🔗 ${yearlyLink}`
-      );
-    } catch (err: any) {
-      await sendReply(from, messageId, `❌ ${err.message || 'Failed to create store.'}`);
-    }
-    return;
-  }
-
-  // Look up merchant for all other commands
-  const merchant = await getMerchantByPhone(from);
-  if (!merchant) {
-    await sendReply(
-      from,
-      messageId,
-      '❌ You\'re not registered yet on Maghgo.\n\nTo create your store instantly, reply with:\n\n*REGISTER Your Store Name*\n\nExample: REGISTER Ramesh Mobiles'
-    );
-    return;
-  }
-
-  // ── UPGRADE / BUY ────────────────────────────────────────────────────────────
-  if (command.startsWith('UPGRADE') || command.includes('I WANT TO BUY') || command.includes('I WANT TO START THE FREE TRIAL')) {
-    // Try to extract the price from the string (e.g. ₹799)
-    const priceMatch = command.match(/₹(\d+)/);
-    let plan = 'BASIC';
-    let amount = 99; // fallback basic
-    
-    if (priceMatch && priceMatch[1]) {
-      amount = parseInt(priceMatch[1], 10);
-      // Try to reverse-engineer plan from amount (monthly)
-      const testPlans = ['basic', 'starter', 'pro', 'advanced', 'premium', 'business', 'agency', 'vip', 'enterprise'];
-      for (const p of testPlans) {
-        if (getAmountFromPlan(p, false) === amount) {
-          plan = p;
-          break;
+          await processBotMessage(botMsg);
+        } catch (err) {
+          console.error('Error processing IG message', err);
         }
-      }
-    } else {
-      // Fallback for old UPGRADE commands
-      plan = command.split(' ')[1] || 'BASIC';
-      amount = getAmountFromPlan(plan);
+      });
     }
-    
-    if (amount === 0 || plan.toLowerCase() === 'custom') {
-      // Custom plan - no payment link needed yet, or just send a contact message
-      await sendReply(
-        from,
-        messageId,
-        `🎉 Great! Your custom request is noted. If you haven't registered yet, simply type *REGISTER Your Store Name*. If you already registered, you're good to go!`
-      );
-      return;
+  }
+}
+
+function handleMessenger(body: any) {
+  for (const entry of body.entry) {
+    for (const messaging of entry.messaging) {
+      if (!messaging.message) continue;
+      
+      setImmediate(async () => {
+        try {
+          const senderId = messaging.sender.id;
+          const message = messaging.message;
+          const isImage = message.attachments && message.attachments[0]?.type === 'image';
+
+          const botMsg: BotMessage = {
+            channel: 'messenger',
+            senderId,
+            messageId: message.mid,
+            type: isImage ? 'image' : 'text',
+            text: message.text,
+            sendReply: async (text: string) => {
+              await sendMetaReply(senderId, text);
+            }
+          };
+
+          if (isImage) {
+            const url = message.attachments[0].payload.url;
+            const buffer = await downloadMetaMedia(url);
+            botMsg.image = {
+              caption: message.text,
+              mime_type: 'image/jpeg',
+              buffer
+            };
+          }
+
+          await processBotMessage(botMsg);
+        } catch (err) {
+          console.error('Error processing Messenger message', err);
+        }
+      });
     }
-    
-    const monthlyAmount = getAmountFromPlan(plan, false);
-    const yearlyAmount = getAmountFromPlan(plan, true);
-    const monthlyLink = await createPaymentLink(from, monthlyAmount);
-    const yearlyLink = await createPaymentLink(from, yearlyAmount);
-
-    await sendReply(
-      from,
-      messageId,
-      `🚀 *Upgrade your Maghgo Plan!*\n\nPlease complete your payment for the *${plan.toUpperCase()} Plan* to unlock your limits:\n\n` +
-      `📅 *Pay Monthly (₹${monthlyAmount}/mo):*\n🔗 ${monthlyLink}\n\n` +
-      `🎉 *Pay Yearly (Save 15% - ₹${yearlyAmount}/yr):*\n🔗 ${yearlyLink}`
-    );
-    return;
   }
-
-  // If subscription is inactive, allow only HELP or STATUS, otherwise block
-  if (!isSubscriptionActive(merchant) && command !== 'HELP' && command !== 'STATUS') {
-    if (merchant.subscription_plan === 'inactive' || merchant.subscription_plan === 'trial') {
-      await sendReply(
-        from,
-        messageId,
-        `⚠️ *Store Inactive!*\n\nYour store is reserved but not yet active. Please reply with "UPGRADE" to select your plan and complete your payment.`
-      );
-    } else {
-      const monthlyAmount = getAmountFromPlan(merchant.subscription_plan, false);
-      const yearlyAmount = getAmountFromPlan(merchant.subscription_plan, true);
-      const monthlyLink = await createPaymentLink(from, monthlyAmount);
-      const yearlyLink = await createPaymentLink(from, yearlyAmount);
-      await sendReply(
-        from,
-        messageId,
-        `⚠️ *Subscription Expired!*\n\nYour subscription has ended. To continue using Maghgo commands and reactivate your store, please renew your plan:\n\n` +
-        `📅 *Pay Monthly (₹${monthlyAmount}/mo):*\n🔗 ${monthlyLink}\n\n` +
-        `🎉 *Pay Yearly (Save 15% - ₹${yearlyAmount}/yr):*\n🔗 ${yearlyLink}`
-      );
-    }
-    return;
-  }
-
-  // ── LIST ───────────────────────────────────────────────────────────────
-  if (command === 'LIST') {
-    const products = await getProducts(merchant.id);
-
-    if (products.length === 0) {
-      await sendReply(from, messageId, '📭 Your store has no products yet.\n\nSend a product image with caption to add one!');
-      return;
-    }
-
-    const productList = products
-      .map((p, i) => `${i + 1}. *${p.title}* — ₹${p.price.toLocaleString('en-IN')}`)
-      .join('\n');
-
-    await sendReply(
-      from,
-      messageId,
-      `📦 *Your Products (${products.length}):*\n\n${productList}`
-    );
-    return;
-  }
-
-  // ── DELETE ─────────────────────────────────────────────────────────────
-  if (command.startsWith('DELETE ')) {
-    const titleToDelete = text.trim().substring(7).trim();
-
-    if (!titleToDelete) {
-      await sendReply(from, messageId, '⚠️ Please specify the product name.\n\nExample: DELETE Red Cotton T-Shirt');
-      return;
-    }
-
-    const deletedCount = await deleteProduct(merchant.id, titleToDelete);
-
-    if (deletedCount === 0) {
-      await sendReply(from, messageId, `❌ No product found matching "*${titleToDelete}*".`);
-    } else {
-      await sendReply(
-        from,
-        messageId,
-        `🗑️ Removed ${deletedCount} product(s) matching "*${titleToDelete}*".`
-      );
-      await triggerRevalidation(merchant.store_slug);
-    }
-    return;
-  }
-
-  // ── STATUS ─────────────────────────────────────────────────────────────
-  if (command === 'STATUS') {
-    const count = await getProductCount(merchant.id);
-    const storeUrl = `${env.FRONTEND_URL}/${merchant.store_slug}`;
-
-    await sendReply(
-      from,
-      messageId,
-      `📊 *Store Status*\n\n` +
-      `🏪 *${merchant.store_name}*\n` +
-      `📦 Products: ${count}\n` +
-      `🔗 ${storeUrl}`
-    );
-    return;
-  }
-
-  // ── HELP ───────────────────────────────────────────────────────────────
-  if (command === 'HELP') {
-    await sendReply(
-      from,
-      messageId,
-      `📖 *Maghgo Commands*\n\n` +
-      `📸 *Add Product:* Send an image with caption\n` +
-      `   Format: Product Name Price\n` +
-      `   Example: Red Cotton T-Shirt ₹499\n\n` +
-      `📋 *LIST* — View all your products\n` +
-      `🗑️ *DELETE product name* — Remove a product\n` +
-      `📊 *STATUS* — Store URL & product count\n` +
-      `🚀 *UPGRADE* — Unlock higher product limits\n` +
-      `❓ *HELP* — Show this message`
-    );
-    return;
-  }
-
-  // ── Unknown command ────────────────────────────────────────────────────
-  await sendReply(
-    from,
-    messageId,
-    '🤔 I didn\'t understand that.\n\nType *HELP* to see available commands.'
-  );
 }

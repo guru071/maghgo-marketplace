@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { env } from '../config/env';
 import { verifyWebhookSignature } from '../middleware/webhook-verify';
 import { handleIncomingMessage } from '../controllers/message.controller';
+import { handleIncomingSms } from '../controllers/sms.controller';
 
 // ─── Webhook Routes ──────────────────────────────────────────────────────────
 
@@ -32,5 +33,13 @@ router.get('/', (req: Request, res: Response): void => {
  * Signature is verified by the middleware, then delegated to the controller.
  */
 router.post('/', verifyWebhookSignature, handleIncomingMessage);
+
+/**
+ * POST /webhook/sms
+ * Receive incoming Twilio SMS/MMS messages.
+ * We use Express's URL-encoded parser since Twilio sends application/x-www-form-urlencoded.
+ */
+import express from 'express';
+router.post('/sms', express.urlencoded({ extended: true }), handleIncomingSms);
 
 export default router;

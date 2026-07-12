@@ -10,6 +10,10 @@ export interface Merchant {
   theme_config?: any;
   trial_ends_at: string;
   created_at: string;
+  theme_id?: string;
+  instagram_handle?: string;
+  facebook_url?: string;
+  x_handle?: string;
 }
 
 export interface Product {

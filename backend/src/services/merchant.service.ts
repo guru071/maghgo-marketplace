@@ -1,21 +1,20 @@
 import { supabase } from '../db/supabase';
 import { Merchant } from '../types/whatsapp';
 
-// ─── Merchant Lookup Service ─────────────────────────────────────────────────
+export type Channel = 'whatsapp' | 'instagram' | 'messenger' | 'sms';
 
-/**
- * Look up a merchant by their WhatsApp phone number.
- *
- * @param phoneNumber - The sender's phone number (without '+' prefix).
- * @returns The merchant record, or `null` if not registered.
- */
-export async function getMerchantByPhone(
-  phoneNumber: string
+export async function getMerchantByChannel(
+  channel: Channel,
+  senderId: string
 ): Promise<Merchant | null> {
+  let column = 'phone_number';
+  if (channel === 'instagram') column = 'instagram_id';
+  if (channel === 'messenger') column = 'messenger_id';
+
   const { data, error } = await supabase
     .from('merchants')
     .select('*')
-    .eq('phone_number', phoneNumber)
+    .eq(column, senderId)
     .single();
 
   if (error) {
@@ -26,36 +25,36 @@ export async function getMerchantByPhone(
   return data as Merchant;
 }
 
-/**
- * Creates a new merchant in the database (Registration).
- */
 export async function createMerchant(
-  phoneNumber: string,
+  channel: Channel,
+  senderId: string,
   storeName: string,
   storeSlug: string
 ): Promise<Merchant> {
-  // Generate trial end date (4 days from now)
   const trialEndsAt = new Date();
   trialEndsAt.setDate(trialEndsAt.getDate() + 4);
 
+  const insertData: any = {
+    store_name: storeName,
+    store_slug: storeSlug,
+    subscription_plan: 'inactive',
+    is_active: false,
+    trial_ends_at: new Date(0).toISOString(),
+  };
+
+  if (channel === 'whatsapp') insertData.phone_number = senderId;
+  if (channel === 'instagram') insertData.instagram_id = senderId;
+  if (channel === 'messenger') insertData.messenger_id = senderId;
+
   const { data, error } = await supabase
     .from('merchants')
-    .insert([
-      {
-        phone_number: phoneNumber,
-        store_name: storeName,
-        store_slug: storeSlug,
-        subscription_plan: 'inactive',
-        is_active: false,
-        trial_ends_at: new Date(0).toISOString(),
-      },
-    ])
+    .insert([insertData])
     .select('*')
     .single();
 
   if (error) {
     if (error.code === '23505') {
-      throw new Error('This store name or phone number is already registered.');
+      throw new Error('This store name or account is already registered.');
     }
     throw new Error(`Registration failed: ${error.message}`);
   }
@@ -63,47 +62,40 @@ export async function createMerchant(
   return data as Merchant;
 }
 
-/**
- * Returns the maximum number of products allowed for a given subscription plan.
- */
-export function getProductLimit(plan: string): number {
-  switch (plan) {
-    case 'basic': return 50;
-    case 'starter': return 150;
-    case 'pro': return 300;
-    case 'advanced': return 600;
-    case 'premium': return 1000;
-    case 'business': return 2000;
-    case 'agency': return 5000;
-    case 'vip': return 15000;
-    case 'enterprise': return Infinity;
-    case 'custom': return Infinity;
-    default: return 1;
+export async function getProductLimit(plan: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('plans')
+    .select('product_limit')
+    .eq('slug', plan.toLowerCase())
+    .single();
+
+  if (error || !data) {
+    return 50; // fallback basic limit
   }
+
+  return data.product_limit;
 }
 
-/**
- * Checks if the merchant's subscription/trial is still active.
- */
 export function isSubscriptionActive(merchant: Merchant): boolean {
   const trialEnds = new Date(merchant.trial_ends_at);
   const now = new Date();
   return merchant.is_active && trialEnds > now;
 }
 
-/**
- * Reactivates the merchant's subscription for 30 days and sets them active.
- */
 export async function reactivateSubscription(
-  phoneNumber: string, 
+  channel: Channel,
+  senderId: string, 
   plan: 'basic' | 'starter' | 'pro' | 'advanced' | 'premium' | 'business' | 'agency' | 'vip' | 'enterprise' | 'custom',
   isYearly: boolean = false
 ): Promise<void> {
-  // Fetch current merchant to check their existing expiry
+  let column = 'phone_number';
+  if (channel === 'instagram') column = 'instagram_id';
+  if (channel === 'messenger') column = 'messenger_id';
+
   const { data: merchant, error: fetchError } = await supabase
     .from('merchants')
     .select('trial_ends_at, is_active')
-    .eq('phone_number', phoneNumber)
+    .eq(column, senderId)
     .single();
 
   if (fetchError) {
@@ -114,8 +106,6 @@ export async function reactivateSubscription(
   const currentExpiry = new Date(merchant.trial_ends_at);
   const daysToAdd = isYearly ? 365 : 30;
   
-  // If they are currently active and expiry is in the future, add days to their existing expiry.
-  // Otherwise, add days from now.
   const newExpiry = (merchant.is_active && currentExpiry > now) 
     ? new Date(currentExpiry.getTime() + daysToAdd * 24 * 60 * 60 * 1000)
     : new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
@@ -127,7 +117,7 @@ export async function reactivateSubscription(
       subscription_plan: plan,
       trial_ends_at: newExpiry.toISOString(),
     })
-    .eq('phone_number', phoneNumber);
+    .eq(column, senderId);
 
   if (error) {
     throw new Error(`Failed to reactivate subscription: ${error.message}`);
