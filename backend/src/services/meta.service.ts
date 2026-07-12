@@ -11,8 +11,10 @@ export async function sendMetaReply(
   recipientId: string,
   text: string,
 ): Promise<void> {
-  if (!env.META_PAGE_ACCESS_TOKEN) {
-    console.warn('⚠️ META_PAGE_ACCESS_TOKEN is missing. Cannot send Meta reply.');
+  const accessToken = env.META_PAGE_ACCESS_TOKEN || env.WHATSAPP_TOKEN;
+
+  if (!accessToken) {
+    console.warn('⚠️ META_PAGE_ACCESS_TOKEN / WHATSAPP_TOKEN is missing. Cannot send Meta reply.');
     console.log(`[MOCK META REPLY to ${recipientId}]: ${text}`);
     return;
   }
@@ -26,7 +28,7 @@ export async function sendMetaReply(
       },
       {
         headers: {
-          Authorization: `Bearer ${env.META_PAGE_ACCESS_TOKEN}`,
+          Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json'
         }
       }
