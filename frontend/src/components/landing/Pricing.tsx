@@ -7,8 +7,6 @@ import { MessageCircle, MessageSquare, Camera, X } from 'lucide-react';
 export function Pricing({ 
   enabledPlatforms = {
     whatsapp_enabled: true,
-    instagram_enabled: true,
-    messenger_enabled: true,
     sms_enabled: true
   },
   plans = []
@@ -143,39 +141,7 @@ export function Pricing({
                 </a>
               )}
 
-              {enabledPlatforms.instagram_enabled && (
-                <a 
-                  href="https://ig.me/m/goatech.tech"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full flex items-center p-4 rounded-xl border border-gray-200 hover:border-pink-500 hover:bg-pink-50 transition-all group"
-                >
-                  <div className="w-12 h-12 flex items-center justify-center rounded-full bg-pink-100 text-pink-600 group-hover:bg-gradient-to-tr group-hover:from-yellow-400 group-hover:via-pink-500 group-hover:to-purple-500 group-hover:text-white transition-all">
-                    <Camera size={24} />
-                  </div>
-                  <div className="ml-4 text-left">
-                    <span className="block font-semibold text-gray-900">Instagram DM</span>
-                    <span className="text-sm text-gray-500">Build your store via Insta</span>
-                  </div>
-                </a>
-              )}
 
-              {enabledPlatforms.messenger_enabled && (
-                <a 
-                  href="https://m.me/goatech.tech"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full flex items-center p-4 rounded-xl border border-gray-200 hover:border-blue-600 hover:bg-blue-50 transition-all group"
-                >
-                  <div className="w-12 h-12 flex items-center justify-center rounded-full bg-blue-100 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                    <MessageSquare size={24} />
-                  </div>
-                  <div className="ml-4 text-left">
-                    <span className="block font-semibold text-gray-900">Messenger</span>
-                    <span className="text-sm text-gray-500">Use Facebook Messenger</span>
-                  </div>
-                </a>
-              )}
 
               {enabledPlatforms.sms_enabled && (
                 <a 
