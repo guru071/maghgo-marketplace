@@ -7,7 +7,6 @@ export function middleware(req: NextRequest) {
     req.nextUrl.pathname.startsWith('/goatech-admin-hq') ||
     req.nextUrl.pathname.startsWith('/api/goatech-admin-hq') ||
     req.nextUrl.pathname.startsWith('/api/seed-themes') ||
-    req.nextUrl.pathname.startsWith('/api/builder/') ||
     req.nextUrl.pathname.startsWith('/api/store/apply-theme')
   ) {
     const basicAuth = req.headers.get('authorization');
@@ -44,7 +43,6 @@ export const config = {
     '/goatech-admin-hq/:path*',
     '/api/goatech-admin-hq/:path*',
     '/api/seed-themes/:path*',
-    '/api/builder/:path*',
     '/api/store/apply-theme',
   ],
 };
