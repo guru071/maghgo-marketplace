@@ -19,9 +19,9 @@ export function Hero() {
           Turn your WhatsApp into a premium web store. Just send photos of your products. We handle the background removal, formatting, and hosting instantly.
         </p>
         <div className="hero__actions">
-          <a href="#pricing">
-            <Button className="btn--primary btn--large hero__btn">View Pricing & Start</Button>
-          </a>
+          <Link href="/register">
+            <Button className="btn--primary btn--large hero__btn">Create Your Store Free</Button>
+          </Link>
           <Link href="#how-it-works">
             <Button variant="secondary" className="btn--large hero__btn-secondary">See How It Works</Button>
           </Link>

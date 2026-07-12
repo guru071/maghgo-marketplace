@@ -10,6 +10,7 @@ import healthRouter from './routes/health';
 import { paymentRouter } from './routes/payment';
 import demoRouter from './routes/demo';
 import { dashboardRouter } from './routes/dashboard';
+import { authRouter } from './routes/auth';
 import { errorHandler } from './middleware/error-handler';
 
 // ─── Process Error Handling ──────────────────────────────────────────────────
@@ -82,6 +83,7 @@ app.use('/webhook', paymentRouter);
 app.use('/demo', demoRouter);
 app.use('/health', healthRouter);
 app.use('/api/dashboard', dashboardRouter);
+app.use('/api/auth', authRouter);
 
 // ─── Error Handler ───────────────────────────────────────────────────────────
 

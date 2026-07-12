@@ -17,8 +17,9 @@ export function Header() {
           <Link href="/#pricing" className="header__link">Pricing</Link>
           <Link href="/demo" className="header__link" style={{ color: 'var(--accent)' }}>Live Demo</Link>
         </nav>
-        <div className="header__actions">
-          {/* Action buttons removed as requested */}
+        <div className="header__actions flex items-center space-x-4">
+          <Link href="/login" className="text-sm font-medium text-gray-700 hover:text-black">Log in</Link>
+          <Link href="/register" className="bg-black text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-gray-800 transition-colors">Start for free</Link>
         </div>
       </div>
     </header>
