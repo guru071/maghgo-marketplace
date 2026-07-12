@@ -33,7 +33,7 @@ export async function processBotMessage(msg: BotMessage): Promise<void> {
     if (msg.type === 'image' && msg.image) {
       await handleImageMessage(msg);
     } else if (msg.type === 'text' && msg.text) {
-      await handleTextCommand(msg, msg.text);
+      await handleTextCommand(msg, msg.text!);
     }
   } catch (error) {
     console.error(`❌ Error processing message from ${senderId} on ${channel}:`, error);
