@@ -72,7 +72,7 @@ router.post('/razorpay', async (req: Request, res: Response) => {
         // Parameterize the string to prevent PostgREST injection
         const { data: merchant, error: fetchError } = await supabase
           .from('merchants')
-          .select('id, trial_ends_at, is_active, phone_number, instagram_id, messenger_id')
+          .select('id, subscription_ends_at, is_active, phone_number, instagram_id, messenger_id')
           .or(`phone_number.eq."${senderId}",instagram_id.eq."${senderId}",messenger_id.eq."${senderId}"`)
           .single();
           
@@ -91,7 +91,7 @@ router.post('/razorpay', async (req: Request, res: Response) => {
             return;
           }
 
-          const currentExpiry = new Date(merchant.trial_ends_at);
+          const currentExpiry = new Date(merchant.subscription_ends_at || new Date(0));
           const newExpiry = (merchant.is_active && currentExpiry > now) 
             ? new Date(currentExpiry.getTime() + daysToAdd * 24 * 60 * 60 * 1000)
             : new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
@@ -112,7 +112,7 @@ router.post('/razorpay', async (req: Request, res: Response) => {
             .update({
               is_active: true,
               subscription_plan: plan,
-              trial_ends_at: newExpiry.toISOString(),
+              subscription_ends_at: newExpiry.toISOString(),
             })
             .eq('id', merchant.id);
             

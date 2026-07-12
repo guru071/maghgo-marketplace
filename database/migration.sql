@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS merchants (
   theme_config JSONB,
   is_active BOOLEAN DEFAULT true,
   subscription_plan VARCHAR(20) DEFAULT 'starter'
-    CHECK (subscription_plan IN ('inactive', 'trial', 'basic', 'starter', 'pro', 'advanced', 'premium', 'business', 'agency', 'vip', 'enterprise', 'custom')),
+    CHECK (subscription_plan IN ('inactive', 'basic', 'starter', 'pro', 'advanced', 'premium', 'business', 'agency', 'vip', 'enterprise', 'custom')),
+  subscription_ends_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

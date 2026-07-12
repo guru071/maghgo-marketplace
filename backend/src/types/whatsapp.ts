@@ -71,7 +71,7 @@ export interface Merchant {
   store_slug: string;
   is_active: boolean;
   subscription_plan: string;
-  trial_ends_at: string;
+  subscription_ends_at: string;
   created_at: string;
 }
 

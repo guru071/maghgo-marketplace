@@ -31,15 +31,16 @@ export async function createMerchant(
   storeName: string,
   storeSlug: string
 ): Promise<Merchant> {
-  const trialEndsAt = new Date();
-  trialEndsAt.setDate(trialEndsAt.getDate() + 4);
+  // Default new users to starter and give them 30 days free.
+  const subEndsAt = new Date();
+  subEndsAt.setDate(subEndsAt.getDate() + 30);
 
   const insertData: any = {
     store_name: storeName,
     store_slug: storeSlug,
-    subscription_plan: 'inactive',
-    is_active: false,
-    trial_ends_at: new Date(0).toISOString(),
+    subscription_plan: 'starter',
+    is_active: true,
+    subscription_ends_at: subEndsAt.toISOString(),
   };
 
   if (channel === 'whatsapp') insertData.phone_number = senderId;
@@ -77,9 +78,9 @@ export async function getProductLimit(plan: string): Promise<number> {
 }
 
 export function isSubscriptionActive(merchant: Merchant): boolean {
-  const trialEnds = new Date(merchant.trial_ends_at);
+  const subEnds = new Date(merchant.subscription_ends_at);
   const now = new Date();
-  return merchant.is_active && trialEnds > now;
+  return merchant.is_active && subEnds > now;
 }
 
 export async function reactivateSubscription(
@@ -94,7 +95,7 @@ export async function reactivateSubscription(
 
   const { data: merchant, error: fetchError } = await supabase
     .from('merchants')
-    .select('trial_ends_at, is_active')
+    .select('subscription_ends_at, is_active')
     .eq(column, senderId)
     .single();
 
@@ -103,7 +104,7 @@ export async function reactivateSubscription(
   }
 
   const now = new Date();
-  const currentExpiry = new Date(merchant.trial_ends_at);
+  const currentExpiry = new Date(merchant.subscription_ends_at);
   const daysToAdd = isYearly ? 365 : 30;
   
   const newExpiry = (merchant.is_active && currentExpiry > now) 
@@ -115,7 +116,7 @@ export async function reactivateSubscription(
     .update({
       is_active: true,
       subscription_plan: plan,
-      trial_ends_at: newExpiry.toISOString(),
+      subscription_ends_at: newExpiry.toISOString(),
     })
     .eq(column, senderId);
 

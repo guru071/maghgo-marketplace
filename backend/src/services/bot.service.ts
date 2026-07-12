@@ -47,7 +47,7 @@ async function handleImageMessage(msg: BotMessage): Promise<void> {
   }
 
   if (!isSubscriptionActive(merchant)) {
-    if (merchant.subscription_plan === 'inactive' || merchant.subscription_plan === 'trial') {
+    if (merchant.subscription_plan === 'inactive') {
       await sendReply(`⚠️ *Store Inactive!*\n\nYour store is reserved but not yet active. Please reply with "UPGRADE" to select your plan and complete your payment.`);
     } else {
       const monthlyAmount = await getAmountFromPlan(merchant.subscription_plan as any, false);
@@ -179,7 +179,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     return;
   }
 
-  if (command.startsWith('UPGRADE') || command.includes('I WANT TO BUY') || command.includes('I WANT TO START THE FREE TRIAL')) {
+  if (command.startsWith('UPGRADE') || command.includes('I WANT TO BUY')) {
     const priceMatch = command.match(/₹(\d+)/);
     let plan = 'BASIC';
     let amount = 99;
@@ -211,7 +211,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   }
 
   if (!isSubscriptionActive(merchant) && command !== 'HELP' && command !== 'STATUS') {
-    if (merchant.subscription_plan === 'inactive' || merchant.subscription_plan === 'trial') {
+    if (merchant.subscription_plan === 'inactive') {
       await sendReply(`⚠️ *Store Inactive!*\n\nYour store is reserved but not yet active. Please reply with "UPGRADE" to select your plan and complete your payment.`);
     } else {
       const monthlyAmount = await getAmountFromPlan(merchant.subscription_plan as any, false);

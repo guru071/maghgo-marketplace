@@ -3,7 +3,7 @@ import { supabase } from '../db/supabase';
 
 /**
  * Cleanup job that runs every day at midnight (00:00).
- * It finds all merchants whose trial/subscription expired more than 10 days ago,
+ * It finds all merchants whose subscription expired more than 10 days ago,
  * and completely deletes them from the database.
  * Because of ON DELETE CASCADE, all their products will also be deleted automatically.
  */
@@ -18,12 +18,12 @@ export function startCleanupJob() {
       const tenDaysAgo = new Date();
       tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
 
-      // Query merchants where trial_ends_at is less than 10 days ago AND plan is trial
+      // Query merchants where subscription_ends_at is less than 10 days ago AND plan is inactive
       const { data, error } = await supabase
         .from('merchants')
         .delete()
-        .in('subscription_plan', ['trial', 'inactive'])
-        .lt('trial_ends_at', tenDaysAgo.toISOString())
+        .in('subscription_plan', ['inactive'])
+        .lt('subscription_ends_at', tenDaysAgo.toISOString())
         .select('phone_number, store_name'); // Return deleted rows for logging
 
       if (error) {
