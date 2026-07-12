@@ -1,84 +1,88 @@
 # Maghgo - Production Launch Manual Checklist
 
-This document outlines the exact manual steps you need to take to finalize the deployment of your platform to production. The codebase has been fully audited, secured, and fixed by Antigravity, but these environment and platform configurations must be done by you.
+This document outlines the exact manual steps you need to take to finalize the deployment of your platform to production. The codebase has been fully audited, secured, and fixed by Antigravity, but these environment and API configurations must be done by you.
 
-## 1. Twilio SMS Webhook Configuration
-In order to process incoming SMS messages securely and without spoofing:
-1. Log in to your Twilio Console.
-2. Go to **Phone Numbers** -> **Manage** -> **Active Numbers**.
-3. Click on your active Maghgo phone number.
-4. Scroll down to the **Messaging** section.
-5. Under "A MESSAGE COMES IN", set the URL to:
-   `https://your-production-domain.com/webhook/sms`
-   *(Make sure to change `your-production-domain.com` to your actual backend domain!)*
-6. Set the HTTP method to `HTTP POST`.
-7. Click **Save**.
+## 1. Required API Keys (What, Where, How)
 
-## 2. Environment Variables (.env)
-You must verify that your production environment variables are correctly populated in your hosting provider (e.g., Vercel, Railway, DigitalOcean).
+Your application relies on 4 core external APIs. You must obtain keys for each of these and store them securely in your production hosting environment (e.g., **Vercel** for the frontend, **DigitalOcean/Railway/Heroku** for the backend).
 
-### Frontend (.env)
-Check that you have these strictly configured:
+### A. Supabase (Database & Auth)
+*   **What you need:** `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+*   **How to get it:**
+    1. Go to your [Supabase Dashboard](https://supabase.com/dashboard).
+    2. Select your Maghgo project.
+    3. Go to **Project Settings** (gear icon) -> **API**.
+    4. Copy the "Project URL" and the "anon/public" key.
+    5. Scroll down to "service_role" and copy that secret key.
+*   **Where to put it:**
+    *   **Frontend (.env in Vercel):** Add `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`.
+    *   **Backend (.env in your Node server):** Add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
+
+### B. Razorpay (Payments)
+*   **What you need:** `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`
+*   **How to get it:**
+    1. Log in to your [Razorpay Dashboard](https://dashboard.razorpay.com/).
+    2. Go to **Settings** -> **API Keys**.
+    3. Click **Generate Live Key** (or use Test Key for now).
+    4. Copy the Key ID and Key Secret.
+*   **Where to put it:**
+    *   **Backend (.env):** Add `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET`.
+
+### C. Meta / WhatsApp (Chatbot)
+*   **What you need:** `WEBHOOK_VERIFY_TOKEN`
+*   **How to get it:**
+    1. Log in to your [Meta Developer Dashboard](https://developers.facebook.com/).
+    2. Go to your WhatsApp app -> **WhatsApp** -> **Configuration**.
+    3. Under Webhook, you will see a "Verify Token" that you created yourself when setting up the webhook.
+*   **Where to put it:**
+    *   **Backend (.env):** Add `WEBHOOK_VERIFY_TOKEN`.
+
+### D. Twilio (SMS Fallback / Text Orders)
+*   **What you need:** `TWILIO_AUTH_TOKEN` (Optional: Only if using SMS orders)
+*   **How to get it:**
+    1. Log in to your [Twilio Console](https://console.twilio.com/).
+    2. Scroll down on the homepage to the "Account Info" section.
+    3. Copy the "Auth Token" (click the eye icon to reveal).
+*   **Where to put it:**
+    *   **Backend (.env):** Add `TWILIO_AUTH_TOKEN`.
+    *   *Also configure the webhook URL in Twilio: Phone Numbers -> Manage -> Active Numbers -> Click your number -> Set "A MESSAGE COMES IN" to `https://your-backend-domain.com/webhook/sms` (HTTP POST).*
+
+
+## 2. Environment Variables Summary Checklist
+
+### Frontend (Vercel)
+Ensure these are set in your Vercel Project Settings -> Environment Variables:
 ```env
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-
-# Admin Dashboard Auth
-# If you don't set these, the dashboard defaults to admin/admin
-ADMIN_USERNAME=your_secure_admin_username
-ADMIN_PASSWORD=your_secure_admin_password
-
-# Next.js Revalidation
-REVALIDATION_SECRET=your_secure_random_string_here
+NEXT_PUBLIC_SUPABASE_URL=https://xyz.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbG...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbG...
+ADMIN_USERNAME=secure_admin
+ADMIN_PASSWORD=secure_password
+REVALIDATION_SECRET=random_secure_string
 ```
 
-### Backend (.env)
-Check that you have these strictly configured:
+### Backend (DigitalOcean / Railway)
+Ensure these are set in your backend server's environment:
 ```env
-# Twilio Auth (Critical for the new security patch)
-TWILIO_AUTH_TOKEN=your_twilio_auth_token
-
-# Razorpay (Critical for payment verification)
-RAZORPAY_KEY_ID=your_razorpay_key_id
-RAZORPAY_KEY_SECRET=your_razorpay_key_secret
-
-# Supabase
-SUPABASE_URL=your_supabase_project_url
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-
-# Frontend URL (For CORS Security)
-FRONTEND_URL=https://your-frontend-domain.com
-
-# Webhook Verification (WhatsApp)
-WEBHOOK_VERIFY_TOKEN=your_whatsapp_webhook_token
+SUPABASE_URL=https://xyz.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJhbG...
+RAZORPAY_KEY_ID=rzp_live_xxx
+RAZORPAY_KEY_SECRET=xyz123
+WEBHOOK_VERIFY_TOKEN=my_whatsapp_secret
+TWILIO_AUTH_TOKEN=twilio_secret
+FRONTEND_URL=https://your-vercel-domain.com
 ```
 
-## 3. Database Migrations & Seeds
-Since we added new themes (Cyberpunk, Luxury, etc.) to the seed data, make sure your production database has the latest data.
-1. Run any pending database migrations to Supabase:
-   `npx supabase db push`
-2. Run your backend seed script or simply call the frontend seed API route in your browser once you deploy:
-   `https://your-frontend-domain.com/api/seed-themes`
-   *(You must be logged in as an admin to trigger this since we protected the routes).*
+## 3. Database Themes Generation
+Once Vercel deploys your frontend successfully, we need to inject the new Apple, Google, and Instagram themes into your live database.
+1. Visit your live production URL: `https://your-vercel-domain.com/api/seed-themes`
+2. You should see a JSON success message confirming the themes were inserted.
 
-## 4. Run a Clean Production Build
-Before pushing to production, verify the Next.js cache is clean so Tailwind CSS renders correctly.
-Run these commands in your frontend folder:
-```bash
-cd frontend
-rm -rf .next
-npm run build
-npm run start
-```
-Check that the UI looks perfect locally. Once verified, push your code to your production Git branch.
-
-## 5. Final Live Test
+## 4. Final Live Test
 Once deployed to production:
-1. Try to visit `https://your-frontend-domain.com/goatech-admin-hq`. You should be prompted for a username and password.
+1. Visit `https://your-frontend-domain.com/goatech-admin-hq`. You should be prompted for a username and password.
 2. Go to a store link (e.g., `/demo`) and verify that adding an item to the cart opens the drawer and the UI is fully styled.
-3. Send a test SMS to your Twilio number to verify the webhook receives and processes it securely.
+3. Send a test WhatsApp message to your bot to verify the webhook responds securely.
 4. Process a $1 (or ₹1) test transaction through Razorpay to ensure the backend validates the amount properly.
 
 You are now 100% ready for production! 🚀
