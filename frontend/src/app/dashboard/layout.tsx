@@ -23,6 +23,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [merchantPlan, setMerchantPlan] = useState<string>('starter');
+  const [storeSlug, setStoreSlug] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   
   // Upgrade Modal State
@@ -57,6 +58,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
         if (res.ok) {
           const data = await res.json();
           setMerchantPlan(data.subscription_plan || 'starter');
+          setStoreSlug(data.store_slug || '');
           setIsAuthorized(true);
         } else {
           setIsAuthorized(false);
@@ -73,7 +75,11 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const handleFeatureClick = (e: React.MouseEvent, featureTitle: string, planNeeded: string, cost: number, path: string) => {
     e.preventDefault();
     if (hasAccess(planNeeded, merchantPlan)) {
-      router.push(path);
+      if (path === '/dashboard/builder' && storeSlug) {
+        window.location.href = `/${storeSlug}/builder`;
+      } else {
+        router.push(path);
+      }
     } else {
       setFeatureName(featureTitle);
       setRequiredPlan(planNeeded);
@@ -90,10 +96,14 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       const res = await fetch(`${apiUrl}/api/dashboard/upgrade`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ amount: upgradeCost })
+        body: JSON.stringify({ amount: upgradeCost, plan: requiredPlan })
       });
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
+      if (data.bypassed) {
+        window.location.reload(); // Reload to apply the new plan
+      } else if (data.url) {
+        window.location.href = data.url;
+      }
     } catch (err) {
       alert('Failed to initiate upgrade.');
       setIsUpgrading(false);
@@ -163,24 +173,49 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
             {!hasAccess('pro', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
           </button>
 
-          <button onClick={(e) => handleFeatureClick(e, 'Premium Themes & Store Builder', 'starter', 149, '/dashboard/themes')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
+          <button onClick={(e) => handleFeatureClick(e, 'Visual Store Builder', 'starter', 149, '/dashboard/builder')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
+            <span>✨ Visual Builder</span>
+            {!hasAccess('starter', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
+          </button>
+
+          <button onClick={(e) => handleFeatureClick(e, 'Premium Themes', 'starter', 149, '/dashboard/themes')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
             <span>🎨 Premium Themes</span>
             {!hasAccess('starter', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
           </button>
 
-          <button onClick={(e) => handleFeatureClick(e, 'WordPress & WooCommerce Sync', 'advanced', 349, '/dashboard/wordpress')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
-            <span>🔌 WordPress Sync</span>
+          <button onClick={(e) => handleFeatureClick(e, 'Developer API Access', 'advanced', 349, '/dashboard/api')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
+            <span>🧑‍💻 API Access</span>
             {!hasAccess('advanced', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
           </button>
 
           <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-8 px-4 flex items-center justify-between">
-            <span>Enterprise</span>
-            <span className="bg-purple-100 text-purple-800 text-[10px] px-2 py-0.5 rounded-full">BUSINESS</span>
+            <span>Premium & Enterprise</span>
+            <span className="bg-purple-100 text-purple-800 text-[10px] px-2 py-0.5 rounded-full">PREMIUM+</span>
           </div>
           
+          <button onClick={(e) => handleFeatureClick(e, '24/7 Priority Support', 'premium', 499, '/dashboard/support')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
+            <span>🎧 24/7 Priority Support</span>
+            {!hasAccess('premium', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
+          </button>
+
           <button onClick={(e) => handleFeatureClick(e, 'White-Label Branding', 'business', 749, '/dashboard/whitelabel')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
             <span>🖌️ White-Label</span>
             {!hasAccess('business', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
+          </button>
+
+          <button onClick={(e) => handleFeatureClick(e, 'Custom Reporting', 'business', 749, '/dashboard/reports')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
+            <span>📈 Custom Reports</span>
+            {!hasAccess('business', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
+          </button>
+
+          <button onClick={(e) => handleFeatureClick(e, 'Multiple Storefronts', 'agency', 999, '/dashboard/storefronts')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
+            <span>🏢 Multi-Storefronts</span>
+            {!hasAccess('agency', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
+          </button>
+
+          <button onClick={(e) => handleFeatureClick(e, 'Custom Integrations', 'vip', 1499, '/dashboard/integrations')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
+            <span>🧩 Custom Integrations</span>
+            {!hasAccess('vip', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
           </button>
 
         </nav>

@@ -35,12 +35,13 @@ router.get('/store', async (req: AuthRequest, res) => {
 // Update Store Details
 router.put('/store', async (req: AuthRequest, res) => {
   try {
-    const { store_name, store_description, is_active } = req.body;
+    const { store_name, store_description, is_active, theme_config } = req.body;
     
     let updates: any = {};
     if (store_name !== undefined) updates.store_name = store_name;
     if (store_description !== undefined) updates.store_description = store_description;
     if (is_active !== undefined) updates.is_active = is_active;
+    if (theme_config !== undefined) updates.theme_config = theme_config;
 
     const { data: merchant, error } = await supabase
       .from('merchants')
@@ -165,19 +166,25 @@ router.delete('/products/:id', async (req: AuthRequest, res) => {
   }
 });
 
-// Upgrade Plan - Generate Razorpay Link
+// Upgrade Plan - Generate Razorpay Link (BYPASSED FOR TESTING)
 router.post('/upgrade', async (req: AuthRequest, res) => {
   try {
-    const { amount } = req.body;
-    if (!amount) return res.status(400).json({ error: 'Amount is required' });
-
-    // We need the merchant's phone number to pass as senderId to Razorpay
-    const { data: merchant } = await supabase.from('merchants').select('phone_number').eq('id', req.merchantId).single();
-    if (!merchant) return res.status(404).json({ error: 'Merchant not found' });
-
-    const paymentLink = await createPaymentLink(merchant.phone_number, Number(amount));
+    const { amount, plan } = req.body; // Expect frontend to send 'plan'
     
-    res.json({ url: paymentLink });
+    // TEMPORARY BYPASS: Instantly update the plan in the database instead of creating Razorpay link
+    if (plan) {
+      const { error } = await supabase
+        .from('merchants')
+        .update({ subscription_plan: plan })
+        .eq('id', req.merchantId);
+        
+      if (error) throw error;
+      
+      return res.json({ success: true, bypassed: true });
+    }
+
+    // Fallback if plan wasn't provided (e.g. from the old lock modal)
+    res.json({ error: 'Please specify a plan to upgrade to.' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

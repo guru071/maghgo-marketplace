@@ -25,6 +25,10 @@ export interface BotMessage {
 export async function processBotMessage(msg: BotMessage): Promise<void> {
   const { channel, senderId, messageId, sendReply } = msg;
 
+  // Bots are temporarily paused
+  console.log(`⏸️ Bot paused. Ignoring message from ${senderId} on ${channel}`);
+  return;
+
   try {
     if (msg.type === 'image' && msg.image) {
       await handleImageMessage(msg);

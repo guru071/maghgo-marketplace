@@ -21,6 +21,18 @@ import { StoreContext } from '@/components/store/StoreContext';
 
 export function StoreClient({ merchant, products }: StoreClientProps) {
   const { addItem } = useCartStore();
+  const [activeTheme, setActiveTheme] = React.useState<any>(merchant.theme_config);
+
+  React.useEffect(() => {
+    // Listen for live theme previews from the dashboard iframe parent
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'MAGHGO_PREVIEW_THEME') {
+        setActiveTheme(event.data.theme);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   const handleAddToCart = (product: Product) => {
     addItem(merchant.store_slug, {
@@ -35,9 +47,9 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
   if (!products || products.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        {merchant.theme_config ? (
+        {activeTheme ? (
           <StoreContext.Provider value={{ products: [], onAddToCart: handleAddToCart }}>
-            <Render config={config} data={merchant.theme_config} />
+            <Render config={config} data={activeTheme} />
           </StoreContext.Provider>
         ) : (
           <StoreHeader merchant={merchant} />
@@ -49,9 +61,9 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      {merchant.theme_config ? (
+      {activeTheme ? (
         <StoreContext.Provider value={{ products, onAddToCart: handleAddToCart }}>
-          <Render config={config} data={merchant.theme_config} />
+          <Render config={config} data={activeTheme} />
         </StoreContext.Provider>
       ) : (
         <>
