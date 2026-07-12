@@ -128,7 +128,7 @@ export function Pricing({
             <div className="space-y-3">
               {enabledPlatforms.whatsapp_enabled && (
                 <a 
-                  href={`https://wa.me/919876543210?text=${encodeURIComponent(`REGISTER [Type your store name here] - ${selectedPlan.toUpperCase()}`)}`}
+                  href={`https://wa.me/15551924010?text=${encodeURIComponent(`REGISTER [Type your store name here] - ${selectedPlan.toUpperCase()}`)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full flex items-center p-4 rounded-xl border border-gray-200 hover:border-[#25D366] hover:bg-[#25D366]/5 transition-all group"

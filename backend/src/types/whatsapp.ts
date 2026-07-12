@@ -65,7 +65,6 @@ export interface ParsedProduct {
 export interface Merchant {
   id: string;
   phone_number?: string;
-  instagram_id?: string;
   messenger_id?: string;
   store_name: string;
   store_slug: string;

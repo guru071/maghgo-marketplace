@@ -1,15 +1,13 @@
 import { supabase } from '../db/supabase';
 import { Merchant } from '../types/whatsapp';
 
-export type Channel = 'whatsapp' | 'instagram' | 'messenger' | 'sms';
+export type Channel = 'whatsapp' | 'sms';
 
 export async function getMerchantByChannel(
   channel: Channel,
   senderId: string
 ): Promise<Merchant | null> {
   let column = 'phone_number';
-  if (channel === 'instagram') column = 'instagram_id';
-  if (channel === 'messenger') column = 'messenger_id';
 
   const { data, error } = await supabase
     .from('merchants')
@@ -42,9 +40,7 @@ export async function createMerchant(
     trial_ends_at: new Date(0).toISOString(),
   };
 
-  if (channel === 'whatsapp') insertData.phone_number = senderId;
-  if (channel === 'instagram') insertData.instagram_id = senderId;
-  if (channel === 'messenger') insertData.messenger_id = senderId;
+  if (channel === 'whatsapp' || channel === 'sms') insertData.phone_number = senderId;
 
   const { data, error } = await supabase
     .from('merchants')
@@ -89,8 +85,6 @@ export async function reactivateSubscription(
   isYearly: boolean = false
 ): Promise<void> {
   let column = 'phone_number';
-  if (channel === 'instagram') column = 'instagram_id';
-  if (channel === 'messenger') column = 'messenger_id';
 
   const { data: merchant, error: fetchError } = await supabase
     .from('merchants')
@@ -126,8 +120,6 @@ export async function reactivateSubscription(
 
 export async function generateLinkCode(channel: Channel, senderId: string): Promise<string> {
   let column = 'phone_number';
-  if (channel === 'instagram') column = 'instagram_id';
-  if (channel === 'messenger') column = 'messenger_id';
 
   // Generate a random 6 character alphanumeric code
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -166,8 +158,6 @@ export async function linkChannelToMerchant(
 
   // 2. Update the merchant with the new channel ID
   let updateData: any = {};
-  if (newChannel === 'instagram') updateData.instagram_id = newSenderId;
-  if (newChannel === 'messenger') updateData.messenger_id = newSenderId;
   if (newChannel === 'whatsapp' || newChannel === 'sms') updateData.phone_number = newSenderId;
 
   // Clear the link code after successful linking for security

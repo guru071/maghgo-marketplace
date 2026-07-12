@@ -72,8 +72,8 @@ router.post('/razorpay', async (req: Request, res: Response) => {
         // Fetch the merchant to get their current trial_ends_at
         const { data: merchant, error: fetchError } = await supabase
           .from('merchants')
-          .select('id, trial_ends_at, is_active, phone_number, instagram_id, messenger_id')
-          .or(`phone_number.eq.${senderId},instagram_id.eq.${senderId},messenger_id.eq.${senderId}`)
+          .select('id, trial_ends_at, is_active, phone_number')
+          .eq('phone_number', senderId)
           .single();
           
         if (merchant && !fetchError) {

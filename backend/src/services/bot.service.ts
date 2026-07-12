@@ -171,7 +171,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   if (command === 'LINK') {
     try {
       const code = await generateLinkCode(channel, senderId);
-      await sendReply(`🔗 *Multi-Channel Link Code*\n\nYour secure link code is: *${code}*\n\nTo manage this store from another app (like Instagram or Messenger), message our bot on that app with this exact text:\n\nLINK ${code}\n\n_Note: This code will expire once used._`);
+      await sendReply(`🔗 *Multi-Channel Link Code*\n\nYour secure link code is: *${code}*\n\nTo manage this store from another number or channel, message our bot with this exact text:\n\nLINK ${code}\n\n_Note: This code will expire once used._`);
     } catch (err: any) {
       await sendReply('❌ Failed to generate link code. Please try again later.');
     }
