@@ -20,7 +20,7 @@ export function Hero() {
         </p>
         <div className="hero__actions">
           <Link href="/register">
-            <Button className="btn--primary btn--large hero__btn">Create Your Store Free</Button>
+            <Button className="btn--primary btn--large hero__btn">Create Your Store</Button>
           </Link>
           <Link href="#how-it-works">
             <Button variant="secondary" className="btn--large hero__btn-secondary">See How It Works</Button>

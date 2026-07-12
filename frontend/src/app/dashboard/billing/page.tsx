@@ -58,7 +58,7 @@ export default function DashboardBilling() {
           </div>
           <div className="text-sm text-gray-600">
             {isTrial ? (
-              <p>Your free trial will expire on <strong>{trialEnds}</strong>.</p>
+              <p>Your starter plan will expire on <strong>{trialEnds}</strong>.</p>
             ) : (
               <p>Your subscription is currently active until <strong>{trialEnds}</strong>.</p>
             )}

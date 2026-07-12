@@ -19,7 +19,7 @@ export function Header() {
         </nav>
         <div className="header__actions flex items-center space-x-4">
           <Link href="/login" className="text-sm font-medium text-gray-700 hover:text-black">Log in</Link>
-          <Link href="/register" className="bg-black text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-gray-800 transition-colors">Start for free</Link>
+          <Link href="/register" className="bg-black text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-gray-800 transition-colors">Get Started</Link>
         </div>
       </div>
     </header>
