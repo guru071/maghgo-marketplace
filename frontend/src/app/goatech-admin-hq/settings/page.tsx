@@ -25,6 +25,9 @@ export default function SettingsPage() {
         sms_enabled: data.sms_enabled,
       });
       setLoading(false);
+    }).catch(err => {
+      console.error(err);
+      setLoading(false);
     });
   }, []);
 

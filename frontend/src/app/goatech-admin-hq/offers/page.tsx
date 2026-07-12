@@ -13,6 +13,9 @@ export default function OffersAdminPage() {
     getOffers().then(data => {
       setOffers(data);
       setLoading(false);
+    }).catch(err => {
+      console.error(err);
+      setLoading(false);
     });
   }, []);
 
