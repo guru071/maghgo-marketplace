@@ -41,10 +41,57 @@ const LUXURY_CONFIG = {
   zones: {}
 };
 
+const APPLE_CONFIG = {
+  content: [
+    { type: "StoreHeader", props: { title: "Cupertino Styles", subtitle: "Pro cameras. Pro display. Pro performance.", bgColor: "#fbfbfd", textColor: "#1d1d1f", bgImage: "" } },
+    { type: "Spacer", props: { height: "32px" } },
+    { type: "Banner", props: { imageUrl: "https://images.unsplash.com/photo-1512054502232-10a0a035d672?w=1200&q=80", text: "New MacBooks Arrived", linkUrl: "#", textColor: "#ffffff", height: "400px" } },
+    { type: "Spacer", props: { height: "48px" } },
+    { type: "Heading", props: { text: "Which Apple is right for you?", size: "40px", color: "#1d1d1f", align: "center" } },
+    { type: "ProductGrid", props: { columns: 3, gap: "32px", cardBg: "#ffffff", showPrices: true } },
+  ],
+  root: { props: { title: "Apple Minimal Store" } },
+  zones: {}
+};
+
+const GOOGLE_CONFIG = {
+  content: [
+    { type: "StoreHeader", props: { title: "Mountain View Tech", subtitle: "Helpful by design.", bgColor: "#ffffff", textColor: "#202124", bgImage: "" } },
+    { type: "Spacer", props: { height: "16px" } },
+    { type: "Heading", props: { text: "Shop the latest Pixel", size: "36px", color: "#202124", align: "center" } },
+    { type: "Text", props: { text: "The only phone engineered by Google.", color: "#5f6368", align: "center" } },
+    { type: "Spacer", props: { height: "24px" } },
+    { type: "Banner", props: { imageUrl: "https://images.unsplash.com/photo-1546054454-aa26e2b734c7?w=1200&q=80", text: "Pixel 9 Pro", linkUrl: "#", textColor: "#ffffff", height: "350px" } },
+    { type: "Spacer", props: { height: "48px" } },
+    { type: "ProductGrid", props: { columns: 4, gap: "24px", cardBg: "#f8f9fa", showPrices: true } },
+  ],
+  root: { props: { title: "Google Material Store" } },
+  zones: {}
+};
+
+const INSTAGRAM_CONFIG = {
+  content: [
+    { type: "StoreHeader", props: { title: "@trendingshop", subtitle: "Fashion | Lifestyle | Beauty", bgColor: "#ffffff", textColor: "#262626", bgImage: "" } },
+    { type: "Spacer", props: { height: "16px" } },
+    { type: "FeatureGrid", props: { features: [
+      { title: "10K", description: "Followers", icon: "👥" },
+      { title: "500+", description: "Posts", icon: "📸" },
+      { title: "Worldwide", description: "Shipping", icon: "🌍" }
+    ]}},
+    { type: "Divider", props: { color: "#dbdbdb", margin: "16px 0" } },
+    { type: "ProductGrid", props: { columns: 3, gap: "2px", cardBg: "#ffffff", showPrices: false } },
+  ],
+  root: { props: { title: "Instagram Grid Store" } },
+  zones: {}
+};
+
 const themes = [
   { name: 'Minimalist Fashion', description: 'Clean, elegant, white backgrounds', plan_required: 'basic', config: MINIMALIST_CONFIG },
   { name: 'Cyberpunk Electronics', description: 'Dark mode, neon accents, futuristic', plan_required: 'premium', config: CYBERPUNK_CONFIG },
   { name: 'Luxury Jewelry', description: 'Black and gold, premium imagery', plan_required: 'agency', config: LUXURY_CONFIG },
+  { name: 'Apple Aesthetics', description: 'Premium, sleek, and highly minimal. Perfect for tech and high-end goods.', plan_required: 'premium', config: APPLE_CONFIG },
+  { name: 'Google Material', description: 'Clean, rounded, and helpful. Familiar interface for users.', plan_required: 'basic', config: GOOGLE_CONFIG },
+  { name: 'Instagram Grid', description: 'Visual-first square grid exactly like a social media feed.', plan_required: 'basic', config: INSTAGRAM_CONFIG },
 ];
 
 export async function GET() {

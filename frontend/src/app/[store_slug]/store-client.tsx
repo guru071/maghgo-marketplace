@@ -20,10 +20,10 @@ import { config } from "@/puck.config";
 import { StoreContext } from '@/components/store/StoreContext';
 
 export function StoreClient({ merchant, products }: StoreClientProps) {
-  const { addItem, items } = useCartStore();
+  const { addItem } = useCartStore();
 
   const handleAddToCart = (product: Product) => {
-    addItem({
+    addItem(merchant.store_slug, {
       id: product.id,
       title: product.title,
       price: product.price,
