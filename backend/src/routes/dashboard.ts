@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { supabase } from '../db/supabase';
 import { getProducts, updateProductPrice, deleteAllProducts, deleteProduct, createProduct } from '../services/product.service';
-import { updateStoreDescription, toggleStoreStatus } from '../services/merchant.service';
+import { updateStoreDescription, toggleStoreStatus, getProductLimit } from '../services/merchant.service';
+import { createPaymentLink } from '../services/payment.service';
 import { triggerRevalidation } from '../services/revalidate.service';
 import multer from 'multer';
 import { removeBackground } from '../services/media.service';
@@ -78,6 +79,21 @@ router.post('/products', upload.single('image'), async (req: AuthRequest, res) =
     if (!title || !price) return res.status(400).json({ error: 'Title and price are required' });
 
     const merchantId = req.merchantId!;
+
+    // 1. Check Product Limits
+    const { data: merchant } = await supabase.from('merchants').select('subscription_plan, phone_number, store_slug').eq('id', merchantId).single();
+    if (!merchant) return res.status(404).json({ error: 'Merchant not found' });
+    
+    const limit = await getProductLimit(merchant.subscription_plan);
+    const products = await getProducts(merchantId);
+    
+    if (products.length >= limit) {
+      return res.status(402).json({ 
+        error: 'Plan Limit Reached', 
+        message: `Your current plan allows a maximum of ${limit} products.` 
+      });
+    }
+
     let processedBuffer: Buffer;
     
     try {
@@ -95,7 +111,6 @@ router.post('/products', upload.single('image'), async (req: AuthRequest, res) =
 
     const product = await createProduct(merchantId, title, Number(price), originalUrl, processedUrl);
 
-    const { data: merchant } = await supabase.from('merchants').select('store_slug').eq('id', merchantId).single();
     if (merchant) {
       await triggerRevalidation(merchant.store_slug);
     }
@@ -145,6 +160,24 @@ router.delete('/products/:id', async (req: AuthRequest, res) => {
     if (merchant) await triggerRevalidation(merchant.store_slug);
 
     res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Upgrade Plan - Generate Razorpay Link
+router.post('/upgrade', async (req: AuthRequest, res) => {
+  try {
+    const { amount } = req.body;
+    if (!amount) return res.status(400).json({ error: 'Amount is required' });
+
+    // We need the merchant's phone number to pass as senderId to Razorpay
+    const { data: merchant } = await supabase.from('merchants').select('phone_number').eq('id', req.merchantId).single();
+    if (!merchant) return res.status(404).json({ error: 'Merchant not found' });
+
+    const paymentLink = await createPaymentLink(merchant.phone_number, Number(amount));
+    
+    res.json({ url: paymentLink });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

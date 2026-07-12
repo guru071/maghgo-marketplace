@@ -75,7 +75,11 @@ export default function DashboardInventory() {
         fetchDashboardData();
       } else {
         const err = await res.json();
-        alert(err.error || 'Failed to upload product');
+        if (res.status === 402) {
+          alert(`${err.error}\n\n${err.message}\n\nPlease go to the Billing tab to upgrade your plan.`);
+        } else {
+          alert(err.error || 'Failed to upload product');
+        }
       }
     } catch (err) {
       console.error(err);

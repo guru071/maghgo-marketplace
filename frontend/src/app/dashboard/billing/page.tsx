@@ -58,10 +58,42 @@ export default function DashboardBilling() {
 
         <h3 className="text-lg font-bold text-gray-900 mb-4">Need More Capacity?</h3>
         <p className="text-gray-600 text-sm mb-6">
-          To upgrade your plan, unlock more products, and remove the GOAT'ECH branding, please return to your WhatsApp chat with the Maghgo bot and type:
+          Upgrade your plan to unlock more products and remove the GOAT'ECH branding. 
         </p>
-        <div className="bg-gray-900 text-green-400 font-mono text-center py-4 rounded-xl text-lg shadow-inner">
-          UPGRADE
+        <div className="flex space-x-4">
+          <button 
+            onClick={async () => {
+              const token = localStorage.getItem('maghgo_merchant_token');
+              const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+              const res = await fetch(`${apiUrl}/api/dashboard/upgrade`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ amount: 99 }) // Monthly Basic Example
+              });
+              const data = await res.json();
+              if (data.url) window.location.href = data.url;
+            }}
+            className="bg-black text-white px-6 py-3 rounded-full font-medium hover:bg-gray-800 transition-colors w-full"
+          >
+            Pay Monthly (₹99/mo)
+          </button>
+          
+          <button 
+            onClick={async () => {
+              const token = localStorage.getItem('maghgo_merchant_token');
+              const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+              const res = await fetch(`${apiUrl}/api/dashboard/upgrade`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ amount: 1010 }) // Yearly Basic Example (15% off)
+              });
+              const data = await res.json();
+              if (data.url) window.location.href = data.url;
+            }}
+            className="bg-accent text-white px-6 py-3 rounded-full font-medium hover:bg-black transition-colors w-full"
+          >
+            Pay Yearly (Save 15%)
+          </button>
         </div>
       </div>
     </div>

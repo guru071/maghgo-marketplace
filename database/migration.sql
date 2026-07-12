@@ -13,14 +13,15 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS merchants (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   phone_number VARCHAR(20) UNIQUE NOT NULL,      -- E.164 format: +919876543210
+  password_hash VARCHAR(255),                    -- For web dashboard login
   store_name VARCHAR(100) NOT NULL,
   store_slug VARCHAR(100) UNIQUE NOT NULL,        -- URL-safe slug
   store_description TEXT DEFAULT '',
   store_logo_url TEXT,
+  theme_config JSONB,
   is_active BOOLEAN DEFAULT true,
-  subscription_plan VARCHAR(20) DEFAULT 'trial'
-    CHECK (subscription_plan IN ('trial', 'basic', 'premium')),
-  trial_ends_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '4 days'),
+  subscription_plan VARCHAR(20) DEFAULT 'starter'
+    CHECK (subscription_plan IN ('inactive', 'trial', 'basic', 'starter', 'pro', 'advanced', 'premium', 'business', 'agency', 'vip', 'enterprise', 'custom')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -57,6 +58,22 @@ CREATE TABLE IF NOT EXISTS order_logs (
   status VARCHAR(20) DEFAULT 'sent'
     CHECK (status IN ('sent', 'confirmed', 'processing', 'delivered', 'cancelled')),
   notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
+-- 3.5. PAYMENTS TABLE (for Razorpay webhooks)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS payments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+  razorpay_payment_id VARCHAR(100),
+  razorpay_payment_link_id VARCHAR(100),
+  amount DECIMAL(10, 2) NOT NULL,
+  plan VARCHAR(50) NOT NULL,
+  is_yearly BOOLEAN DEFAULT false,
+  status VARCHAR(20) DEFAULT 'captured',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -118,6 +135,10 @@ CREATE TRIGGER update_products_updated_at
 
 CREATE TRIGGER update_order_logs_updated_at
   BEFORE UPDATE ON order_logs
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_payments_updated_at
+  BEFORE UPDATE ON payments
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================
