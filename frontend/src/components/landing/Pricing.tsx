@@ -145,7 +145,7 @@ export function Pricing({
 
               {enabledPlatforms.instagram_enabled && (
                 <a 
-                  href="https://ig.me/m/goatech.tech"
+                  href="https://ig.me/m/YOUR_INSTAGRAM_HANDLE"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full flex items-center p-4 rounded-xl border border-gray-200 hover:border-pink-500 hover:bg-pink-50 transition-all group"
@@ -162,7 +162,7 @@ export function Pricing({
 
               {enabledPlatforms.messenger_enabled && (
                 <a 
-                  href="https://m.me/goatech.tech"
+                  href="https://m.me/YOUR_FACEBOOK_PAGE_NAME"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full flex items-center p-4 rounded-xl border border-gray-200 hover:border-blue-600 hover:bg-blue-50 transition-all group"
