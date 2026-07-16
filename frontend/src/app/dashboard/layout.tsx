@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { whatsappLink } from '@/lib/site-config';
+import { whatsappLink, instagramLink, messengerLink, smsLink } from '@/lib/site-config';
 
 const PLAN_TIERS = [
   'inactive', 'basic', 'starter', 'pro', 'advanced',
@@ -131,22 +131,58 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthorized) {
+    // Every way in, not just WhatsApp. Unconfigured channels are omitted rather
+    // than linked to an account nobody owns. The web login is always offered:
+    // it is the one route that works with no Meta credentials at all.
+    const chatChannels = [
+      { href: whatsappLink('LOGIN'), label: 'WhatsApp', className: 'bg-[#25D366] hover:bg-[#1DA851] text-white' },
+      { href: instagramLink(), label: 'Instagram', className: 'bg-gradient-to-r from-[#833AB4] via-[#FD1D1D] to-[#F56040] hover:opacity-90 text-white' },
+      { href: messengerLink(), label: 'Messenger', className: 'bg-[#0084FF] hover:bg-[#0073E6] text-white' },
+      { href: smsLink('LOGIN'), label: 'SMS', className: 'bg-gray-800 hover:bg-gray-900 text-white' },
+    ].filter((c): c is { href: string; label: string; className: string } => Boolean(c.href));
+
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <div className="text-center p-8 bg-white rounded-xl shadow-sm max-w-md w-full border border-gray-100">
           <div className="text-5xl mb-4">🔐</div>
-          <h1 className="text-2xl font-bold mb-4 text-gray-900">Access Denied</h1>
+          <h1 className="text-2xl font-bold mb-2 text-gray-900">Sign in to your dashboard</h1>
           <p className="text-gray-600 mb-6">
-            To access your Maghgo dashboard, please type <strong>LOGIN</strong> in your WhatsApp chat with the Maghgo bot.
+            Your session isn&apos;t active. Log in with your phone number and password, or
+            send <strong>LOGIN</strong> to the Maghgo bot on any channel you&apos;ve connected.
           </p>
-          {whatsappLink('LOGIN') ? (
-            <a href={whatsappLink('LOGIN')!} target="_blank" rel="noopener noreferrer" className="inline-block bg-accent text-white px-6 py-3 rounded-full font-medium hover:bg-black transition-colors w-full">
-              Open WhatsApp Bot
-            </a>
-          ) : (
-            <Link href="/login" className="inline-block bg-accent text-white px-6 py-3 rounded-full font-medium hover:bg-black transition-colors w-full">
-              Go to Login
-            </Link>
+
+          <Link
+            href="/login"
+            className="block bg-accent text-white px-6 py-3 rounded-full font-medium hover:bg-accent-hover transition-colors w-full"
+          >
+            Log in with phone &amp; password
+          </Link>
+
+          {chatChannels.length > 0 && (
+            <>
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-200" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="px-2 bg-white text-gray-500">or send LOGIN via</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {chatChannels.map((c) => (
+                  <a
+                    key={c.label}
+                    href={c.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`block px-6 py-2.5 rounded-full font-medium transition-colors w-full ${c.className}`}
+                  >
+                    {c.label}
+                  </a>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>

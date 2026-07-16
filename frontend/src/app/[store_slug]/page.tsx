@@ -127,10 +127,17 @@ export default async function StorePage({ params }: StorePageProps) {
             </svg>
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Store Unavailable</h2>
+          {/* Merchants reach us on WhatsApp, Instagram, Messenger, SMS or the web,
+              so don't send them to one specific channel for reactivation. */}
           <p className="text-gray-600 mb-6">
-            This store is currently inactive. If you are the owner, please check your WhatsApp for reactivation instructions.
+            This store is currently inactive. If you are the owner, sign in to your
+            dashboard to reactivate it — or reply <strong>UPGRADE</strong> on any channel
+            you use with the Maghgo bot.
           </p>
-          <a href="/" className="inline-block bg-gray-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-800 transition-colors">
+          <a href="/dashboard" className="inline-block bg-gray-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-800 transition-colors">
+            Go to your dashboard
+          </a>
+          <a href="/" className="block mt-4 text-sm text-gray-400 hover:text-gray-600 transition-colors">
             Powered by Maghgo
           </a>
         </div>
