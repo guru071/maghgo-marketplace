@@ -51,6 +51,37 @@ function isDuplicateMessage(key: string): boolean {
   return false;
 }
 
+/**
+ * Send a plan's monthly/yearly payment links under the given headline.
+ *
+ * Razorpay is a third party and will eventually be slow, rate-limited or down.
+ * When that happens the merchant must still get a comprehensible message: the
+ * previous code let createPaymentLink throw out to the generic handler, so an
+ * expired merchant saw "Sorry, something went wrong" and had no way to pay us.
+ */
+async function sendPaymentOptions(
+  msg: BotMessage,
+  plan: string,
+  headline: string
+): Promise<void> {
+  try {
+    const monthlyAmount = await getAmountFromPlan(plan as any, false);
+    const yearlyAmount = await getAmountFromPlan(plan as any, true);
+    const [monthlyLink, yearlyLink] = await Promise.all([
+      createPaymentLink(msg.senderId, monthlyAmount),
+      createPaymentLink(msg.senderId, yearlyAmount),
+    ]);
+    await msg.sendReply(
+      `${headline}\n\n📅 *Pay Monthly (₹${monthlyAmount}/mo):*\n🔗 ${monthlyLink}\n\n🎉 *Pay Yearly (Save 15% - ₹${yearlyAmount}/yr):*\n🔗 ${yearlyLink}`
+    );
+  } catch (err) {
+    console.error('❌ Could not build payment options:', err instanceof Error ? err.message : err);
+    await msg.sendReply(
+      `${headline}\n\n⚠️ We couldn't generate your payment link right now. Please try again in a few minutes — reply *UPGRADE* to retry.`
+    );
+  }
+}
+
 export async function processBotMessage(msg: BotMessage): Promise<void> {
   const { channel, senderId, messageId, sendReply } = msg;
 
@@ -107,11 +138,11 @@ async function handleImageMessage(msg: BotMessage): Promise<void> {
     if (merchant.subscription_plan === 'inactive') {
       await sendReply(`⚠️ *Store Inactive!*\n\nYour store is reserved but not yet active. Please reply with "UPGRADE" to select your plan and complete your payment.`);
     } else {
-      const monthlyAmount = await getAmountFromPlan(merchant.subscription_plan as any, false);
-      const yearlyAmount = await getAmountFromPlan(merchant.subscription_plan as any, true);
-      const monthlyLink = await createPaymentLink(senderId, monthlyAmount);
-      const yearlyLink = await createPaymentLink(senderId, yearlyAmount);
-      await sendReply(`⚠️ *Subscription Expired!*\n\nYour subscription has ended and your store is currently inactive. To reactivate your store and continue adding products, please renew your plan:\n\n📅 *Pay Monthly (₹${monthlyAmount}/mo):*\n🔗 ${monthlyLink}\n\n🎉 *Pay Yearly (Save 15% - ₹${yearlyAmount}/yr):*\n🔗 ${yearlyLink}`);
+      await sendPaymentOptions(
+        msg,
+        merchant.subscription_plan,
+        `⚠️ *Subscription Expired!*\n\nYour subscription has ended and your store is currently inactive. To reactivate your store and continue adding products, please renew your plan:`
+      );
     }
     return;
   }
@@ -192,12 +223,15 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
         return;
       }
 
-      const monthlyAmount = await getAmountFromPlan(requestedPlan as any, false);
-      const yearlyAmount = await getAmountFromPlan(requestedPlan as any, true);
-      const monthlyLink = await createPaymentLink(senderId, monthlyAmount);
-      const yearlyLink = await createPaymentLink(senderId, yearlyAmount);
-
-      await sendReply(`🎉 *Welcome to Maghgo!*\n\nYour store *${newMerchant.store_name}* has been reserved.\n\n🚀 To activate your store and start adding products, please complete your payment for the *${requestedPlan} Plan*:\n\n📅 *Pay Monthly (₹${monthlyAmount}/mo):*\n🔗 ${monthlyLink}\n\n🎉 *Pay Yearly (Save 15% - ₹${yearlyAmount}/yr):*\n🔗 ${yearlyLink}`);
+      // The store already exists at this point. sendPaymentOptions never
+      // throws, so a Razorpay hiccup can't make us report "Failed to create
+      // store" for a store that was in fact created — which would leave the
+      // merchant re-registering into an "already registered" dead end.
+      await sendPaymentOptions(
+        msg,
+        requestedPlan,
+        `🎉 *Welcome to Maghgo!*\n\nYour store *${newMerchant.store_name}* has been reserved.\n\n🚀 To activate your store and start adding products, please complete your payment for the *${requestedPlan} Plan*:`
+      );
     } catch (err: any) {
       await sendReply(`❌ ${err.message || 'Failed to create store.'}`);
     }
@@ -258,12 +292,11 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
       return;
     }
     
-    const monthlyAmount = await getAmountFromPlan(plan as any, false);
-    const yearlyAmount = await getAmountFromPlan(plan as any, true);
-    const monthlyLink = await createPaymentLink(senderId, monthlyAmount);
-    const yearlyLink = await createPaymentLink(senderId, yearlyAmount);
-
-    await sendReply(`🚀 *Upgrade your Maghgo Plan!*\n\nPlease complete your payment for the *${plan.toUpperCase()} Plan* to unlock your limits:\n\n📅 *Pay Monthly (₹${monthlyAmount}/mo):*\n🔗 ${monthlyLink}\n\n🎉 *Pay Yearly (Save 15% - ₹${yearlyAmount}/yr):*\n🔗 ${yearlyLink}`);
+    await sendPaymentOptions(
+      msg,
+      plan,
+      `🚀 *Upgrade your Maghgo Plan!*\n\nPlease complete your payment for the *${plan.toUpperCase()} Plan* to unlock your limits:`
+    );
     return;
   }
 
@@ -271,11 +304,11 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     if (merchant.subscription_plan === 'inactive') {
       await sendReply(`⚠️ *Store Inactive!*\n\nYour store is reserved but not yet active. Please reply with "UPGRADE" to select your plan and complete your payment.`);
     } else {
-      const monthlyAmount = await getAmountFromPlan(merchant.subscription_plan as any, false);
-      const yearlyAmount = await getAmountFromPlan(merchant.subscription_plan as any, true);
-      const monthlyLink = await createPaymentLink(senderId, monthlyAmount);
-      const yearlyLink = await createPaymentLink(senderId, yearlyAmount);
-      await sendReply(`⚠️ *Subscription Expired!*\n\nYour subscription has ended. To continue using Maghgo commands and reactivate your store, please renew your plan:\n\n📅 *Pay Monthly (₹${monthlyAmount}/mo):*\n🔗 ${monthlyLink}\n\n🎉 *Pay Yearly (Save 15% - ₹${yearlyAmount}/yr):*\n🔗 ${yearlyLink}`);
+      await sendPaymentOptions(
+        msg,
+        merchant.subscription_plan,
+        `⚠️ *Subscription Expired!*\n\nYour subscription has ended. To continue using Maghgo commands and reactivate your store, please renew your plan:`
+      );
     }
     return;
   }

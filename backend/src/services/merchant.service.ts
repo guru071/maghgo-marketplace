@@ -88,10 +88,25 @@ export async function getProductLimit(plan: string): Promise<number> {
   return data.product_limit;
 }
 
+/**
+ * Whether the merchant's SUBSCRIPTION (billing) is current.
+ *
+ * Deliberately ignores `is_active`. That column is the merchant's own PAUSE
+ * switch for storefront visibility, not a billing signal. Conflating the two
+ * meant PAUSE looked identical to an expired subscription: the bot demanded
+ * payment for a subscription that was perfectly valid, and RESUME — which sits
+ * below the subscription gate — became unreachable, permanently locking the
+ * merchant out of their own store. Paying would have "fixed" it by setting
+ * is_active = true, i.e. charging them to undo their own pause button.
+ *
+ * Storefront visibility is enforced separately and correctly: the store page
+ * 404s when is_active is false, and shows "Store Unavailable" once the
+ * subscription end date has passed.
+ */
 export function isSubscriptionActive(merchant: Merchant): boolean {
+  if (merchant.subscription_plan === 'inactive') return false;
   const subEnds = new Date(merchant.subscription_ends_at);
-  const now = new Date();
-  return merchant.is_active && subEnds > now;
+  return subEnds > new Date();
 }
 
 export async function reactivateSubscription(
