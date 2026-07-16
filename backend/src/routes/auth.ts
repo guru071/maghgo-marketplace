@@ -46,13 +46,22 @@ router.post('/register', async (req, res) => {
     const { data: existingSlug } = await supabase.from('merchants').select('id').eq('store_slug', store_slug).single();
     const final_slug = existingSlug ? `${store_slug}-${Math.floor(Math.random() * 10000)}` : store_slug;
 
+    // Grant the same 30-day trial the WhatsApp registration flow gives, so the
+    // public storefront is active immediately (otherwise subscription_ends_at is
+    // NULL → parsed as 1970 → store renders as "unavailable").
+    const subEndsAt = new Date();
+    subEndsAt.setDate(subEndsAt.getDate() + 30);
+
     const { data: newMerchant, error } = await supabase
       .from('merchants')
       .insert({
         phone_number,
         store_name,
         store_slug: final_slug,
-        password_hash
+        password_hash,
+        subscription_plan: 'starter',
+        is_active: true,
+        subscription_ends_at: subEndsAt.toISOString()
       })
       .select()
       .single();

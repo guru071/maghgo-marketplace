@@ -135,12 +135,20 @@ export default async function StorePage({ params }: StorePageProps) {
     );
   }
 
-  const { data: products } = await supabase
+  const { data: products, error: productsError } = await supabase
     .from('products')
     .select('*')
     .eq('merchant_id', merchant.id)
     .eq('is_available', true)
     .order('sort_order', { ascending: true });
+
+  // Do NOT swallow a transient query error here. If we returned an empty list,
+  // ISR would cache this empty storefront as the new static page and keep
+  // serving "no products yet" for hours until the next regeneration. Throwing
+  // makes Next.js keep serving the last good page instead.
+  if (productsError) {
+    throw new Error(`Failed to load products for "${store_slug}": ${productsError.message}`);
+  }
 
   return <StoreClient merchant={merchant} products={products || []} />;
 }

@@ -6,8 +6,21 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 
 const PLAN_TIERS = [
-  'inactive', 'basic', 'starter', 'pro', 'advanced', 
+  'inactive', 'basic', 'starter', 'pro', 'advanced',
   'premium', 'business', 'agency', 'vip', 'enterprise', 'custom'
+];
+
+// Features that are still being built. They are shown so merchants know what's
+// planned, but are never gated behind a paid plan — nobody should be asked to
+// pay for a feature that doesn't work yet.
+const COMING_SOON_FEATURES = [
+  { label: '📊 Analytics', path: '/dashboard/analytics' },
+  { label: '🌐 Custom Domain', path: '/dashboard/domain' },
+  { label: '🧑‍💻 API Access', path: '/dashboard/api' },
+  { label: '🎧 Priority Support', path: '/dashboard/support' },
+  { label: '📈 Custom Reports', path: '/dashboard/reports' },
+  { label: '🏢 Multi-Storefronts', path: '/dashboard/storefronts' },
+  { label: '🧩 Custom Integrations', path: '/dashboard/integrations' },
 ];
 
 function hasAccess(requiredPlan: string, currentPlan: string) {
@@ -99,10 +112,12 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ amount: upgradeCost, plan: requiredPlan })
       });
       const data = await res.json();
-      if (data.bypassed) {
-        window.location.reload(); // Reload to apply the new plan
-      } else if (data.url) {
+      if (data.url) {
+        // Redirect the merchant to the real Razorpay payment link.
         window.location.href = data.url;
+      } else {
+        alert(data.error || 'Failed to initiate upgrade. Please try again.');
+        setIsUpgrading(false);
       }
     } catch (err) {
       alert('Failed to initiate upgrade.');
@@ -158,18 +173,8 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
             <span className="bg-yellow-100 text-yellow-800 text-[10px] px-2 py-0.5 rounded-full">PRO</span>
           </div>
           
-          <button onClick={(e) => handleFeatureClick(e, 'Advanced Analytics', 'pro', 249, '/dashboard/analytics')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
-            <span>📊 Analytics</span>
-            {!hasAccess('pro', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
-          </button>
-          
           <button onClick={(e) => handleFeatureClick(e, 'Multi-Channel Bots (Instagram & Messenger)', 'pro', 249, '/dashboard/channels')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
             <span>💬 Channels</span>
-            {!hasAccess('pro', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
-          </button>
-          
-          <button onClick={(e) => handleFeatureClick(e, 'Custom Domain Integration', 'pro', 249, '/dashboard/domain')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
-            <span>🌐 Custom Domain</span>
             {!hasAccess('pro', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
           </button>
 
@@ -183,40 +188,29 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
             {!hasAccess('starter', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
           </button>
 
-          <button onClick={(e) => handleFeatureClick(e, 'Developer API Access', 'advanced', 349, '/dashboard/api')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
-            <span>🧑‍💻 API Access</span>
-            {!hasAccess('advanced', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
-          </button>
-
-          <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-8 px-4 flex items-center justify-between">
-            <span>Premium & Enterprise</span>
-            <span className="bg-purple-100 text-purple-800 text-[10px] px-2 py-0.5 rounded-full">PREMIUM+</span>
-          </div>
-          
-          <button onClick={(e) => handleFeatureClick(e, '24/7 Priority Support', 'premium', 499, '/dashboard/support')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
-            <span>🎧 24/7 Priority Support</span>
-            {!hasAccess('premium', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
-          </button>
-
           <button onClick={(e) => handleFeatureClick(e, 'White-Label Branding', 'business', 749, '/dashboard/whitelabel')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
             <span>🖌️ White-Label</span>
             {!hasAccess('business', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
           </button>
 
-          <button onClick={(e) => handleFeatureClick(e, 'Custom Reporting', 'business', 749, '/dashboard/reports')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
-            <span>📈 Custom Reports</span>
-            {!hasAccess('business', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
-          </button>
+          {/* Features that are not built yet. These are intentionally NOT plan-gated:
+              a merchant must never be prompted to pay for something that doesn't work. */}
+          <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-8 px-4">
+            In Development
+          </div>
 
-          <button onClick={(e) => handleFeatureClick(e, 'Multiple Storefronts', 'agency', 999, '/dashboard/storefronts')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
-            <span>🏢 Multi-Storefronts</span>
-            {!hasAccess('agency', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
-          </button>
-
-          <button onClick={(e) => handleFeatureClick(e, 'Custom Integrations', 'vip', 1499, '/dashboard/integrations')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
-            <span>🧩 Custom Integrations</span>
-            {!hasAccess('vip', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
-          </button>
+          {COMING_SOON_FEATURES.map((feature) => (
+            <Link
+              key={feature.path}
+              href={feature.path}
+              className={`block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex justify-between items-center ${pathname === feature.path ? 'bg-accent text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
+            >
+              <span>{feature.label}</span>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full ${pathname === feature.path ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                SOON
+              </span>
+            </Link>
+          ))}
 
         </nav>
         <div className="p-4 border-t border-gray-100">

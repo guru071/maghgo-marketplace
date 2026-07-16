@@ -24,8 +24,9 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().url('SUPABASE_URL must be a valid URL'),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'Supabase service role key is required'),
 
-  // JWT Secret
-  JWT_SECRET: z.string().default('maghgo-super-secret-key-change-in-production'),
+  // JWT Secret — must be a strong, unguessable value set via the environment.
+  // No default is allowed: a hardcoded fallback would let anyone forge tokens.
+  JWT_SECRET: z.string().min(32, 'JWT_SECRET must be set to a strong value of at least 32 characters'),
 
   // Frontend URL for generating links
   REMOVEBG_API_KEY: z.string().min(1, 'REMOVEBG_API_KEY is required'),

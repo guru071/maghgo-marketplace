@@ -32,6 +32,11 @@ import { startCleanupJob } from './jobs/cleanup.job';
 
 const app = express();
 
+// Behind a hosting proxy (Render/Railway/etc.) the client IP arrives in the
+// X-Forwarded-For header. Trust the first proxy hop so express-rate-limit keys
+// on the real client IP instead of throttling every user as one shared proxy IP.
+app.set('trust proxy', 1);
+
 // ─── Sentry Initialization (AI Error Tracking) ───────────────────────────────
 if (env.SENTRY_DSN) {
   Sentry.init({

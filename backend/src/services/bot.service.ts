@@ -22,11 +22,43 @@ export interface BotMessage {
   sendReply: (text: string) => Promise<void>;
 }
 
-// In-memory state for conversational flows (e.g. Instagram/FB missing captions)
-const pendingImages = new Map<string, { buffer: Buffer, mime_type: string }>();
+// In-memory state for conversational flows (e.g. Instagram/FB missing captions).
+// Entries carry a timestamp so stale pending images are pruned and the map can
+// never grow without bound. (For multi-instance scaling, back this with Redis.)
+const PENDING_IMAGE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const pendingImages = new Map<string, { buffer: Buffer; mime_type: string; ts: number }>();
+
+function prunePendingImages(): void {
+  const now = Date.now();
+  for (const [key, val] of pendingImages) {
+    if (now - val.ts > PENDING_IMAGE_TTL_MS) pendingImages.delete(key);
+  }
+}
+
+// Idempotency guard: webhook providers (Meta/Twilio) retry deliveries, which
+// would otherwise create duplicate products. We remember recently-processed
+// message IDs for a short window and drop repeats.
+const PROCESSED_MESSAGE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const processedMessages = new Map<string, number>();
+
+function isDuplicateMessage(key: string): boolean {
+  const now = Date.now();
+  for (const [k, t] of processedMessages) {
+    if (now - t > PROCESSED_MESSAGE_TTL_MS) processedMessages.delete(k);
+  }
+  if (processedMessages.has(key)) return true;
+  processedMessages.set(key, now);
+  return false;
+}
 
 export async function processBotMessage(msg: BotMessage): Promise<void> {
   const { channel, senderId, messageId, sendReply } = msg;
+
+  // Drop duplicate webhook deliveries so retries don't double-process a message.
+  if (messageId && isDuplicateMessage(`${channel}:${messageId}`)) {
+    console.log(`↩️ Skipping duplicate message ${messageId} on ${channel}`);
+    return;
+  }
 
   // Bot is fully active and processing messages
   console.log(`▶️ Processing message from ${senderId} on ${channel}`);
@@ -37,7 +69,8 @@ export async function processBotMessage(msg: BotMessage): Promise<void> {
     if (msg.type === 'image' && msg.image) {
       // Instagram and Facebook do not support captions on images.
       if (!msg.image.caption) {
-        pendingImages.set(pendingKey, { buffer: msg.image.buffer, mime_type: msg.image.mime_type });
+        prunePendingImages();
+        pendingImages.set(pendingKey, { buffer: msg.image.buffer, mime_type: msg.image.mime_type, ts: Date.now() });
         await sendReply('📸 Image received! Now please reply with the product name and price (e.g. "Red Shirt ₹499").');
         return;
       }

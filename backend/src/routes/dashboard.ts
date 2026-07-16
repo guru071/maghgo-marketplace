@@ -166,25 +166,56 @@ router.delete('/products/:id', async (req: AuthRequest, res) => {
   }
 });
 
-// Upgrade Plan - Generate Razorpay Link (BYPASSED FOR TESTING)
-router.post('/upgrade', async (req: AuthRequest, res) => {
+// Save Visual Builder theme config — scoped to the authenticated merchant only.
+// The store is derived from the JWT merchantId, so a merchant can never write
+// another merchant's storefront (prevents the previous unauthenticated IDOR).
+router.put('/theme', async (req: AuthRequest, res) => {
   try {
-    const { amount, plan } = req.body; // Expect frontend to send 'plan'
-    
-    // TEMPORARY BYPASS: Instantly update the plan in the database instead of creating Razorpay link
-    if (plan) {
-      const { error } = await supabase
-        .from('merchants')
-        .update({ subscription_plan: plan })
-        .eq('id', req.merchantId);
-        
-      if (error) throw error;
-      
-      return res.json({ success: true, bypassed: true });
+    const { theme_config } = req.body;
+    if (theme_config === undefined) {
+      return res.status(400).json({ error: 'theme_config is required' });
     }
 
-    // Fallback if plan wasn't provided (e.g. from the old lock modal)
-    res.json({ error: 'Please specify a plan to upgrade to.' });
+    const { data: merchant, error } = await supabase
+      .from('merchants')
+      .update({ theme_config })
+      .eq('id', req.merchantId)
+      .select('store_slug')
+      .single();
+
+    if (error) throw error;
+
+    if (merchant) {
+      await triggerRevalidation(merchant.store_slug);
+    }
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Upgrade Plan - Generate a real Razorpay payment link.
+// The merchant only becomes active once the Razorpay webhook confirms payment
+// (see routes/payment.ts), so no plan is granted without a verified charge.
+router.post('/upgrade', async (req: AuthRequest, res) => {
+  try {
+    const { amount } = req.body;
+    if (!amount) return res.status(400).json({ error: 'Amount is required' });
+
+    // We need the merchant's phone number to pass as senderId to Razorpay
+    const { data: merchant } = await supabase
+      .from('merchants')
+      .select('phone_number')
+      .eq('id', req.merchantId)
+      .single();
+    if (!merchant) return res.status(404).json({ error: 'Merchant not found' });
+    if (!merchant.phone_number) {
+      return res.status(400).json({ error: 'A phone number is required to generate a payment link.' });
+    }
+
+    const url = await createPaymentLink(merchant.phone_number, Number(amount));
+    res.json({ url });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
