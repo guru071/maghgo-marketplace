@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { whatsappLink, instagramLink, messengerLink } from '@/lib/site-config';
 
 export default function RegisterPage() {
   const [storeName, setStoreName] = useState('');
@@ -10,9 +11,12 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '919876543210';
-  const igHandle = process.env.NEXT_PUBLIC_INSTAGRAM_HANDLE || 'maghgo_bot';
-  const fbPage = process.env.NEXT_PUBLIC_MESSENGER_PAGE || 'maghgo';
+  // null when the channel isn't configured — hide the button rather than send
+  // a new customer to a number/handle nobody owns.
+  const waLink = whatsappLink('REGISTER');
+  const igLink = instagramLink();
+  const fbLink = messengerLink();
+  const hasAnyChannel = Boolean(waLink || igLink || fbLink);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,19 +56,29 @@ export default function RegisterPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 mb-6">
-          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4 text-center">Fastest Setup</h3>
-          
-          <div className="space-y-3 mb-8">
-            <a href={`https://wa.me/${whatsappNumber}?text=REGISTER`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center w-full bg-[#25D366] text-white py-3 rounded-full font-medium hover:bg-[#1DA851] transition-colors">
-              Continue with WhatsApp
-            </a>
-            <a href={`https://ig.me/m/${igHandle}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center w-full bg-gradient-to-r from-[#833AB4] via-[#FD1D1D] to-[#F56040] text-white py-3 rounded-full font-medium hover:opacity-90 transition-opacity">
-              Continue with Instagram
-            </a>
-            <a href={`https://m.me/${fbPage}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center w-full bg-[#0084FF] text-white py-3 rounded-full font-medium hover:bg-[#0073E6] transition-colors">
-              Continue with Messenger
-            </a>
-          </div>
+          {hasAnyChannel && (
+            <>
+              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4 text-center">Fastest Setup</h3>
+
+              <div className="space-y-3 mb-8">
+                {waLink && (
+                  <a href={waLink} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center w-full bg-[#25D366] text-white py-3 rounded-full font-medium hover:bg-[#1DA851] transition-colors">
+                    Continue with WhatsApp
+                  </a>
+                )}
+                {igLink && (
+                  <a href={igLink} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center w-full bg-gradient-to-r from-[#833AB4] via-[#FD1D1D] to-[#F56040] text-white py-3 rounded-full font-medium hover:opacity-90 transition-opacity">
+                    Continue with Instagram
+                  </a>
+                )}
+                {fbLink && (
+                  <a href={fbLink} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center w-full bg-[#0084FF] text-white py-3 rounded-full font-medium hover:bg-[#0073E6] transition-colors">
+                    Continue with Messenger
+                  </a>
+                )}
+              </div>
+            </>
+          )}
 
           <div className="relative mb-8">
             <div className="absolute inset-0 flex items-center">

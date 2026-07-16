@@ -1,20 +1,31 @@
 import { supabase } from '../db/supabase';
 import { Merchant } from '../types/whatsapp';
+import { normalizePhone } from '../utils/phone';
 
 export type Channel = 'whatsapp' | 'instagram' | 'messenger' | 'sms';
+
+/**
+ * Resolve the lookup column and the canonical value for a channel.
+ * WhatsApp/SMS senderIds are phone numbers and MUST be normalised — each
+ * channel formats them differently and lookups are exact matches.
+ * Instagram/Messenger ids are opaque and must be used verbatim.
+ */
+function channelLookup(channel: Channel, senderId: string): { column: string; value: string } {
+  if (channel === 'instagram') return { column: 'instagram_id', value: senderId };
+  if (channel === 'messenger') return { column: 'messenger_id', value: senderId };
+  return { column: 'phone_number', value: normalizePhone(senderId) };
+}
 
 export async function getMerchantByChannel(
   channel: Channel,
   senderId: string
 ): Promise<Merchant | null> {
-  let column = 'phone_number';
-  if (channel === 'instagram') column = 'instagram_id';
-  if (channel === 'messenger') column = 'messenger_id';
+  const { column, value } = channelLookup(channel, senderId);
 
   const { data, error } = await supabase
     .from('merchants')
     .select('*')
-    .eq(column, senderId)
+    .eq(column, value)
     .single();
 
   if (error) {
@@ -43,7 +54,7 @@ export async function createMerchant(
     subscription_ends_at: subEndsAt.toISOString(),
   };
 
-  if (channel === 'whatsapp') insertData.phone_number = senderId;
+  if (channel === 'whatsapp' || channel === 'sms') insertData.phone_number = normalizePhone(senderId);
   if (channel === 'instagram') insertData.instagram_id = senderId;
   if (channel === 'messenger') insertData.messenger_id = senderId;
 
@@ -77,10 +88,25 @@ export async function getProductLimit(plan: string): Promise<number> {
   return data.product_limit;
 }
 
+/**
+ * Whether the merchant's SUBSCRIPTION (billing) is current.
+ *
+ * Deliberately ignores `is_active`. That column is the merchant's own PAUSE
+ * switch for storefront visibility, not a billing signal. Conflating the two
+ * meant PAUSE looked identical to an expired subscription: the bot demanded
+ * payment for a subscription that was perfectly valid, and RESUME — which sits
+ * below the subscription gate — became unreachable, permanently locking the
+ * merchant out of their own store. Paying would have "fixed" it by setting
+ * is_active = true, i.e. charging them to undo their own pause button.
+ *
+ * Storefront visibility is enforced separately and correctly: the store page
+ * 404s when is_active is false, and shows "Store Unavailable" once the
+ * subscription end date has passed.
+ */
 export function isSubscriptionActive(merchant: Merchant): boolean {
+  if (merchant.subscription_plan === 'inactive') return false;
   const subEnds = new Date(merchant.subscription_ends_at);
-  const now = new Date();
-  return merchant.is_active && subEnds > now;
+  return subEnds > new Date();
 }
 
 export async function reactivateSubscription(
@@ -89,14 +115,12 @@ export async function reactivateSubscription(
   plan: 'basic' | 'starter' | 'pro' | 'advanced' | 'premium' | 'business' | 'agency' | 'vip' | 'enterprise' | 'custom',
   isYearly: boolean = false
 ): Promise<void> {
-  let column = 'phone_number';
-  if (channel === 'instagram') column = 'instagram_id';
-  if (channel === 'messenger') column = 'messenger_id';
+  const { column, value } = channelLookup(channel, senderId);
 
   const { data: merchant, error: fetchError } = await supabase
     .from('merchants')
     .select('subscription_ends_at, is_active')
-    .eq(column, senderId)
+    .eq(column, value)
     .single();
 
   if (fetchError) {
@@ -118,7 +142,7 @@ export async function reactivateSubscription(
       subscription_plan: plan,
       subscription_ends_at: newExpiry.toISOString(),
     })
-    .eq(column, senderId);
+    .eq(column, value);
 
   if (error) {
     throw new Error(`Failed to reactivate subscription: ${error.message}`);
@@ -126,9 +150,7 @@ export async function reactivateSubscription(
 }
 
 export async function generateLinkCode(channel: Channel, senderId: string): Promise<string> {
-  let column = 'phone_number';
-  if (channel === 'instagram') column = 'instagram_id';
-  if (channel === 'messenger') column = 'messenger_id';
+  const { column, value } = channelLookup(channel, senderId);
 
   // Generate a random 6 character alphanumeric code
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -140,7 +162,7 @@ export async function generateLinkCode(channel: Channel, senderId: string): Prom
   const { error } = await supabase
     .from('merchants')
     .update({ link_code: code })
-    .eq(column, senderId);
+    .eq(column, value);
 
   if (error) {
     throw new Error(`Failed to generate link code: ${error.message}`);
@@ -169,7 +191,7 @@ export async function linkChannelToMerchant(
   let updateData: any = {};
   if (newChannel === 'instagram') updateData.instagram_id = newSenderId;
   if (newChannel === 'messenger') updateData.messenger_id = newSenderId;
-  if (newChannel === 'whatsapp' || newChannel === 'sms') updateData.phone_number = newSenderId;
+  if (newChannel === 'whatsapp' || newChannel === 'sms') updateData.phone_number = normalizePhone(newSenderId);
 
   // Clear the link code after successful linking for security
   updateData.link_code = null;
@@ -212,7 +234,9 @@ export async function toggleStoreStatus(merchantId: string, isActive: boolean): 
 
 export async function updateMerchantSocial(merchantId: string, platform: 'instagram_handle' | 'facebook_url' | 'phone_number', value: string): Promise<void> {
   const updateData: any = {};
-  updateData[platform] = value;
+  // phone_number is a lookup key for the bot and the payment webhook, so it
+  // must be stored in the same canonical form everything else searches by.
+  updateData[platform] = platform === 'phone_number' ? normalizePhone(value) : value;
   
   const { error } = await supabase
     .from('merchants')

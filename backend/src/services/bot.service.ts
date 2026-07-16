@@ -6,6 +6,8 @@ import { createProduct, getProducts, deleteProduct, getProductCount, updateProdu
 import { triggerRevalidation } from './revalidate.service';
 import { createPaymentLink, getAmountFromPlan, getPlanFromAmount } from './payment.service';
 import { env } from '../config/env';
+import { buildStoreSlug } from '../utils/slug';
+import { canUseChannel, minPlanForChannel, channelLabel, hasAccess } from '../utils/plans';
 import jwt from 'jsonwebtoken';
 
 export interface BotMessage {
@@ -22,11 +24,74 @@ export interface BotMessage {
   sendReply: (text: string) => Promise<void>;
 }
 
-// In-memory state for conversational flows (e.g. Instagram/FB missing captions)
-const pendingImages = new Map<string, { buffer: Buffer, mime_type: string }>();
+// In-memory state for conversational flows (e.g. Instagram/FB missing captions).
+// Entries carry a timestamp so stale pending images are pruned and the map can
+// never grow without bound. (For multi-instance scaling, back this with Redis.)
+const PENDING_IMAGE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const pendingImages = new Map<string, { buffer: Buffer; mime_type: string; ts: number }>();
+
+function prunePendingImages(): void {
+  const now = Date.now();
+  for (const [key, val] of pendingImages) {
+    if (now - val.ts > PENDING_IMAGE_TTL_MS) pendingImages.delete(key);
+  }
+}
+
+// Idempotency guard: webhook providers (Meta/Twilio) retry deliveries, which
+// would otherwise create duplicate products. We remember recently-processed
+// message IDs for a short window and drop repeats.
+const PROCESSED_MESSAGE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const processedMessages = new Map<string, number>();
+
+function isDuplicateMessage(key: string): boolean {
+  const now = Date.now();
+  for (const [k, t] of processedMessages) {
+    if (now - t > PROCESSED_MESSAGE_TTL_MS) processedMessages.delete(k);
+  }
+  if (processedMessages.has(key)) return true;
+  processedMessages.set(key, now);
+  return false;
+}
+
+/**
+ * Send a plan's monthly/yearly payment links under the given headline.
+ *
+ * Razorpay is a third party and will eventually be slow, rate-limited or down.
+ * When that happens the merchant must still get a comprehensible message: the
+ * previous code let createPaymentLink throw out to the generic handler, so an
+ * expired merchant saw "Sorry, something went wrong" and had no way to pay us.
+ */
+async function sendPaymentOptions(
+  msg: BotMessage,
+  plan: string,
+  headline: string
+): Promise<void> {
+  try {
+    const monthlyAmount = await getAmountFromPlan(plan as any, false);
+    const yearlyAmount = await getAmountFromPlan(plan as any, true);
+    const [monthlyLink, yearlyLink] = await Promise.all([
+      createPaymentLink(msg.senderId, monthlyAmount),
+      createPaymentLink(msg.senderId, yearlyAmount),
+    ]);
+    await msg.sendReply(
+      `${headline}\n\n📅 *Pay Monthly (₹${monthlyAmount}/mo):*\n🔗 ${monthlyLink}\n\n🎉 *Pay Yearly (Save 15% - ₹${yearlyAmount}/yr):*\n🔗 ${yearlyLink}`
+    );
+  } catch (err) {
+    console.error('❌ Could not build payment options:', err instanceof Error ? err.message : err);
+    await msg.sendReply(
+      `${headline}\n\n⚠️ We couldn't generate your payment link right now. Please try again in a few minutes — reply *UPGRADE* to retry.`
+    );
+  }
+}
 
 export async function processBotMessage(msg: BotMessage): Promise<void> {
   const { channel, senderId, messageId, sendReply } = msg;
+
+  // Drop duplicate webhook deliveries so retries don't double-process a message.
+  if (messageId && isDuplicateMessage(`${channel}:${messageId}`)) {
+    console.log(`↩️ Skipping duplicate message ${messageId} on ${channel}`);
+    return;
+  }
 
   // Bot is fully active and processing messages
   console.log(`▶️ Processing message from ${senderId} on ${channel}`);
@@ -37,7 +102,8 @@ export async function processBotMessage(msg: BotMessage): Promise<void> {
     if (msg.type === 'image' && msg.image) {
       // Instagram and Facebook do not support captions on images.
       if (!msg.image.caption) {
-        pendingImages.set(pendingKey, { buffer: msg.image.buffer, mime_type: msg.image.mime_type });
+        prunePendingImages();
+        pendingImages.set(pendingKey, { buffer: msg.image.buffer, mime_type: msg.image.mime_type, ts: Date.now() });
         await sendReply('📸 Image received! Now please reply with the product name and price (e.g. "Red Shirt ₹499").');
         return;
       }
@@ -70,15 +136,25 @@ async function handleImageMessage(msg: BotMessage): Promise<void> {
     return;
   }
 
+  if (!canUseChannel(merchant.subscription_plan, channel)) {
+    const needed = minPlanForChannel(channel);
+    await sendReply(
+      `⚠️ *${channelLabel(channel)} needs the ${needed.toUpperCase()} plan*\n\n` +
+      `Your store is on the *${merchant.subscription_plan.toUpperCase()}* plan, which doesn't include ${channelLabel(channel)}.\n\n` +
+      `Reply *UPGRADE ${needed}* to unlock it.`
+    );
+    return;
+  }
+
   if (!isSubscriptionActive(merchant)) {
     if (merchant.subscription_plan === 'inactive') {
       await sendReply(`⚠️ *Store Inactive!*\n\nYour store is reserved but not yet active. Please reply with "UPGRADE" to select your plan and complete your payment.`);
     } else {
-      const monthlyAmount = await getAmountFromPlan(merchant.subscription_plan as any, false);
-      const yearlyAmount = await getAmountFromPlan(merchant.subscription_plan as any, true);
-      const monthlyLink = await createPaymentLink(senderId, monthlyAmount);
-      const yearlyLink = await createPaymentLink(senderId, yearlyAmount);
-      await sendReply(`⚠️ *Subscription Expired!*\n\nYour subscription has ended and your store is currently inactive. To reactivate your store and continue adding products, please renew your plan:\n\n📅 *Pay Monthly (₹${monthlyAmount}/mo):*\n🔗 ${monthlyLink}\n\n🎉 *Pay Yearly (Save 15% - ₹${yearlyAmount}/yr):*\n🔗 ${yearlyLink}`);
+      await sendPaymentOptions(
+        msg,
+        merchant.subscription_plan,
+        `⚠️ *Subscription Expired!*\n\nYour subscription has ended and your store is currently inactive. To reactivate your store and continue adding products, please renew your plan:`
+      );
     }
     return;
   }
@@ -150,8 +226,27 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
       return;
     }
 
+    // Never register someone onto a plan that cannot use the channel they are
+    // standing in — they'd be locked out of their own store the moment they
+    // finished signing up. Raise the plan to the cheapest one that covers it
+    // and say so, rather than silently charging them more.
+    let channelUpgradeNote = '';
+    const minForChannel = minPlanForChannel(channel);
+    if (requestedPlan !== 'CUSTOM' && !hasAccess(minForChannel, requestedPlan.toLowerCase())) {
+      channelUpgradeNote =
+        `\n\n_Note: ${channelLabel(channel)} needs the ${minForChannel.toUpperCase()} plan, ` +
+        `so we've selected that instead of ${requestedPlan}._`;
+      requestedPlan = minForChannel.toUpperCase();
+    }
+
     try {
-      const storeSlug = storeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+      // Storefronts live at the URL root, so the slug must not collide with a
+      // static page like /login — that store would be permanently unreachable.
+      const storeSlug = buildStoreSlug(storeName);
+      if (!storeSlug) {
+        await sendReply('⚠️ Please choose a store name that contains letters or numbers.\n\nExample: REGISTER Ramesh Mobiles');
+        return;
+      }
       const newMerchant = await createMerchant(channel, senderId, storeName, storeSlug);
       
       if (requestedPlan === 'CUSTOM') {
@@ -159,12 +254,15 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
         return;
       }
 
-      const monthlyAmount = await getAmountFromPlan(requestedPlan as any, false);
-      const yearlyAmount = await getAmountFromPlan(requestedPlan as any, true);
-      const monthlyLink = await createPaymentLink(senderId, monthlyAmount);
-      const yearlyLink = await createPaymentLink(senderId, yearlyAmount);
-
-      await sendReply(`🎉 *Welcome to Maghgo!*\n\nYour store *${newMerchant.store_name}* has been reserved.\n\n🚀 To activate your store and start adding products, please complete your payment for the *${requestedPlan} Plan*:\n\n📅 *Pay Monthly (₹${monthlyAmount}/mo):*\n🔗 ${monthlyLink}\n\n🎉 *Pay Yearly (Save 15% - ₹${yearlyAmount}/yr):*\n🔗 ${yearlyLink}`);
+      // The store already exists at this point. sendPaymentOptions never
+      // throws, so a Razorpay hiccup can't make us report "Failed to create
+      // store" for a store that was in fact created — which would leave the
+      // merchant re-registering into an "already registered" dead end.
+      await sendPaymentOptions(
+        msg,
+        requestedPlan,
+        `🎉 *Welcome to Maghgo!*\n\nYour store *${newMerchant.store_name}* has been reserved.${channelUpgradeNote}\n\n🚀 To activate your store and start adding products, please complete your payment for the *${requestedPlan} Plan*:`
+      );
     } catch (err: any) {
       await sendReply(`❌ ${err.message || 'Failed to create store.'}`);
     }
@@ -225,12 +323,24 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
       return;
     }
     
-    const monthlyAmount = await getAmountFromPlan(plan as any, false);
-    const yearlyAmount = await getAmountFromPlan(plan as any, true);
-    const monthlyLink = await createPaymentLink(senderId, monthlyAmount);
-    const yearlyLink = await createPaymentLink(senderId, yearlyAmount);
+    await sendPaymentOptions(
+      msg,
+      plan,
+      `🚀 *Upgrade your Maghgo Plan!*\n\nPlease complete your payment for the *${plan.toUpperCase()} Plan* to unlock your limits:`
+    );
+    return;
+  }
 
-    await sendReply(`🚀 *Upgrade your Maghgo Plan!*\n\nPlease complete your payment for the *${plan.toUpperCase()} Plan* to unlock your limits:\n\n📅 *Pay Monthly (₹${monthlyAmount}/mo):*\n🔗 ${monthlyLink}\n\n🎉 *Pay Yearly (Save 15% - ₹${yearlyAmount}/yr):*\n🔗 ${yearlyLink}`);
+  // Channel access. Deliberately placed AFTER the UPGRADE handler above, so a
+  // merchant on the wrong plan can always reach the thing that fixes it, and
+  // HELP/STATUS stay available so they are never left without an explanation.
+  if (!canUseChannel(merchant.subscription_plan, channel) && command !== 'HELP' && command !== 'STATUS') {
+    const needed = minPlanForChannel(channel);
+    await sendReply(
+      `⚠️ *${channelLabel(channel)} needs the ${needed.toUpperCase()} plan*\n\n` +
+      `Your store is on the *${merchant.subscription_plan.toUpperCase()}* plan, which doesn't include ${channelLabel(channel)}.\n\n` +
+      `Reply *UPGRADE ${needed}* to unlock it — or keep managing your store on WhatsApp or your web dashboard.`
+    );
     return;
   }
 
@@ -238,11 +348,11 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     if (merchant.subscription_plan === 'inactive') {
       await sendReply(`⚠️ *Store Inactive!*\n\nYour store is reserved but not yet active. Please reply with "UPGRADE" to select your plan and complete your payment.`);
     } else {
-      const monthlyAmount = await getAmountFromPlan(merchant.subscription_plan as any, false);
-      const yearlyAmount = await getAmountFromPlan(merchant.subscription_plan as any, true);
-      const monthlyLink = await createPaymentLink(senderId, monthlyAmount);
-      const yearlyLink = await createPaymentLink(senderId, yearlyAmount);
-      await sendReply(`⚠️ *Subscription Expired!*\n\nYour subscription has ended. To continue using Maghgo commands and reactivate your store, please renew your plan:\n\n📅 *Pay Monthly (₹${monthlyAmount}/mo):*\n🔗 ${monthlyLink}\n\n🎉 *Pay Yearly (Save 15% - ₹${yearlyAmount}/yr):*\n🔗 ${yearlyLink}`);
+      await sendPaymentOptions(
+        msg,
+        merchant.subscription_plan,
+        `⚠️ *Subscription Expired!*\n\nYour subscription has ended. To continue using Maghgo commands and reactivate your store, please renew your plan:`
+      );
     }
     return;
   }

@@ -3,6 +3,7 @@ import { requireAuth, AuthRequest } from '../middleware/auth';
 import { supabase } from '../db/supabase';
 import { getProducts, updateProductPrice, deleteAllProducts, deleteProduct, createProduct } from '../services/product.service';
 import { updateStoreDescription, toggleStoreStatus, getProductLimit } from '../services/merchant.service';
+import { getOrders, updateOrderStatus, getAnalytics } from '../services/order.service';
 import { createPaymentLink } from '../services/payment.service';
 import { triggerRevalidation } from '../services/revalidate.service';
 import multer from 'multer';
@@ -13,6 +14,15 @@ import crypto from 'crypto';
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
 
+// Every merchant column EXCEPT password_hash. Never select('*') on merchants:
+// that ships the bcrypt hash to the browser, where it has no business being.
+const MERCHANT_PUBLIC_COLUMNS = [
+  'id', 'phone_number', 'store_name', 'store_slug', 'store_description',
+  'store_logo_url', 'is_active', 'subscription_plan', 'subscription_ends_at',
+  'created_at', 'updated_at', 'theme_config', 'theme_id', 'instagram_handle',
+  'facebook_url', 'x_handle', 'instagram_id', 'messenger_id', 'link_code',
+].join(', ');
+
 // Apply auth middleware to all routes
 router.use(requireAuth);
 
@@ -21,7 +31,7 @@ router.get('/store', async (req: AuthRequest, res) => {
   try {
     const { data, error } = await supabase
       .from('merchants')
-      .select('*')
+      .select(MERCHANT_PUBLIC_COLUMNS)
       .eq('id', req.merchantId)
       .single();
 
@@ -166,25 +176,91 @@ router.delete('/products/:id', async (req: AuthRequest, res) => {
   }
 });
 
-// Upgrade Plan - Generate Razorpay Link (BYPASSED FOR TESTING)
-router.post('/upgrade', async (req: AuthRequest, res) => {
+// Save Visual Builder theme config — scoped to the authenticated merchant only.
+// The store is derived from the JWT merchantId, so a merchant can never write
+// another merchant's storefront (prevents the previous unauthenticated IDOR).
+router.put('/theme', async (req: AuthRequest, res) => {
   try {
-    const { amount, plan } = req.body; // Expect frontend to send 'plan'
-    
-    // TEMPORARY BYPASS: Instantly update the plan in the database instead of creating Razorpay link
-    if (plan) {
-      const { error } = await supabase
-        .from('merchants')
-        .update({ subscription_plan: plan })
-        .eq('id', req.merchantId);
-        
-      if (error) throw error;
-      
-      return res.json({ success: true, bypassed: true });
+    const { theme_config } = req.body;
+    if (theme_config === undefined) {
+      return res.status(400).json({ error: 'theme_config is required' });
     }
 
-    // Fallback if plan wasn't provided (e.g. from the old lock modal)
-    res.json({ error: 'Please specify a plan to upgrade to.' });
+    const { data: merchant, error } = await supabase
+      .from('merchants')
+      .update({ theme_config })
+      .eq('id', req.merchantId)
+      .select('store_slug')
+      .single();
+
+    if (error) throw error;
+
+    if (merchant) {
+      await triggerRevalidation(merchant.store_slug);
+    }
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Orders ──────────────────────────────────────────────────────────────────
+
+// List this merchant's orders (newest first).
+router.get('/orders', async (req: AuthRequest, res) => {
+  try {
+    res.json(await getOrders(req.merchantId!));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Move an order along its status flow. Scoped to the caller's own orders.
+router.patch('/orders/:id', async (req: AuthRequest, res) => {
+  try {
+    const { status } = req.body;
+    if (!status) return res.status(400).json({ error: 'status is required' });
+
+    const updated = await updateOrderStatus(req.merchantId!, String(req.params.id), status);
+    if (!updated) return res.status(404).json({ error: 'Order not found' });
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Real analytics, aggregated from real orders — no invented figures.
+router.get('/analytics', async (req: AuthRequest, res) => {
+  try {
+    res.json(await getAnalytics(req.merchantId!));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Upgrade Plan - Generate a real Razorpay payment link.
+// The merchant only becomes active once the Razorpay webhook confirms payment
+// (see routes/payment.ts), so no plan is granted without a verified charge.
+router.post('/upgrade', async (req: AuthRequest, res) => {
+  try {
+    const { amount } = req.body;
+    if (!amount) return res.status(400).json({ error: 'Amount is required' });
+
+    // We need the merchant's phone number to pass as senderId to Razorpay
+    const { data: merchant } = await supabase
+      .from('merchants')
+      .select('phone_number')
+      .eq('id', req.merchantId)
+      .single();
+    if (!merchant) return res.status(404).json({ error: 'Merchant not found' });
+    if (!merchant.phone_number) {
+      return res.status(400).json({ error: 'A phone number is required to generate a payment link.' });
+    }
+
+    const url = await createPaymentLink(merchant.phone_number, Number(amount));
+    res.json({ url });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

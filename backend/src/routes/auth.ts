@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { supabase } from '../db/supabase';
 import { env } from '../config/env';
+import { normalizePhone, isValidPhone } from '../utils/phone';
+import { buildStoreSlug } from '../utils/slug';
 import rateLimit from 'express-rate-limit';
 
 const router = Router();
@@ -24,11 +26,19 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Phone number, store name, and password are required' });
     }
 
+    // Store the canonical form. The user may type "+91 98765 43210" while the
+    // WhatsApp webhook sends "919876543210"; lookups are exact matches, so
+    // without this the bot would never recognise a web-registered merchant.
+    const normalizedPhone = normalizePhone(phone_number);
+    if (!isValidPhone(normalizedPhone)) {
+      return res.status(400).json({ error: 'Please enter a valid phone number, including country code.' });
+    }
+
     // Check if phone number already exists
     const { data: existingUser } = await supabase
       .from('merchants')
       .select('id')
-      .eq('phone_number', phone_number)
+      .eq('phone_number', normalizedPhone)
       .single();
 
     if (existingUser) {
@@ -39,20 +49,33 @@ router.post('/register', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const password_hash = await bcrypt.hash(password, salt);
 
-    // Generate slug from store name
-    const store_slug = store_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    // Storefronts live at the URL root, so the slug must not collide with a
+    // static page like /login — that store would be permanently unreachable.
+    const store_slug = buildStoreSlug(store_name);
+    if (!store_slug) {
+      return res.status(400).json({ error: 'Please choose a store name containing letters or numbers.' });
+    }
 
     // Note: We need a unique slug. If it exists, append a random string
     const { data: existingSlug } = await supabase.from('merchants').select('id').eq('store_slug', store_slug).single();
     const final_slug = existingSlug ? `${store_slug}-${Math.floor(Math.random() * 10000)}` : store_slug;
 
+    // Grant the same 30-day trial the WhatsApp registration flow gives, so the
+    // public storefront is active immediately (otherwise subscription_ends_at is
+    // NULL → parsed as 1970 → store renders as "unavailable").
+    const subEndsAt = new Date();
+    subEndsAt.setDate(subEndsAt.getDate() + 30);
+
     const { data: newMerchant, error } = await supabase
       .from('merchants')
       .insert({
-        phone_number,
+        phone_number: normalizedPhone,
         store_name,
         store_slug: final_slug,
-        password_hash
+        password_hash,
+        subscription_plan: 'starter',
+        is_active: true,
+        subscription_ends_at: subEndsAt.toISOString()
       })
       .select()
       .single();
@@ -77,10 +100,12 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Phone number and password are required' });
     }
 
+    // Normalise on login too, so "+91 98765 43210" finds the merchant stored
+    // as "919876543210".
     const { data: merchant, error } = await supabase
       .from('merchants')
       .select('id, password_hash')
-      .eq('phone_number', phone_number)
+      .eq('phone_number', normalizePhone(phone_number))
       .single();
 
     if (error || !merchant) {

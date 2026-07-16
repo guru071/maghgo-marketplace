@@ -6,9 +6,11 @@ export const revalidate = 0; // Always fetch fresh data for admin
 export default async function MerchantsPage() {
   const supabase = createServerSupabaseClient();
   
+  // Explicit columns — never '*', which would pull every merchant's
+  // password_hash into the admin page payload.
   const { data: merchants, error } = await supabase
     .from('merchants')
-    .select('*')
+    .select('id, phone_number, store_name, store_slug, store_description, is_active, subscription_plan, subscription_ends_at, created_at, instagram_handle')
     .order('created_at', { ascending: false });
 
   if (error) {

@@ -12,6 +12,7 @@ import { paymentRouter } from './routes/payment';
 import demoRouter from './routes/demo';
 import { dashboardRouter } from './routes/dashboard';
 import { authRouter } from './routes/auth';
+import { storeRouter } from './routes/store';
 import { errorHandler } from './middleware/error-handler';
 
 // ─── Process Error Handling ──────────────────────────────────────────────────
@@ -31,6 +32,11 @@ process.on('uncaughtException', (error) => {
 import { startCleanupJob } from './jobs/cleanup.job';
 
 const app = express();
+
+// Behind a hosting proxy (Render/Railway/etc.) the client IP arrives in the
+// X-Forwarded-For header. Trust the first proxy hop so express-rate-limit keys
+// on the real client IP instead of throttling every user as one shared proxy IP.
+app.set('trust proxy', 1);
 
 // ─── Sentry Initialization (AI Error Tracking) ───────────────────────────────
 if (env.SENTRY_DSN) {
@@ -93,6 +99,7 @@ app.use('/demo', demoRouter);
 app.use('/health', healthRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/store', storeRouter);
 
 // ─── Error Handler ───────────────────────────────────────────────────────────
 

@@ -10,7 +10,7 @@ export default function DemoPage() {
         <div className="hero__background"></div>
         <div className="hero__container">
           <h1 className="hero__title">
-            Interactive <span className="text-whatsapp">Live Demo</span>
+            Interactive <span className="text-accent">Live Demo</span>
           </h1>
           <p className="hero__subtitle" style={{ maxWidth: '600px' }}>
             Upload a photo below to see how Maghgo's AI instantly turns a messy background into a professional, ready-to-sell web store. 

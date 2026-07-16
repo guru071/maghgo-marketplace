@@ -21,7 +21,7 @@ const DEMO_MERCHANT = {
   store_logo_url: null,
   is_active: true,
   subscription_plan: 'premium' as const,
-  trial_ends_at: '2030-01-01T00:00:00.000Z',
+  subscription_ends_at: '2030-01-01T00:00:00.000Z',
   created_at: '2026-01-01T00:00:00.000Z',
   instagram_handle: 'goatech.tech',
   facebook_url: 'goatech',
@@ -103,9 +103,12 @@ export default async function StorePage({ params }: StorePageProps) {
 
   const supabase = createServerSupabaseClient();
   
+  // NEVER select('*') here: this row is passed into a client component and is
+  // therefore serialised into the HTML sent to every anonymous visitor. Using
+  // '*' shipped the merchant's bcrypt password_hash to the public internet.
   const { data: merchant, error: merchantError } = await supabase
     .from('merchants')
-    .select('*')
+    .select('id, phone_number, store_name, store_slug, store_description, store_logo_url, is_active, subscription_plan, subscription_ends_at, created_at, theme_config, instagram_handle, facebook_url, x_handle')
     .eq('store_slug', store_slug)
     .single();
 
@@ -124,10 +127,17 @@ export default async function StorePage({ params }: StorePageProps) {
             </svg>
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Store Unavailable</h2>
+          {/* Merchants reach us on WhatsApp, Instagram, Messenger, SMS or the web,
+              so don't send them to one specific channel for reactivation. */}
           <p className="text-gray-600 mb-6">
-            This store is currently inactive. If you are the owner, please check your WhatsApp for reactivation instructions.
+            This store is currently inactive. If you are the owner, sign in to your
+            dashboard to reactivate it — or reply <strong>UPGRADE</strong> on any channel
+            you use with the Maghgo bot.
           </p>
-          <a href="/" className="inline-block bg-gray-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-800 transition-colors">
+          <a href="/dashboard" className="inline-block bg-gray-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-800 transition-colors">
+            Go to your dashboard
+          </a>
+          <a href="/" className="block mt-4 text-sm text-gray-400 hover:text-gray-600 transition-colors">
             Powered by Maghgo
           </a>
         </div>
@@ -135,12 +145,20 @@ export default async function StorePage({ params }: StorePageProps) {
     );
   }
 
-  const { data: products } = await supabase
+  const { data: products, error: productsError } = await supabase
     .from('products')
     .select('*')
     .eq('merchant_id', merchant.id)
     .eq('is_available', true)
     .order('sort_order', { ascending: true });
+
+  // Do NOT swallow a transient query error here. If we returned an empty list,
+  // ISR would cache this empty storefront as the new static page and keep
+  // serving "no products yet" for hours until the next regeneration. Throwing
+  // makes Next.js keep serving the last good page instead.
+  if (productsError) {
+    throw new Error(`Failed to load products for "${store_slug}": ${productsError.message}`);
+  }
 
   return <StoreClient merchant={merchant} products={products || []} />;
 }

@@ -66,7 +66,9 @@ export function WorkingModelDemo() {
     <section className="demo-section">
       <div className="container">
         <h2 className="demo-section__title">See the Magic Happen</h2>
-        <p className="demo-section__subtitle">Try it yourself. Type a message in WhatsApp and watch it instantly appear on the web store.</p>
+        {/* The mock on the left is a generic chat window; the same flow runs on
+            WhatsApp, Instagram, Messenger and SMS, so don't name just one. */}
+        <p className="demo-section__subtitle">Try it yourself. Send a message to the Maghgo bot — from WhatsApp, Instagram or Messenger — and watch it appear on the web store instantly.</p>
         
         <div className="demo-section__split">
           {/* Left: WhatsApp Simulator */}

@@ -25,15 +25,30 @@ export function BuilderClient({ storeSlug, initialData }: BuilderClientProps) {
   const handleSave = async (data: any) => {
     try {
       setIsSaving(true);
-      const res = await fetch("/api/builder/save", {
-        method: "POST",
+
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("maghgo_merchant_token")
+          : null;
+
+      if (!token) {
+        alert(
+          "Please log in to your dashboard before saving your store layout."
+        );
+        return;
+      }
+
+      // Save via the authenticated backend endpoint. The backend derives the
+      // store from the merchant's token, so only the owner can edit their store.
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+      const res = await fetch(`${apiUrl}/api/dashboard/theme`, {
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          store_slug: storeSlug,
-          theme_config: data,
-        }),
+        body: JSON.stringify({ theme_config: data }),
       });
 
       if (!res.ok) {

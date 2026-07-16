@@ -11,12 +11,19 @@ export function Hero() {
           <span className="hero__badge-dot"></span>
           Now accepting sellers
         </div>
+        {/* `text-accent` rather than the old `text-whatsapp`: that class was
+            never defined anywhere, so the highlighted word rendered unstyled.
+            The highlight is no longer WhatsApp-specific either — the bot runs on
+            WhatsApp, Instagram, Messenger and SMS, and the store is fully
+            manageable from the web. */}
         <h1 className="hero__title">
-          Your <span className="text-whatsapp">WhatsApp</span>.<br />
+          Your <span className="text-accent">Chats</span>.<br />
           Your Web Store.
         </h1>
         <p className="hero__subtitle">
-          Turn your WhatsApp into a premium web store. Just send photos of your products. We handle the background removal, formatting, and hosting instantly.
+          Turn WhatsApp, Instagram or Messenger into a premium web store. Just send a photo
+          of your product — we handle the background removal, formatting and hosting
+          instantly. Prefer a browser? Manage everything from your dashboard.
         </p>
         <div className="hero__actions">
           <Link href="/register">

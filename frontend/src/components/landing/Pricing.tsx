@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import Button from '@/components/ui/Button';
 import { MessageCircle, MessageSquare, Camera, X } from 'lucide-react';
+import { whatsappLink, instagramLink, messengerLink, smsLink } from '@/lib/site-config';
 
 export function Pricing({ 
   enabledPlatforms = {
@@ -126,9 +127,9 @@ export function Pricing({
             </div>
 
             <div className="space-y-3">
-              {enabledPlatforms.whatsapp_enabled && (
-                <a 
-                  href={`https://wa.me/${process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '15550000000'}?text=${encodeURIComponent(`REGISTER [Type your store name here] - ${selectedPlan.toUpperCase()}`)}`}
+              {enabledPlatforms.whatsapp_enabled && whatsappLink(`REGISTER [Type your store name here] - ${selectedPlan.toUpperCase()}`) && (
+                <a
+                  href={whatsappLink(`REGISTER [Type your store name here] - ${selectedPlan.toUpperCase()}`)!}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full flex items-center p-4 rounded-xl border border-gray-200 hover:border-[#25D366] hover:bg-[#25D366]/5 transition-all group"
@@ -143,9 +144,9 @@ export function Pricing({
                 </a>
               )}
 
-              {enabledPlatforms.instagram_enabled && (
-                <a 
-                  href={`https://ig.me/m/${process.env.NEXT_PUBLIC_INSTAGRAM_HANDLE || 'maghgo'}`}
+              {enabledPlatforms.instagram_enabled && instagramLink() && (
+                <a
+                  href={instagramLink()!}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full flex items-center p-4 rounded-xl border border-gray-200 hover:border-pink-500 hover:bg-pink-50 transition-all group"
@@ -160,9 +161,9 @@ export function Pricing({
                 </a>
               )}
 
-              {enabledPlatforms.messenger_enabled && (
-                <a 
-                  href={`https://m.me/${process.env.NEXT_PUBLIC_MESSENGER_PAGE || 'maghgo'}`}
+              {enabledPlatforms.messenger_enabled && messengerLink() && (
+                <a
+                  href={messengerLink()!}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full flex items-center p-4 rounded-xl border border-gray-200 hover:border-blue-600 hover:bg-blue-50 transition-all group"
@@ -177,9 +178,9 @@ export function Pricing({
                 </a>
               )}
 
-              {enabledPlatforms.sms_enabled && (
-                <a 
-                  href={`sms:+${process.env.NEXT_PUBLIC_SMS_NUMBER || '15550000000'}?body=${encodeURIComponent(`REGISTER [Type your store name here] - ${selectedPlan.toUpperCase()}`)}`}
+              {enabledPlatforms.sms_enabled && smsLink(`REGISTER [Type your store name here] - ${selectedPlan.toUpperCase()}`) && (
+                <a
+                  href={smsLink(`REGISTER [Type your store name here] - ${selectedPlan.toUpperCase()}`)!}
                   className="w-full flex items-center p-4 rounded-xl border border-gray-200 hover:border-gray-800 hover:bg-gray-50 transition-all group"
                 >
                   <div className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-100 text-gray-600 group-hover:bg-gray-800 group-hover:text-white transition-colors">

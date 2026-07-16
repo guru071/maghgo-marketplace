@@ -120,7 +120,7 @@ export default function CartDrawer({ phone, storeName, currency = 'INR', instagr
                 {formatPrice(total, currency)}
               </span>
             </div>
-            <CheckoutButton phone={phone} storeName={storeName} items={items} instagramHandle={instagramHandle} />
+            <CheckoutButton phone={phone} storeName={storeName} storeSlug={storeSlug} items={items} instagramHandle={instagramHandle} />
           </div>
         )}
       </aside>
