@@ -6,6 +6,7 @@ import { createProduct, getProducts, deleteProduct, getProductCount, updateProdu
 import { triggerRevalidation } from './revalidate.service';
 import { createPaymentLink, getAmountFromPlan, getPlanFromAmount } from './payment.service';
 import { env } from '../config/env';
+import { buildStoreSlug } from '../utils/slug';
 import jwt from 'jsonwebtoken';
 
 export interface BotMessage {
@@ -215,7 +216,13 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     }
 
     try {
-      const storeSlug = storeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+      // Storefronts live at the URL root, so the slug must not collide with a
+      // static page like /login — that store would be permanently unreachable.
+      const storeSlug = buildStoreSlug(storeName);
+      if (!storeSlug) {
+        await sendReply('⚠️ Please choose a store name that contains letters or numbers.\n\nExample: REGISTER Ramesh Mobiles');
+        return;
+      }
       const newMerchant = await createMerchant(channel, senderId, storeName, storeSlug);
       
       if (requestedPlan === 'CUSTOM') {

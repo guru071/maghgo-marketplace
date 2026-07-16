@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { supabase } from '../db/supabase';
 import { env } from '../config/env';
 import { normalizePhone, isValidPhone } from '../utils/phone';
+import { buildStoreSlug } from '../utils/slug';
 import rateLimit from 'express-rate-limit';
 
 const router = Router();
@@ -48,8 +49,12 @@ router.post('/register', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const password_hash = await bcrypt.hash(password, salt);
 
-    // Generate slug from store name
-    const store_slug = store_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    // Storefronts live at the URL root, so the slug must not collide with a
+    // static page like /login — that store would be permanently unreachable.
+    const store_slug = buildStoreSlug(store_name);
+    if (!store_slug) {
+      return res.status(400).json({ error: 'Please choose a store name containing letters or numbers.' });
+    }
 
     // Note: We need a unique slug. If it exists, append a random string
     const { data: existingSlug } = await supabase.from('merchants').select('id').eq('store_slug', store_slug).single();

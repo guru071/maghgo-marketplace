@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useRef } from 'react';
 import { CartItem as CartItemType } from '@/types';
 import { generateWhatsAppLink, generateCheckoutMessage } from '@/lib/utils';
 import { Camera, MessageSquare, Phone } from 'lucide-react';
@@ -8,6 +8,7 @@ import { Camera, MessageSquare, Phone } from 'lucide-react';
 interface CheckoutButtonProps {
   phone: string;
   storeName: string;
+  storeSlug: string;
   items: CartItemType[];
   instagramHandle?: string;
 }
@@ -21,7 +22,11 @@ function WhatsAppIcon() {
   );
 }
 
-export default function CheckoutButton({ phone, storeName, items, instagramHandle }: CheckoutButtonProps) {
+export default function CheckoutButton({ phone, storeName, storeSlug, items, instagramHandle }: CheckoutButtonProps) {
+  // One cart = one recorded order, however many times the shopper taps a
+  // channel button (they often try WhatsApp, then SMS).
+  const recorded = useRef(false);
+
   if (items.length === 0) return null;
 
   const message = generateCheckoutMessage(storeName, items);
@@ -30,12 +35,42 @@ export default function CheckoutButton({ phone, storeName, items, instagramHandl
   const telLink = `tel:${phone}`;
   const igLink = instagramHandle ? `https://ig.me/m/${instagramHandle.replace('@', '')}` : null;
 
+  /**
+   * Log the order so it reaches the merchant's dashboard and analytics.
+   *
+   * Deliberately fire-and-forget: the shopper's chat must open whatever happens
+   * here. Losing an analytics row is a nuisance; blocking a real sale on our
+   * database being slow would be far worse. `keepalive` lets the request finish
+   * even if the browser hands off to the SMS or phone app.
+   *
+   * Only product ids and quantities are sent — the server re-reads prices from
+   * the database, so nothing here is trusted for money.
+   */
+  const recordOrder = () => {
+    if (recorded.current) return;
+    recorded.current = true;
+
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    fetch(`${apiUrl}/api/store/${encodeURIComponent(storeSlug)}/orders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      keepalive: true,
+      body: JSON.stringify({
+        items: items.map((i) => ({ product_id: i.id, quantity: i.quantity })),
+      }),
+    }).catch((err) => {
+      // Never surface this: the sale is happening in the chat app regardless.
+      console.warn('Could not record order for analytics:', err);
+    });
+  };
+
   return (
     <div className="flex flex-col gap-3">
       <a
         href={waLink}
         target="_blank"
         rel="noopener noreferrer"
+        onClick={recordOrder}
         className="btn btn--whatsapp btn--full"
         aria-label="Complete order via WhatsApp"
       >
@@ -46,6 +81,7 @@ export default function CheckoutButton({ phone, storeName, items, instagramHandl
       {igLink && (
         <button
           onClick={() => {
+            recordOrder();
             navigator.clipboard.writeText(message);
             window.open(igLink, '_blank');
           }}
@@ -56,10 +92,11 @@ export default function CheckoutButton({ phone, storeName, items, instagramHandl
           Copy Order & Open Instagram
         </button>
       )}
-      
+
       <div className="grid grid-cols-2 gap-3">
         <a
           href={smsLink}
+          onClick={recordOrder}
           className="btn btn--secondary w-full"
           aria-label="Order via SMS"
         >
@@ -68,6 +105,7 @@ export default function CheckoutButton({ phone, storeName, items, instagramHandl
         </a>
         <a
           href={telLink}
+          onClick={recordOrder}
           className="btn btn--secondary w-full"
           aria-label="Call Store"
         >

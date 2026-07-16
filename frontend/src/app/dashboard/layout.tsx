@@ -15,11 +15,9 @@ const PLAN_TIERS = [
 // planned, but are never gated behind a paid plan — nobody should be asked to
 // pay for a feature that doesn't work yet.
 const COMING_SOON_FEATURES = [
-  { label: '📊 Analytics', path: '/dashboard/analytics' },
   { label: '🌐 Custom Domain', path: '/dashboard/domain' },
   { label: '🧑‍💻 API Access', path: '/dashboard/api' },
   { label: '🎧 Priority Support', path: '/dashboard/support' },
-  { label: '📈 Custom Reports', path: '/dashboard/reports' },
   { label: '🏢 Multi-Storefronts', path: '/dashboard/storefronts' },
   { label: '🧩 Custom Integrations', path: '/dashboard/integrations' },
 ];
@@ -203,6 +201,15 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
           <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-4 px-4">Core</div>
           <Link href="/dashboard" className={`block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${pathname === '/dashboard' ? 'bg-accent text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}>
             📦 Inventory
+          </Link>
+          <Link href="/dashboard/orders" className={`block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${pathname === '/dashboard/orders' ? 'bg-accent text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}>
+            🧾 Orders
+          </Link>
+          <Link href="/dashboard/analytics" className={`block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${pathname === '/dashboard/analytics' ? 'bg-accent text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}>
+            📊 Analytics
+          </Link>
+          <Link href="/dashboard/reports" className={`block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${pathname === '/dashboard/reports' ? 'bg-accent text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}>
+            📈 Reports
           </Link>
           <Link href="/dashboard/settings" className={`block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${pathname === '/dashboard/settings' ? 'bg-accent text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}>
             ⚙️ Settings

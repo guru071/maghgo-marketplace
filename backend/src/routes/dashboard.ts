@@ -3,6 +3,7 @@ import { requireAuth, AuthRequest } from '../middleware/auth';
 import { supabase } from '../db/supabase';
 import { getProducts, updateProductPrice, deleteAllProducts, deleteProduct, createProduct } from '../services/product.service';
 import { updateStoreDescription, toggleStoreStatus, getProductLimit } from '../services/merchant.service';
+import { getOrders, updateOrderStatus, getAnalytics } from '../services/order.service';
 import { createPaymentLink } from '../services/payment.service';
 import { triggerRevalidation } from '../services/revalidate.service';
 import multer from 'multer';
@@ -199,6 +200,41 @@ router.put('/theme', async (req: AuthRequest, res) => {
     }
 
     res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Orders ──────────────────────────────────────────────────────────────────
+
+// List this merchant's orders (newest first).
+router.get('/orders', async (req: AuthRequest, res) => {
+  try {
+    res.json(await getOrders(req.merchantId!));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Move an order along its status flow. Scoped to the caller's own orders.
+router.patch('/orders/:id', async (req: AuthRequest, res) => {
+  try {
+    const { status } = req.body;
+    if (!status) return res.status(400).json({ error: 'status is required' });
+
+    const updated = await updateOrderStatus(req.merchantId!, String(req.params.id), status);
+    if (!updated) return res.status(404).json({ error: 'Order not found' });
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Real analytics, aggregated from real orders — no invented figures.
+router.get('/analytics', async (req: AuthRequest, res) => {
+  try {
+    res.json(await getAnalytics(req.merchantId!));
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
