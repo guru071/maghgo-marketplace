@@ -5,29 +5,15 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { whatsappLink, instagramLink, messengerLink, smsLink } from '@/lib/site-config';
-
-const PLAN_TIERS = [
-  'inactive', 'basic', 'starter', 'pro', 'advanced',
-  'premium', 'business', 'agency', 'vip', 'enterprise', 'custom'
-];
+import { hasAccess } from '@/lib/plans';
 
 // Features that are still being built. They are shown so merchants know what's
 // planned, but are never gated behind a paid plan — nobody should be asked to
 // pay for a feature that doesn't work yet.
 const COMING_SOON_FEATURES = [
   { label: '🌐 Custom Domain', path: '/dashboard/domain' },
-  { label: '🧑‍💻 API Access', path: '/dashboard/api' },
   { label: '🎧 Priority Support', path: '/dashboard/support' },
-  { label: '🏢 Multi-Storefronts', path: '/dashboard/storefronts' },
-  { label: '🧩 Custom Integrations', path: '/dashboard/integrations' },
 ];
-
-function hasAccess(requiredPlan: string, currentPlan: string) {
-  if (currentPlan === 'custom') return true;
-  const currentIndex = PLAN_TIERS.indexOf(currentPlan);
-  const requiredIndex = PLAN_TIERS.indexOf(requiredPlan);
-  return currentIndex >= requiredIndex;
-}
 
 function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const router = useRouter();

@@ -18,6 +18,7 @@ import { Render } from "@puckeditor/core";
 import { config } from "@/puck.config";
 
 import { StoreContext } from '@/components/store/StoreContext';
+import { showsPoweredByFooter } from '@/lib/plans';
 
 export function StoreClient({ merchant, products }: StoreClientProps) {
   const { addItem } = useCartStore();
@@ -102,7 +103,10 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
         </>
       )}
       
-      {!['agency', 'vip', 'enterprise', 'custom'].includes(merchant.subscription_plan) && (
+      {/* Gated through the shared helper: this list was previously hardcoded here
+          and omitted `business`, so Business merchants paid for white-label and
+          still shipped our footer. */}
+      {showsPoweredByFooter(merchant.subscription_plan) && (
         <footer className="w-full py-6 mt-12 text-center border-t border-gray-200">
           <p className="text-gray-500 text-sm">
             Powered by <a href="https://goatech.tech" target="_blank" rel="noopener noreferrer" className="font-bold text-gray-800 hover:text-accent transition-colors">GOAT'ECH</a>
