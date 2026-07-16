@@ -28,7 +28,7 @@ export default function ChannelsPage() {
               <p className="text-gray-500 text-sm">Sell directly in Instagram DMs.</p>
             </div>
           </div>
-          <button className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-6 py-2 rounded-lg font-bold text-sm transition-colors">
+          <button onClick={() => alert('This channel integration is currently in Beta. Please contact support to request early access.')} className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-6 py-2 rounded-lg font-bold text-sm transition-colors">
             Connect
           </button>
         </div>
@@ -41,7 +41,7 @@ export default function ChannelsPage() {
               <p className="text-gray-500 text-sm">Automate your Facebook page.</p>
             </div>
           </div>
-          <button className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-6 py-2 rounded-lg font-bold text-sm transition-colors">
+          <button onClick={() => alert('This channel integration is currently in Beta. Please contact support to request early access.')} className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-6 py-2 rounded-lg font-bold text-sm transition-colors">
             Connect
           </button>
         </div>

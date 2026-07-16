@@ -113,7 +113,7 @@ export default async function StorePage({ params }: StorePageProps) {
     notFound();
   }
 
-  const trialEnds = new Date(merchant.trial_ends_at);
+  const trialEnds = new Date(merchant.subscription_ends_at);
   if (trialEnds < new Date()) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">

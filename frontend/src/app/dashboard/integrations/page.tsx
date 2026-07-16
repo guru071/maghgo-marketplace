@@ -13,7 +13,7 @@ export default function IntegrationsPage() {
           <div className="text-4xl mb-4">💳</div>
           <h3 className="font-bold text-gray-900 text-lg mb-2">Stripe Connection</h3>
           <p className="text-gray-500 text-sm mb-4">Process international payments directly through Stripe.</p>
-          <button className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-bold text-sm transition-colors">
+          <button onClick={() => alert('This integration is currently in Beta. Please contact support to request early access.')} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-bold text-sm transition-colors">
             Configure
           </button>
         </div>
@@ -22,7 +22,7 @@ export default function IntegrationsPage() {
           <div className="text-4xl mb-4">📦</div>
           <h3 className="font-bold text-gray-900 text-lg mb-2">Shiprocket</h3>
           <p className="text-gray-500 text-sm mb-4">Automate your shipping and fulfillment across India.</p>
-          <button className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-bold text-sm transition-colors">
+          <button onClick={() => alert('This integration is currently in Beta. Please contact support to request early access.')} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-bold text-sm transition-colors">
             Configure
           </button>
         </div>
@@ -31,7 +31,7 @@ export default function IntegrationsPage() {
           <div className="text-4xl mb-4">🧾</div>
           <h3 className="font-bold text-gray-900 text-lg mb-2">Tally ERP</h3>
           <p className="text-gray-500 text-sm mb-4">Sync your orders directly to Tally for accounting.</p>
-          <button className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-bold text-sm transition-colors">
+          <button onClick={() => alert('This integration is currently in Beta. Please contact support to request early access.')} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-bold text-sm transition-colors">
             Configure
           </button>
         </div>

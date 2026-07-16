@@ -210,3 +210,17 @@ export async function toggleStoreStatus(merchantId: string, isActive: boolean): 
   }
 }
 
+export async function updateMerchantSocial(merchantId: string, platform: 'instagram_handle' | 'facebook_url' | 'phone_number', value: string): Promise<void> {
+  const updateData: any = {};
+  updateData[platform] = value;
+  
+  const { error } = await supabase
+    .from('merchants')
+    .update(updateData)
+    .eq('id', merchantId);
+
+  if (error) {
+    throw new Error(`Failed to update ${platform}: ${error.message}`);
+  }
+}
+

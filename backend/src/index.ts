@@ -4,6 +4,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import rateLimit from 'express-rate-limit';
 import { env } from './config/env';
 import webhookRouter from './routes/webhook';
 import healthRouter from './routes/health';
@@ -59,6 +60,14 @@ app.use(cors({ origin: env.FRONTEND_URL, credentials: true }));
 // Request logging
 app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
+// Global rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: { error: 'Too many requests, please try again later.' }
+});
+app.use(limiter);
+
 // ─── Body Parsing ────────────────────────────────────────────────────────────
 // The webhook route needs the raw body for HMAC signature verification.
 // We use the `verify` callback to capture it before JSON parsing.
@@ -79,7 +88,7 @@ app.use(express.json({ limit: '100kb' }));
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
 app.use('/webhook', webhookRouter);
-app.use('/webhook', paymentRouter);
+app.use('/webhook/payment', paymentRouter);
 app.use('/demo', demoRouter);
 app.use('/health', healthRouter);
 app.use('/api/dashboard', dashboardRouter);

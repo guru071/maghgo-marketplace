@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     // For this prototype, we'll try to hit the backend directly if possible, or gracefully mock it.
     
     // Since we know the backend runs on port 4000 locally, and on Render in production:
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
     
     console.log('Sending demo image to backend:', backendUrl);
     

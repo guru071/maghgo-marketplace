@@ -13,17 +13,27 @@ export function middleware(req: NextRequest) {
     
     // Check for Basic Auth
     if (basicAuth) {
-      const authValue = basicAuth.split(' ')[1];
-      // Decode base64
-      const [user, pwd] = atob(authValue).split(':');
+      try {
+        const authValue = basicAuth.split(' ')[1];
+        if (!authValue) throw new Error('Missing auth value');
+        
+        // Decode base64
+        const [user, pwd] = atob(authValue).split(':');
 
-      // Super simple hardcoded admin credentials for now
-      // In production, these should be environment variables
-      const ADMIN_USER = process.env.ADMIN_USERNAME || 'admin';
-      const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'admin';
+        // Credentials must be provided via environment variables. Fail secure if missing.
+      const ADMIN_USER = process.env.ADMIN_USERNAME;
+      const ADMIN_PASS = process.env.ADMIN_PASSWORD;
+
+      if (!ADMIN_USER || !ADMIN_PASS) {
+        return new NextResponse('Admin credentials not configured on the server', { status: 403 });
+      }
 
       if (user === ADMIN_USER && pwd === ADMIN_PASS) {
         return NextResponse.next();
+      }
+      } catch (err) {
+        // Fall through to 401 response if decoding fails
+        console.warn('Malformed authorization header');
       }
     }
 

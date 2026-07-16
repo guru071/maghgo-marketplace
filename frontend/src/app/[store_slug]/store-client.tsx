@@ -21,7 +21,35 @@ import { StoreContext } from '@/components/store/StoreContext';
 
 export function StoreClient({ merchant, products }: StoreClientProps) {
   const { addItem } = useCartStore();
-  const [activeTheme, setActiveTheme] = React.useState<any>(merchant.theme_config);
+  const [activeTheme, setActiveTheme] = React.useState<any>(() => {
+    const dbTheme = merchant.theme_config as any;
+    if (!dbTheme) return null;
+    if (dbTheme.content) return dbTheme;
+    // Legacy support for raw color configs
+    return {
+      content: [
+        {
+          type: "StoreHeader",
+          props: {
+            title: merchant.store_name || "My Store",
+            subtitle: merchant.store_description || "",
+            bgColor: dbTheme.colors?.primary || "#ffffff",
+            textColor: dbTheme.colors?.background || "#111111"
+          }
+        },
+        {
+          type: "ProductGrid",
+          props: {
+            columns: 3,
+            showPrices: true,
+            gap: dbTheme.layout?.spacing || "24px",
+            cardBg: dbTheme.colors?.background || "#ffffff"
+          }
+        }
+      ],
+      root: { props: { title: merchant.store_name || "Store" } }
+    };
+  });
 
   React.useEffect(() => {
     // Listen for live theme previews from the dashboard iframe parent

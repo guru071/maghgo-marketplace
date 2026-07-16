@@ -3,8 +3,17 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { supabase } from '../db/supabase';
 import { env } from '../config/env';
+import rateLimit from 'express-rate-limit';
 
 const router = Router();
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // Limit each IP to 10 login/register requests per windowMs
+  message: { error: 'Too many authentication attempts from this IP, please try again after 15 minutes' }
+});
+
+router.use(authLimiter);
 
 // Register a new merchant directly via website
 router.post('/register', async (req, res) => {

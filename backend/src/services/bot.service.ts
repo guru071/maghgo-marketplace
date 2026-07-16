@@ -1,4 +1,4 @@
-import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, toggleStoreStatus, Channel } from './merchant.service';
+import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, toggleStoreStatus, updateMerchantSocial, Channel } from './merchant.service';
 import { parseCaption } from './parser.service';
 import { removeBackground } from './media.service';
 import { uploadImage } from './storage.service';
@@ -22,17 +22,37 @@ export interface BotMessage {
   sendReply: (text: string) => Promise<void>;
 }
 
+// In-memory state for conversational flows (e.g. Instagram/FB missing captions)
+const pendingImages = new Map<string, { buffer: Buffer, mime_type: string }>();
+
 export async function processBotMessage(msg: BotMessage): Promise<void> {
   const { channel, senderId, messageId, sendReply } = msg;
 
-  // Bots are temporarily paused
-  console.log(`⏸️ Bot paused. Ignoring message from ${senderId} on ${channel}`);
-  return;
+  // Bot is fully active and processing messages
+  console.log(`▶️ Processing message from ${senderId} on ${channel}`);
 
   try {
+    const pendingKey = `${channel}:${senderId}`;
+
     if (msg.type === 'image' && msg.image) {
+      // Instagram and Facebook do not support captions on images.
+      if (!msg.image.caption) {
+        pendingImages.set(pendingKey, { buffer: msg.image.buffer, mime_type: msg.image.mime_type });
+        await sendReply('📸 Image received! Now please reply with the product name and price (e.g. "Red Shirt ₹499").');
+        return;
+      }
       await handleImageMessage(msg);
     } else if (msg.type === 'text' && msg.text) {
+      if (pendingImages.has(pendingKey)) {
+        // Treat text as caption for the pending image
+        const pending = pendingImages.get(pendingKey)!;
+        pendingImages.delete(pendingKey);
+        
+        msg.type = 'image';
+        msg.image = { caption: msg.text, buffer: pending.buffer, mime_type: pending.mime_type };
+        await handleImageMessage(msg);
+        return;
+      }
       await handleTextCommand(msg, msg.text!);
     }
   } catch (error) {
@@ -314,6 +334,30 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   if (command === 'CLEAR CATALOG') {
     const deletedCount = await deleteAllProducts(merchant.id);
     await sendReply(`🗑️ Your catalog has been cleared. Removed ${deletedCount} products.`);
+    await triggerRevalidation(merchant.store_slug);
+    return;
+  }
+
+  if (command.startsWith('SET INSTAGRAM ')) {
+    const handle = text.trim().substring(14).trim();
+    await updateMerchantSocial(merchant.id, 'instagram_handle', handle);
+    await sendReply(`✅ Instagram handle updated to: ${handle}`);
+    await triggerRevalidation(merchant.store_slug);
+    return;
+  }
+
+  if (command.startsWith('SET FACEBOOK ')) {
+    const url = text.trim().substring(13).trim();
+    await updateMerchantSocial(merchant.id, 'facebook_url', url);
+    await sendReply(`✅ Facebook URL updated to: ${url}`);
+    await triggerRevalidation(merchant.store_slug);
+    return;
+  }
+
+  if (command.startsWith('SET WHATSAPP ')) {
+    const number = text.trim().substring(13).trim();
+    await updateMerchantSocial(merchant.id, 'phone_number', number);
+    await sendReply(`✅ WhatsApp number updated to: ${number}`);
     await triggerRevalidation(merchant.store_slug);
     return;
   }

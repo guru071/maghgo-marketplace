@@ -71,19 +71,45 @@ export default function ThemesPage() {
     fetchStore();
   }, []);
 
+  const generatePuckTheme = (config: any) => ({
+    content: [
+      {
+        type: "StoreHeader",
+        props: {
+          title: "My Store",
+          subtitle: "Welcome to my awesome store",
+          bgColor: config.colors.primary,
+          textColor: config.colors.background
+        }
+      },
+      {
+        type: "ProductGrid",
+        props: {
+          columns: 3,
+          showPrices: true,
+          gap: config.layout.spacing,
+          cardBg: config.colors.background
+        }
+      }
+    ],
+    root: { props: { title: "Maghgo Store" } }
+  });
+
   const handlePreviewTheme = (themeId: string, config: any) => {
     setActiveTheme(themeId);
+    const puckTheme = generatePuckTheme(config);
     if (iframeRef.current && iframeRef.current.contentWindow) {
       // Send the theme configuration to the storefront iframe
       iframeRef.current.contentWindow.postMessage({
         type: 'MAGHGO_PREVIEW_THEME',
-        theme: config
+        theme: puckTheme
       }, '*');
     }
   };
 
   const handleApplyTheme = async (themeId: string, config: any) => {
     setIsSaving(true);
+    const puckTheme = generatePuckTheme(config);
     
     try {
       const token = localStorage.getItem('maghgo_merchant_token');
@@ -95,7 +121,7 @@ export default function ThemesPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}` 
         },
-        body: JSON.stringify({ theme_config: config })
+        body: JSON.stringify({ theme_config: puckTheme })
       });
       
       if (res.ok) {
