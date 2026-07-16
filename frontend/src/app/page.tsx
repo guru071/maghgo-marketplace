@@ -7,6 +7,7 @@ import { ThemesShowcase } from '@/components/landing/ThemesShowcase';
 import { Pricing } from '@/components/landing/Pricing';
 
 import { createServerSupabaseClient } from '@/lib/supabase-server';
+import { isPublicPlan } from '@/lib/plans';
 
 export const revalidate = 60; // Ensure fresh settings are fetched
 
@@ -25,13 +26,10 @@ export default async function LandingPage() {
     sms_enabled: true,
   };
 
-  // Only sell the tiers that differ by something a merchant can feel. Deprecated
-  // tiers stay in the table so merchants already on them keep their limits
-  // (see database/12_public_plans.sql) — they just aren't offered any more.
-  //
-  // Filtered here rather than in the query, and on `!== false`, so the page
-  // still renders correctly before that migration has been applied.
-  const publicPlans = (plans ?? []).filter((p: any) => p.is_public !== false);
+  // Only sell the tiers that differ by something a merchant can feel.
+  // Deprecated tiers stay in the table so merchants already on them keep their
+  // limits — they just aren't offered any more. See lib/plans.ts.
+  const publicPlans = (plans ?? []).filter((p: any) => isPublicPlan(p.slug));
 
   return (
     <main className="landing-page">
