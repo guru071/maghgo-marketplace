@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { supabase } from '../db/supabase';
 import { env } from '../config/env';
+import { normalizePhone, isValidPhone } from '../utils/phone';
 import rateLimit from 'express-rate-limit';
 
 const router = Router();
@@ -24,11 +25,19 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Phone number, store name, and password are required' });
     }
 
+    // Store the canonical form. The user may type "+91 98765 43210" while the
+    // WhatsApp webhook sends "919876543210"; lookups are exact matches, so
+    // without this the bot would never recognise a web-registered merchant.
+    const normalizedPhone = normalizePhone(phone_number);
+    if (!isValidPhone(normalizedPhone)) {
+      return res.status(400).json({ error: 'Please enter a valid phone number, including country code.' });
+    }
+
     // Check if phone number already exists
     const { data: existingUser } = await supabase
       .from('merchants')
       .select('id')
-      .eq('phone_number', phone_number)
+      .eq('phone_number', normalizedPhone)
       .single();
 
     if (existingUser) {
@@ -55,7 +64,7 @@ router.post('/register', async (req, res) => {
     const { data: newMerchant, error } = await supabase
       .from('merchants')
       .insert({
-        phone_number,
+        phone_number: normalizedPhone,
         store_name,
         store_slug: final_slug,
         password_hash,
@@ -86,10 +95,12 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Phone number and password are required' });
     }
 
+    // Normalise on login too, so "+91 98765 43210" finds the merchant stored
+    // as "919876543210".
     const { data: merchant, error } = await supabase
       .from('merchants')
       .select('id, password_hash')
-      .eq('phone_number', phone_number)
+      .eq('phone_number', normalizePhone(phone_number))
       .single();
 
     if (error || !merchant) {

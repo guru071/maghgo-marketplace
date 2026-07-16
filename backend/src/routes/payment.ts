@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { env } from '../config/env';
 import { getPlanFromAmount, getAmountFromPlan } from '../services/payment.service';
+import { normalizePhone } from '../utils/phone';
 import { supabase } from '../db/supabase';
 import axios from 'axios';
 
@@ -69,12 +70,16 @@ router.post('/razorpay', async (req: Request, res: Response) => {
         const now = new Date();
         const daysToAdd = isYearly ? 365 : 30;
         
-        // Parameterize the string to prevent PostgREST injection
-        // Parameterized query using Supabase OR filter syntax without string interpolation
+        // The senderId came from the payment link's notes and may be a phone
+        // number in any format, or an Instagram/Messenger id. Match the phone
+        // in its canonical form — an exact match against an unnormalised
+        // number would fail to find the payer, and we would take the money
+        // without ever activating the subscription.
+        const normalizedSender = normalizePhone(senderId);
         const { data: merchant, error: fetchError } = await supabase
           .from('merchants')
           .select('id, subscription_ends_at, is_active, phone_number, instagram_id, messenger_id')
-          .or(`phone_number.eq.${senderId},instagram_id.eq.${senderId},messenger_id.eq.${senderId}`)
+          .or(`phone_number.eq.${normalizedSender || senderId},instagram_id.eq.${senderId},messenger_id.eq.${senderId}`)
           .single();
           
         if (merchant && !fetchError) {
