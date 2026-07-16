@@ -13,6 +13,15 @@ import crypto from 'crypto';
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
 
+// Every merchant column EXCEPT password_hash. Never select('*') on merchants:
+// that ships the bcrypt hash to the browser, where it has no business being.
+const MERCHANT_PUBLIC_COLUMNS = [
+  'id', 'phone_number', 'store_name', 'store_slug', 'store_description',
+  'store_logo_url', 'is_active', 'subscription_plan', 'subscription_ends_at',
+  'created_at', 'updated_at', 'theme_config', 'theme_id', 'instagram_handle',
+  'facebook_url', 'x_handle', 'instagram_id', 'messenger_id', 'link_code',
+].join(', ');
+
 // Apply auth middleware to all routes
 router.use(requireAuth);
 
@@ -21,7 +30,7 @@ router.get('/store', async (req: AuthRequest, res) => {
   try {
     const { data, error } = await supabase
       .from('merchants')
-      .select('*')
+      .select(MERCHANT_PUBLIC_COLUMNS)
       .eq('id', req.merchantId)
       .single();
 

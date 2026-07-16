@@ -21,7 +21,7 @@ const DEMO_MERCHANT = {
   store_logo_url: null,
   is_active: true,
   subscription_plan: 'premium' as const,
-  trial_ends_at: '2030-01-01T00:00:00.000Z',
+  subscription_ends_at: '2030-01-01T00:00:00.000Z',
   created_at: '2026-01-01T00:00:00.000Z',
   instagram_handle: 'goatech.tech',
   facebook_url: 'goatech',
@@ -103,9 +103,12 @@ export default async function StorePage({ params }: StorePageProps) {
 
   const supabase = createServerSupabaseClient();
   
+  // NEVER select('*') here: this row is passed into a client component and is
+  // therefore serialised into the HTML sent to every anonymous visitor. Using
+  // '*' shipped the merchant's bcrypt password_hash to the public internet.
   const { data: merchant, error: merchantError } = await supabase
     .from('merchants')
-    .select('*')
+    .select('id, phone_number, store_name, store_slug, store_description, store_logo_url, is_active, subscription_plan, subscription_ends_at, created_at, theme_config, instagram_handle, facebook_url, x_handle')
     .eq('store_slug', store_slug)
     .single();
 
