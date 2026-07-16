@@ -12,10 +12,13 @@ export function DemoAnalytics({ plan }: { plan: 'premium' | 'enterprise' }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
           Seller Analytics Dashboard
+          <span style={{ marginLeft: '0.75rem', background: '#f1f5f9', color: '#64748b', padding: '3px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 'bold', verticalAlign: 'middle', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Sample data
+          </span>
         </h2>
         {plan === 'enterprise' && (
           <span style={{ background: '#111', color: '#fff', padding: '4px 12px', borderRadius: '12px', fontSize: '12px' }}>
-            Enterprise API Sync Active
+            White-Label Active
           </span>
         )}
       </div>

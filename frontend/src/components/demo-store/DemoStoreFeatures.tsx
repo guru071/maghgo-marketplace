@@ -33,7 +33,7 @@ export function DemoStoreFeatures({ activePlan, onChangePlan }: Props) {
             border: '1px solid var(--border)', cursor: 'pointer'
           }}
         >
-          Starter (₹149)
+          Basic (₹99)
         </button>
         <button 
           onClick={() => onChangePlan('premium')}
@@ -45,7 +45,7 @@ export function DemoStoreFeatures({ activePlan, onChangePlan }: Props) {
             boxShadow: activePlan === 'premium' ? '0 4px 12px rgba(255,117,24,0.25)' : 'none'
           }}
         >
-          Premium (₹799) - Unlock Analytics
+          Pro (₹249) - All Channels
         </button>
         <button 
           onClick={() => onChangePlan('enterprise')}
@@ -56,7 +56,7 @@ export function DemoStoreFeatures({ activePlan, onChangePlan }: Props) {
             border: '1px solid #111', cursor: 'pointer'
           }}
         >
-          Enterprise (₹4999) - Custom Brand
+          Business (₹749) - White-Label
         </button>
       </div>
     </div>
