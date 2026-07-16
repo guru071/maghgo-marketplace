@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { whatsappLink } from '@/lib/site-config';
 
 const PLAN_TIERS = [
   'inactive', 'basic', 'starter', 'pro', 'advanced',
@@ -138,9 +139,15 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
           <p className="text-gray-600 mb-6">
             To access your Maghgo dashboard, please type <strong>LOGIN</strong> in your WhatsApp chat with the Maghgo bot.
           </p>
-          <a href="https://wa.me/919876543210" target="_blank" rel="noopener noreferrer" className="inline-block bg-accent text-white px-6 py-3 rounded-full font-medium hover:bg-black transition-colors w-full">
-            Open WhatsApp Bot
-          </a>
+          {whatsappLink('LOGIN') ? (
+            <a href={whatsappLink('LOGIN')!} target="_blank" rel="noopener noreferrer" className="inline-block bg-accent text-white px-6 py-3 rounded-full font-medium hover:bg-black transition-colors w-full">
+              Open WhatsApp Bot
+            </a>
+          ) : (
+            <Link href="/login" className="inline-block bg-accent text-white px-6 py-3 rounded-full font-medium hover:bg-black transition-colors w-full">
+              Go to Login
+            </Link>
+          )}
         </div>
       </div>
     );

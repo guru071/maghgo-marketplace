@@ -5,6 +5,11 @@ out/
 build/
 .env*
 .env.*.local
+# ...but DO track the templates. Without these, a fresh clone has no record of
+# which variables are required, which is how a missing NEXT_PUBLIC_WHATSAPP_NUMBER
+# silently shipped a signup funnel pointing at a number nobody owned.
+!.env.example
+!**/.env.example
 .DS_Store
 coverage/
 npm-debug.log*
