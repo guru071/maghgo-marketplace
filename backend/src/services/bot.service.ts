@@ -7,6 +7,7 @@ import { triggerRevalidation } from './revalidate.service';
 import { createPaymentLink, getAmountFromPlan, getPlanFromAmount } from './payment.service';
 import { env } from '../config/env';
 import { buildStoreSlug } from '../utils/slug';
+import { canUseChannel, minPlanForChannel, channelLabel, hasAccess } from '../utils/plans';
 import jwt from 'jsonwebtoken';
 
 export interface BotMessage {
@@ -135,6 +136,16 @@ async function handleImageMessage(msg: BotMessage): Promise<void> {
     return;
   }
 
+  if (!canUseChannel(merchant.subscription_plan, channel)) {
+    const needed = minPlanForChannel(channel);
+    await sendReply(
+      `⚠️ *${channelLabel(channel)} needs the ${needed.toUpperCase()} plan*\n\n` +
+      `Your store is on the *${merchant.subscription_plan.toUpperCase()}* plan, which doesn't include ${channelLabel(channel)}.\n\n` +
+      `Reply *UPGRADE ${needed}* to unlock it.`
+    );
+    return;
+  }
+
   if (!isSubscriptionActive(merchant)) {
     if (merchant.subscription_plan === 'inactive') {
       await sendReply(`⚠️ *Store Inactive!*\n\nYour store is reserved but not yet active. Please reply with "UPGRADE" to select your plan and complete your payment.`);
@@ -215,6 +226,19 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
       return;
     }
 
+    // Never register someone onto a plan that cannot use the channel they are
+    // standing in — they'd be locked out of their own store the moment they
+    // finished signing up. Raise the plan to the cheapest one that covers it
+    // and say so, rather than silently charging them more.
+    let channelUpgradeNote = '';
+    const minForChannel = minPlanForChannel(channel);
+    if (requestedPlan !== 'CUSTOM' && !hasAccess(minForChannel, requestedPlan.toLowerCase())) {
+      channelUpgradeNote =
+        `\n\n_Note: ${channelLabel(channel)} needs the ${minForChannel.toUpperCase()} plan, ` +
+        `so we've selected that instead of ${requestedPlan}._`;
+      requestedPlan = minForChannel.toUpperCase();
+    }
+
     try {
       // Storefronts live at the URL root, so the slug must not collide with a
       // static page like /login — that store would be permanently unreachable.
@@ -237,7 +261,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
       await sendPaymentOptions(
         msg,
         requestedPlan,
-        `🎉 *Welcome to Maghgo!*\n\nYour store *${newMerchant.store_name}* has been reserved.\n\n🚀 To activate your store and start adding products, please complete your payment for the *${requestedPlan} Plan*:`
+        `🎉 *Welcome to Maghgo!*\n\nYour store *${newMerchant.store_name}* has been reserved.${channelUpgradeNote}\n\n🚀 To activate your store and start adding products, please complete your payment for the *${requestedPlan} Plan*:`
       );
     } catch (err: any) {
       await sendReply(`❌ ${err.message || 'Failed to create store.'}`);
@@ -303,6 +327,19 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
       msg,
       plan,
       `🚀 *Upgrade your Maghgo Plan!*\n\nPlease complete your payment for the *${plan.toUpperCase()} Plan* to unlock your limits:`
+    );
+    return;
+  }
+
+  // Channel access. Deliberately placed AFTER the UPGRADE handler above, so a
+  // merchant on the wrong plan can always reach the thing that fixes it, and
+  // HELP/STATUS stay available so they are never left without an explanation.
+  if (!canUseChannel(merchant.subscription_plan, channel) && command !== 'HELP' && command !== 'STATUS') {
+    const needed = minPlanForChannel(channel);
+    await sendReply(
+      `⚠️ *${channelLabel(channel)} needs the ${needed.toUpperCase()} plan*\n\n` +
+      `Your store is on the *${merchant.subscription_plan.toUpperCase()}* plan, which doesn't include ${channelLabel(channel)}.\n\n` +
+      `Reply *UPGRADE ${needed}* to unlock it — or keep managing your store on WhatsApp or your web dashboard.`
     );
     return;
   }
