@@ -25,6 +25,14 @@ export default async function LandingPage() {
     sms_enabled: true,
   };
 
+  // Only sell the tiers that differ by something a merchant can feel. Deprecated
+  // tiers stay in the table so merchants already on them keep their limits
+  // (see database/12_public_plans.sql) — they just aren't offered any more.
+  //
+  // Filtered here rather than in the query, and on `!== false`, so the page
+  // still renders correctly before that migration has been applied.
+  const publicPlans = (plans ?? []).filter((p: any) => p.is_public !== false);
+
   return (
     <main className="landing-page">
       {activeOffer && (
@@ -46,7 +54,7 @@ export default async function LandingPage() {
       <VisualBuilderShowcase />
       <HowItWorks />
       <ThemesShowcase />
-      <Pricing enabledPlatforms={enabledPlatforms} plans={plans || []} />
+      <Pricing enabledPlatforms={enabledPlatforms} plans={publicPlans} />
       
       <footer className="footer">
         <div className="footer__container">
