@@ -23,9 +23,16 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
     setTimeout(() => setIsAdded(false), 800);
   }, [onAddToCart, product]);
 
+  const isPrebook = product.fulfillment_type === 'prebook';
+
   return (
     <article className="product-card">
       <div className="product-card__image-wrapper">
+        {isPrebook && (
+          <span style={{ position: 'absolute', top: 8, left: 8, zIndex: 2, background: '#7C3AED', color: '#fff', fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', padding: '3px 8px', borderRadius: '6px' }}>
+            Pre-book
+          </span>
+        )}
         {showImage ? (
           <Image
             src={imageUrl}
@@ -80,7 +87,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-              Add to Cart
+              {isPrebook ? 'Pre-book' : 'Add to Cart'}
             </>
           )}
         </button>

@@ -2,7 +2,7 @@ import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductL
 import { parseCaption } from './parser.service';
 import { removeBackground } from './media.service';
 import { uploadImage } from './storage.service';
-import { createProduct, getProducts, deleteProduct, getProductCount, updateProductPrice, deleteAllProducts } from './product.service';
+import { createProduct, getProducts, deleteProduct, getProductCount, updateProductPrice, deleteAllProducts, setProductFulfillment } from './product.service';
 import { triggerRevalidation } from './revalidate.service';
 import { createPaymentLink, getAmountFromPlan, getPlanFromAmount } from './payment.service';
 import { env } from '../config/env';
@@ -441,6 +441,30 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     return;
   }
 
+  if (command.startsWith('PREBOOK ') || command.startsWith('SELL ')) {
+    const isPrebook = command.startsWith('PREBOOK ');
+    const name = text.trim().substring(isPrebook ? 8 : 5).trim();
+    if (!name) {
+      await sendReply(`⚠️ Please name the product.\n\nExample: ${isPrebook ? 'PREBOOK Red Shirt' : 'SELL Red Shirt'}`);
+      return;
+    }
+    try {
+      const count = await setProductFulfillment(merchant.id, name, isPrebook ? 'prebook' : 'buy');
+      if (count === 0) {
+        await sendReply(`❌ No product found matching "*${name}*".`);
+      } else if (isPrebook) {
+        await sendReply(`📅 *${count} product(s) set to PRE-BOOK.*\n\nCustomers will now reserve "${name}" and collect it at your shop, instead of home delivery.`);
+        await triggerRevalidation(merchant.store_slug);
+      } else {
+        await sendReply(`🛒 *${count} product(s) set to BUY.*\n\n"${name}" is now a normal delivery product again.`);
+        await triggerRevalidation(merchant.store_slug);
+      }
+    } catch (err: any) {
+      await sendReply(`❌ ${err.message || 'Could not update the product.'}`);
+    }
+    return;
+  }
+
   if (command === 'CLEAR CATALOG') {
     const deletedCount = await deleteAllProducts(merchant.id);
     await sendReply(`🗑️ Your catalog has been cleared. Removed ${deletedCount} products.`);
@@ -480,7 +504,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   }
 
   if (command === 'HELP') {
-    await sendReply(`📖 *Maghgo Commands*\n\n📸 *Add Product:* Send an image with caption\n   Format: Product Name Price\n   Example: Red Cotton T-Shirt ₹499\n\n✏️ *EDIT product name - ₹price* — Change price\n📋 *LIST* — View all your products\n🗑️ *DELETE product name* — Remove a product\n🧨 *CLEAR CATALOG* — Delete all products\n\n📝 *DESCRIBE your text* — Set store description\n⏸️ *PAUSE / RESUME* — Turn store offline/online\n📊 *STATUS* — Store URL & product count\n🚀 *UPGRADE* — Unlock higher product limits\n❓ *HELP* — Show this message`);
+    await sendReply(`📖 *Maghgo Commands*\n\n📸 *Add Product:* Send an image with caption\n   Format: Product Name Price\n   Example: Red Cotton T-Shirt ₹499\n\n✏️ *EDIT product name - ₹price* — Change price\n📋 *LIST* — View all your products\n🗑️ *DELETE product name* — Remove a product\n🧨 *CLEAR CATALOG* — Delete all products\n\n📅 *PREBOOK product name* — Customers reserve & collect at shop\n🛒 *SELL product name* — Back to normal delivery\n\n📝 *DESCRIBE your text* — Set store description\n⏸️ *PAUSE / RESUME* — Turn store offline/online\n📊 *STATUS* — Store URL & product count\n🚀 *UPGRADE* — Unlock higher product limits\n❓ *HELP* — Show this message`);
     return;
   }
 

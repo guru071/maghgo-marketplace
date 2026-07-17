@@ -70,6 +70,7 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
       price: product.price,
       currency: product.currency,
       image_url: product.processed_image_url || product.original_image_url,
+      fulfillment_type: product.fulfillment_type,
     });
   };
 

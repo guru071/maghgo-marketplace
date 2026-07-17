@@ -121,6 +121,49 @@ export async function updateProductPrice(
   return data?.length ?? 0;
 }
 
+export type FulfillmentType = 'buy' | 'prebook';
+
+/**
+ * Set a product's fulfilment mode ('buy' delivers, 'prebook' reserves).
+ * Matches by title, case-insensitive, like the price/delete commands.
+ *
+ * If the fulfillment_type column hasn't been added yet (migration 13), Postgres
+ * returns 42703. We surface that as a friendly, actionable message rather than a
+ * raw error, and it never touches the rest of the product flow.
+ */
+export async function setProductFulfillment(
+  merchantId: string,
+  title: string,
+  type: FulfillmentType
+): Promise<number> {
+  const escapedTitle = title.replace(/[%_\\]/g, '\\$&');
+
+  const { data, error } = await supabase
+    .from('products')
+    .update({ fulfillment_type: type })
+    .eq('merchant_id', merchantId)
+    .ilike('title', `%${escapedTitle}%`)
+    .eq('is_available', true)
+    .select();
+
+  if (error) {
+    // The column may not exist yet (migration 13 not run). PostgREST reports
+    // this as PGRST204 with a "could not find the column ... in the schema
+    // cache" message; raw Postgres would be 42703. Catch both and explain.
+    const code = (error as any).code;
+    const missingColumn =
+      code === '42703' ||
+      code === 'PGRST204' ||
+      /fulfillment_type.*column|column.*fulfillment_type|schema cache/i.test(error.message || '');
+    if (missingColumn) {
+      throw new Error('Pre-book is almost ready — the store owner just needs to run one quick setup step (migration 13). Try again after that.');
+    }
+    throw new Error(`Failed to update fulfilment: ${error.message}`);
+  }
+
+  return data?.length ?? 0;
+}
+
 /**
  * Soft-delete all products for a merchant (Clear Catalog)
  */

@@ -65,12 +65,13 @@ function readableOn(bg: string): { title: string; muted: string; border: string;
     : { title: '#111827', muted: '#6B7280', border: '#ECECEC', isDark };
 }
 
-function ProductCardMini({ title, priceLabel, imageUrl, cardBg, accent, onClick, disabled }: any) {
+function ProductCardMini({ title, priceLabel, imageUrl, cardBg, accent, onClick, disabled, isPrebook }: any) {
   const c = readableOn(cardBg);
   return (
     <div
       onClick={disabled ? undefined : onClick}
       style={{
+        position: 'relative',
         backgroundColor: cardBg, border: `1px solid ${c.border}`, borderRadius: '10px',
         overflow: 'hidden', display: 'flex', flexDirection: 'column',
         cursor: disabled ? 'default' : 'pointer', transition: 'transform .15s ease, box-shadow .15s ease',
@@ -78,6 +79,11 @@ function ProductCardMini({ title, priceLabel, imageUrl, cardBg, accent, onClick,
       onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 10px 24px rgba(0,0,0,0.12)'; } }}
       onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
     >
+      {isPrebook && (
+        <span style={{ position: 'absolute', top: 8, left: 8, zIndex: 2, background: '#7C3AED', color: '#fff', fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', padding: '3px 7px', borderRadius: '5px' }}>
+          Pre-book
+        </span>
+      )}
       <div style={{
         width: '100%', aspectRatio: '4 / 5',
         background: imageUrl ? `url(${imageUrl}) center/cover` : (c.isDark ? '#242424' : '#f3f4f6'),
@@ -87,9 +93,9 @@ function ProductCardMini({ title, priceLabel, imageUrl, cardBg, accent, onClick,
         {priceLabel && <span style={{ fontWeight: 700, color: accent, fontSize: '1rem' }}>{priceLabel}</span>}
         <button
           disabled={disabled}
-          style={{ marginTop: '2px', backgroundColor: accent, color: '#fff', border: 'none', padding: '8px', borderRadius: '6px', cursor: disabled ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.82rem', width: '100%' }}
+          style={{ marginTop: '2px', backgroundColor: isPrebook ? '#7C3AED' : accent, color: '#fff', border: 'none', padding: '8px', borderRadius: '6px', cursor: disabled ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.82rem', width: '100%' }}
         >
-          Add to Cart
+          {isPrebook ? 'Pre-book' : 'Add to Cart'}
         </button>
       </div>
     </div>
@@ -116,6 +122,7 @@ const ProductGridComponent = ({ columns, showPrices, cardBg, gap }: any) => {
                 imageUrl={p.processed_image_url || p.original_image_url}
                 cardBg={bg}
                 accent={accent}
+                isPrebook={p.fulfillment_type === 'prebook'}
                 onClick={() => storeCtx.onAddToCart(p)}
               />
             ))

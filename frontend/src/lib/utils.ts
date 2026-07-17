@@ -49,7 +49,8 @@ export function generateCheckoutMessage(
   const itemLines = items
     .map((item) => {
       const lineTotal = item.price * item.quantity;
-      return `${item.quantity}x ${item.title} — ${formatPrice(lineTotal, currency)}`;
+      const tag = item.fulfillment_type === 'prebook' ? ' (Pre-book — collect at shop)' : '';
+      return `${item.quantity}x ${item.title}${tag} — ${formatPrice(lineTotal, currency)}`;
     })
     .join('\n');
 
@@ -58,6 +59,15 @@ export function generateCheckoutMessage(
     0
   );
 
+  const hasPrebook = items.some((i) => i.fulfillment_type === 'prebook');
+  const hasBuy = items.some((i) => i.fulfillment_type !== 'prebook');
+
+  // Delivery vs collection changes what we ask the shop for. A mixed cart asks
+  // for both so nothing is missed.
+  let closing = 'Please share payment & delivery details. 🙏';
+  if (hasPrebook && !hasBuy) closing = 'I\'d like to pre-book these and collect at your shop. Please confirm availability & timing. 🙏';
+  else if (hasPrebook && hasBuy) closing = 'Some items are for delivery and some are pre-book (collect at shop). Please share payment, delivery & pickup details. 🙏';
+
   return [
     `Hi! I'd like to order from ${storeName}:`,
     '',
@@ -65,6 +75,6 @@ export function generateCheckoutMessage(
     '',
     `Total: ${formatPrice(total, currency)}`,
     '',
-    'Please share payment & delivery details. 🙏',
+    closing,
   ].join('\n');
 }

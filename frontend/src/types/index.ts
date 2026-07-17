@@ -30,6 +30,9 @@ export interface Product {
   is_available: boolean;
   sort_order: number;
   created_at: string;
+  // 'buy' = shop delivers; 'prebook' = customer reserves and collects at the
+  // shop. Optional so the type is valid before migration 13 adds the column.
+  fulfillment_type?: 'buy' | 'prebook';
 }
 
 export interface CartItem {
@@ -39,4 +42,5 @@ export interface CartItem {
   currency: string;
   image_url: string | null;
   quantity: number;
+  fulfillment_type?: 'buy' | 'prebook';
 }
