@@ -6,6 +6,7 @@ import { updateStoreDescription, toggleStoreStatus, getProductLimit } from '../s
 import { getOrders, updateOrderStatus, getAnalytics } from '../services/order.service';
 import { createPaymentLink } from '../services/payment.service';
 import { triggerRevalidation } from '../services/revalidate.service';
+import { hasAccess } from '../utils/plans';
 import multer from 'multer';
 import { removeBackground } from '../services/media.service';
 import { uploadImage } from '../services/storage.service';
@@ -221,6 +222,43 @@ router.patch('/products/:id/fulfillment', async (req: AuthRequest, res) => {
     res.json({ success: true });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// ─── Themes ──────────────────────────────────────────────────────────────────
+
+// The real theme catalogue. The dashboard used to render a hardcoded list of
+// four, so the 60 premium themes in the database were unreachable.
+// `locked` is computed from the merchant's plan rather than hidden, so a
+// merchant can see what upgrading would give them.
+router.get('/themes', async (req: AuthRequest, res) => {
+  try {
+    const { data: merchant } = await supabase
+      .from('merchants')
+      .select('subscription_plan')
+      .eq('id', req.merchantId)
+      .single();
+
+    const { data, error } = await supabase
+      .from('themes')
+      .select('id, name, description, plan_required, config')
+      .eq('is_active', true)
+      .order('name');
+
+    if (error) throw error;
+
+    const plan = merchant?.subscription_plan ?? 'basic';
+    const themes = (data ?? []).map((t: any) => ({
+      ...t,
+      // A theme carrying a Puck content[] is one of the premium, full-layout
+      // designs; the rest are the older colour-only configs.
+      premium: Array.isArray(t.config?.content) && t.config.content.length > 0,
+      locked: !hasAccess(t.plan_required, plan),
+    }));
+
+    res.json({ plan, themes });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
