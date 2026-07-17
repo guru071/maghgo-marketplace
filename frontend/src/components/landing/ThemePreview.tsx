@@ -8,24 +8,63 @@ export interface ThemeColors {
 }
 
 export interface ThemeConfig {
-  colors: ThemeColors;
-  fonts: { heading: string; body: string };
-  layout: { borderRadius: string; spacing: string };
+  // Simple themes carry a flat palette; rich themes carry a Puck `content[]`
+  // layout. This preview accepts either (see normalizeConfig).
+  colors?: ThemeColors;
+  fonts?: { heading: string; body: string };
+  layout?: { borderRadius: string; spacing: string };
+  content?: any[];
+}
+
+/**
+ * Reduce either theme format to a flat palette the preview can render.
+ *
+ * - Simple themes: use `config.colors` directly.
+ * - Rich themes: derive the palette from the layout's StoreHeader (background,
+ *   text), a ProductGrid (card colour) and a Divider/Heading (accent). This is
+ *   why the preview never touches `config.colors` blindly — rich themes don't
+ *   have it, and reading it crashed the landing page prerender.
+ */
+function normalizeConfig(config: ThemeConfig): { colors: ThemeColors; body?: string; radius: string; hasImage: boolean } {
+  if (config?.colors) {
+    return {
+      colors: config.colors,
+      body: config.fonts?.body,
+      radius: config.layout?.borderRadius ?? '4px',
+      hasImage: false,
+    };
+  }
+
+  const content = Array.isArray(config?.content) ? config.content : [];
+  const find = (type: string) => content.find((b) => b?.type === type)?.props ?? {};
+  const header = find('StoreHeader');
+  const grid = find('ProductGrid');
+  const divider = find('Divider');
+  const heading = find('Heading');
+
+  const background = header.bgColor || '#ffffff';
+  const text = header.textColor || '#111111';
+  const accent = divider.color || heading.color || text;
+
+  return {
+    colors: {
+      background,
+      text,
+      primary: header.bgImage ? '#111111' : background,
+      secondary: accent,
+    },
+    radius: '6px',
+    hasImage: Boolean(header.bgImage),
+  };
 }
 
 /**
  * A live miniature of a storefront rendered from a theme's REAL config.
- *
- * This replaces the three stock JPEGs that used to sit under "100+ Stunning
- * Themes". Those images were hand-picked screenshots of themes that were not
- * even in the database, so the showcase advertised designs a merchant could
- * never actually pick. Rendering from the config means what you see here is
- * exactly the palette, font and corner radius the theme will apply — and it
- * stays correct automatically when a theme changes.
+ * Handles both the simple {colors} format and the rich {content[]} layout.
  */
 export function ThemePreview({ config }: { config: ThemeConfig }) {
-  const { colors, fonts, layout } = config;
-  const radius = layout?.borderRadius ?? '4px';
+  const { colors, body: bodyFont, radius, hasImage } = normalizeConfig(config);
+  const fonts: { body?: string; heading?: string } = { body: bodyFont };
 
   return (
     <div

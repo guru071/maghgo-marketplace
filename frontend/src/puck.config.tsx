@@ -3,6 +3,52 @@ import type { Config } from "@puckeditor/core";
 import { DropZone } from "@puckeditor/core";
 import { StoreContext } from "@/components/store/StoreContext";
 
+// Header block. Falls back to the merchant's real store name / description when
+// the props are still the "My Store" placeholders, so a seller who hasn't (or
+// can't, on a plan without the builder) customised the header still shows their
+// own shop name rather than "My Store".
+const HEADER_TITLE_PLACEHOLDERS = ['My Store', 'Your Store', 'Store', ''];
+const HEADER_SUBTITLE_PLACEHOLDERS = ['Welcome to my awesome store', 'Welcome to your store', ''];
+
+const StoreHeaderComponent = ({ title, subtitle, logoUrl, bgImage, bgColor, textColor }: any) => {
+  const storeCtx = React.useContext(StoreContext);
+
+  const displayTitle = HEADER_TITLE_PLACEHOLDERS.includes((title || '').trim())
+    ? (storeCtx?.storeName || title || 'My Store')
+    : title;
+  const displaySubtitle = HEADER_SUBTITLE_PLACEHOLDERS.includes((subtitle || '').trim())
+    ? (storeCtx?.storeDescription || subtitle || '')
+    : subtitle;
+
+  return (
+    <div style={{
+      position: 'relative',
+      padding: '4rem 2rem',
+      textAlign: 'center',
+      backgroundColor: bgColor,
+      backgroundImage: bgImage ? `url(${bgImage})` : undefined,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      color: bgImage ? '#fff' : textColor,
+      borderBottom: '1px solid #eee',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      width: '100%',
+    }}>
+      {/* Dark scrim so white hero text stays readable over any photo, bright or dark. */}
+      {bgImage && (
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.55))' }} />
+      )}
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+        {logoUrl && <img src={logoUrl} alt={displayTitle} style={{ height: '80px', width: 'auto', marginBottom: '1.5rem', borderRadius: '8px' }} />}
+        <h1 style={{ fontSize: '3rem', fontWeight: 'bold', margin: '0 0 1rem 0', textShadow: bgImage ? '0 2px 12px rgba(0,0,0,0.4)' : 'none' }}>{displayTitle}</h1>
+        {displaySubtitle && <p style={{ fontSize: '1.2rem', margin: 0, opacity: 0.95, textShadow: bgImage ? '0 1px 8px rgba(0,0,0,0.4)' : 'none' }}>{displaySubtitle}</p>}
+      </div>
+    </div>
+  );
+};
+
 const ProductGridComponent = ({ columns, showPrices, cardBg, gap }: any) => {
   const storeCtx = React.useContext(StoreContext);
   const hasLiveProducts = storeCtx && storeCtx.products.length > 0;
@@ -390,26 +436,7 @@ export const config: Config<Props> = {
         bgColor: "#ffffff",
         textColor: "#1A1A2E",
       },
-      render: ({ title, subtitle, logoUrl, bgImage, bgColor, textColor }) => (
-        <div style={{
-          padding: "4rem 2rem",
-          textAlign: "center",
-          backgroundColor: bgColor,
-          backgroundImage: bgImage ? `url(${bgImage})` : undefined,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          color: bgImage ? "#fff" : textColor,
-          borderBottom: "1px solid #eee",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          width: "100%"
-        }}>
-          {logoUrl && <img src={logoUrl} alt={title} style={{ height: "80px", width: "auto", marginBottom: "1.5rem", borderRadius: "8px" }} />}
-          <h1 style={{ fontSize: "3rem", fontWeight: "bold", margin: "0 0 1rem 0" }}>{title}</h1>
-          <p style={{ fontSize: "1.2rem", margin: 0, opacity: 0.9 }}>{subtitle}</p>
-        </div>
-      ),
+      render: (props) => <StoreHeaderComponent {...props} />,
     },
     ProductGrid: {
       fields: {

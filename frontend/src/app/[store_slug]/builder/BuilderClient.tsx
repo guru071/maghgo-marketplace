@@ -86,7 +86,12 @@ export function BuilderClient({ storeSlug, initialData }: BuilderClientProps) {
       
       {/* The main visual editor */}
       <StoreContext.Provider value={{ products: [], onAddToCart: handleAddToCart }}>
-        <Puck config={config} data={dataToUse} onPublish={handleSave} />
+        {/* iframe disabled on purpose. Puck's default preview renders in an
+            iframe that must re-load the page's CSS/JS itself; in production
+            builds (hashed chunk names, strict headers) that frequently fails
+            with "This page couldn't load". Rendering inline is far more robust
+            across hosts and avoids that whole failure class. */}
+        <Puck config={config} data={dataToUse} onPublish={handleSave} iframe={{ enabled: false }} />
       </StoreContext.Provider>
     </div>
   );

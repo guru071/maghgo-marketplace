@@ -77,7 +77,7 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         {activeTheme ? (
-          <StoreContext.Provider value={{ products: [], onAddToCart: handleAddToCart }}>
+          <StoreContext.Provider value={{ products: [], onAddToCart: handleAddToCart, storeName: merchant.store_name, storeDescription: merchant.store_description }}>
             <Render config={config} data={activeTheme} />
           </StoreContext.Provider>
         ) : (
@@ -91,7 +91,7 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       {activeTheme ? (
-        <StoreContext.Provider value={{ products, onAddToCart: handleAddToCart }}>
+        <StoreContext.Provider value={{ products, onAddToCart: handleAddToCart, storeName: merchant.store_name, storeDescription: merchant.store_description }}>
           <Render config={config} data={activeTheme} />
         </StoreContext.Provider>
       ) : (

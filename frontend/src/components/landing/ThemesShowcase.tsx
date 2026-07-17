@@ -67,13 +67,16 @@ export async function ThemesShowcase() {
   // section rather than advertise a theme count we cannot back up.
   if (error || all.length === 0) return null;
 
-  // One theme per family: the band should show the real breadth of the
-  // catalogue, not ten near-identical variations of the same family. The
-  // marquee is duplicated for the seamless loop, so rendering all 100 would
-  // mount 200+ cards for a decorative strip.
+  // One theme per family so the band shows real breadth, not many near-identical
+  // variations. Rich layout themes are named "Palette · Archetype"; simple ones
+  // "Family Vol. N". Group by the leading identity in both. Rich themes are
+  // shown first — they're the premium, layout-driven designs worth leading with.
+  const familyKey = (name: string) => name.split(' · ')[0].replace(/ Vol\. \d+$/, '');
+  const isRich = (t: ThemeRow) => Array.isArray((t.config as any)?.content);
+
   const seen = new Set<string>();
-  const showcase = all.filter((t) => {
-    const family = t.name.replace(/ Vol\. \d+$/, '');
+  const showcase = [...all.filter(isRich), ...all.filter((t) => !isRich(t))].filter((t) => {
+    const family = familyKey(t.name);
     if (seen.has(family)) return false;
     seen.add(family);
     return true;
