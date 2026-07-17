@@ -6,7 +6,6 @@ export function middleware(req: NextRequest) {
   if (
     req.nextUrl.pathname.startsWith('/goatech-admin-hq') ||
     req.nextUrl.pathname.startsWith('/api/goatech-admin-hq') ||
-    req.nextUrl.pathname.startsWith('/api/seed-themes') ||
     req.nextUrl.pathname.startsWith('/api/store/apply-theme')
   ) {
     const basicAuth = req.headers.get('authorization');
@@ -52,7 +51,6 @@ export const config = {
   matcher: [
     '/goatech-admin-hq/:path*',
     '/api/goatech-admin-hq/:path*',
-    '/api/seed-themes/:path*',
     '/api/store/apply-theme',
   ],
 };

@@ -73,10 +73,10 @@ TWILIO_AUTH_TOKEN=twilio_secret
 FRONTEND_URL=https://your-vercel-domain.com
 ```
 
-## 3. Database Themes Generation
-Once Vercel deploys your frontend successfully, we need to inject the new Apple, Google, and Instagram themes into your live database.
-1. Visit your live production URL: `https://your-vercel-domain.com/api/seed-themes`
-2. You should see a JSON success message confirming the themes were inserted.
+## 3. Themes
+The 60 premium themes are already seeded in your database. To regenerate or
+change them, run: `node backend/scripts/generate-rich-themes.js --apply`
+
 
 ## 4. Final Live Test
 Once deployed to production:

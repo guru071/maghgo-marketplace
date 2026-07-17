@@ -70,11 +70,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const handleFeatureClick = (e: React.MouseEvent, featureTitle: string, planNeeded: string, cost: number, path: string) => {
     e.preventDefault();
     if (hasAccess(planNeeded, merchantPlan)) {
-      if (path === '/dashboard/builder' && storeSlug) {
-        window.location.href = `/${storeSlug}/builder`;
-      } else {
-        router.push(path);
-      }
+      router.push(path);
     } else {
       setFeatureName(featureTitle);
       setRequiredPlan(planNeeded);
@@ -209,11 +205,6 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
           <button onClick={(e) => handleFeatureClick(e, 'Multi-Channel Bots (Instagram & Messenger)', 'pro', 249, '/dashboard/channels')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
             <span>💬 Channels</span>
             {!hasAccess('pro', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
-          </button>
-
-          <button onClick={(e) => handleFeatureClick(e, 'Visual Store Builder', 'starter', 149, '/dashboard/builder')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
-            <span>✨ Visual Builder</span>
-            {!hasAccess('starter', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
           </button>
 
           <button onClick={(e) => handleFeatureClick(e, 'Premium Themes', 'starter', 149, '/dashboard/themes')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">

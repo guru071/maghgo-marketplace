@@ -1,7 +1,6 @@
 import { Header } from '@/components/landing/Header';
 import { Hero } from '@/components/landing/Hero';
 import { WorkingModelDemo } from '@/components/landing/WorkingModelDemo';
-import { VisualBuilderShowcase } from '@/components/landing/VisualBuilderShowcase';
 import { HowItWorks } from '@/components/landing/HowItWorks';
 import { ThemesShowcase } from '@/components/landing/ThemesShowcase';
 import { Pricing } from '@/components/landing/Pricing';
@@ -49,7 +48,6 @@ export default async function LandingPage() {
       <Header />
       <Hero />
       <WorkingModelDemo />
-      <VisualBuilderShowcase />
       <HowItWorks />
       <ThemesShowcase />
       <Pricing enabledPlatforms={enabledPlatforms} plans={publicPlans} />
