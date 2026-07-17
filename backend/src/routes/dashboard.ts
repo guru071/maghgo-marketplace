@@ -20,7 +20,7 @@ const MERCHANT_PUBLIC_COLUMNS = [
   'id', 'phone_number', 'store_name', 'store_slug', 'store_description',
   'store_logo_url', 'is_active', 'subscription_plan', 'subscription_ends_at',
   'created_at', 'updated_at', 'theme_config', 'theme_id', 'instagram_handle',
-  'facebook_url', 'x_handle', 'instagram_id', 'messenger_id', 'link_code',
+  'facebook_url', 'x_handle', 'instagram_id', 'messenger_id', 'link_code', 'custom_domain',
 ].join(', ');
 
 // Apply auth middleware to all routes
@@ -221,6 +221,53 @@ router.patch('/products/:id/fulfillment', async (req: AuthRequest, res) => {
     res.json({ success: true });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// ─── Custom Domain ───────────────────────────────────────────────────────────
+
+// Claim (or clear) a custom domain for this merchant's storefront.
+// Saving the domain is the app's half; DNS + adding it in the host completes it.
+router.put('/domain', async (req: AuthRequest, res) => {
+  try {
+    const raw = (req.body?.custom_domain ?? '').toString().trim();
+
+    // Empty clears it. Otherwise normalise: strip scheme, path, and any
+    // trailing dot, and lowercase — merchants paste "https://Shop.com/" a lot.
+    let domain: string | null = null;
+    if (raw) {
+      const cleaned: string = raw
+        .replace(/^https?:\/\//i, '')
+        .replace(/\/.*$/, '')
+        .replace(/\.$/, '')
+        .toLowerCase();
+
+      if (!/^([a-z0-9-]+\.)+[a-z]{2,}$/.test(cleaned)) {
+        return res.status(400).json({ error: 'That doesn\'t look like a valid domain. Example: mystore.com' });
+      }
+      domain = cleaned;
+    }
+
+    const { error } = await supabase
+      .from('merchants')
+      .update({ custom_domain: domain })
+      .eq('id', req.merchantId);
+
+    if (error) {
+      const code = (error as any).code;
+      if (code === '42703' || code === 'PGRST204' || /custom_domain|schema cache/i.test(error.message || '')) {
+        return res.status(400).json({ error: 'Custom domains need one setup step (migration 14) before they can be used.' });
+      }
+      // Unique violation — someone else already claimed it.
+      if (code === '23505') {
+        return res.status(409).json({ error: 'That domain is already connected to another store.' });
+      }
+      throw error;
+    }
+
+    res.json({ success: true, custom_domain: domain });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

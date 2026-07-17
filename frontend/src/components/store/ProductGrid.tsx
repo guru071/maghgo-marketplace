@@ -3,61 +3,59 @@
 import React, { useState, useMemo } from 'react';
 import { Product } from '@/types';
 import ProductCard from './ProductCard';
+import { groupByCategory, type Category } from '@/lib/categorize';
 
 interface ProductGridProps {
   products: Product[];
   onAddToCart: (product: Product) => void;
 }
 
+const ALL: Category = { key: 'all', label: 'All', icon: '🛍️' };
+
 export default function ProductGrid({ products, onAddToCart }: ProductGridProps) {
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [selected, setSelected] = useState<string>('all');
 
-  // Extract all unique hashtags from product titles
-  const categories = useMemo(() => {
-    const tags = new Set<string>();
-    products.forEach((product) => {
-      const matches = product.title.match(/#[\w]+/g);
-      if (matches) {
-        matches.forEach((tag) => tags.add(tag));
-      }
-    });
-    return ['All', ...Array.from(tags).sort()];
-  }, [products]);
+  // The store organises itself around what's actually sold: categories are
+  // auto-detected from product titles, so a fashion shop shows Clothing /
+  // Footwear tabs and an electronics shop shows Phones / Audio — no tagging.
+  const groups = useMemo(() => groupByCategory(products), [products]);
 
-  // Filter products based on selected category
-  const filteredProducts = useMemo(() => {
-    if (selectedCategory === 'All') return products;
-    return products.filter((product) =>
-      product.title.toLowerCase().includes(selectedCategory.toLowerCase())
-    );
-  }, [products, selectedCategory]);
+  // Only worth showing tabs when the catalogue genuinely spans product types.
+  const tabs = groups.length > 1 ? [ALL, ...groups.map((g) => g.category)] : [];
+
+  const visible = useMemo(() => {
+    if (selected === 'all') return products;
+    return groups.find((g) => g.category.key === selected)?.products ?? products;
+  }, [selected, groups, products]);
 
   return (
     <div className="product-grid-container">
-      {categories.length > 1 && (
+      {tabs.length > 0 && (
         <div className="category-tabs flex gap-2 overflow-x-auto pb-4 mb-6 scrollbar-hide">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-4 py-2 rounded-full whitespace-nowrap text-sm font-medium transition-colors ${
-                selectedCategory === cat
-                  ? 'bg-[var(--accent)] text-white'
-                  : 'bg-white/5 text-[var(--foreground)] hover:bg-white/10'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
+          {tabs.map((cat) => {
+            const count = cat.key === 'all' ? products.length : groups.find((g) => g.category.key === cat.key)?.products.length ?? 0;
+            return (
+              <button
+                key={cat.key}
+                onClick={() => setSelected(cat.key)}
+                className={`px-4 py-2 rounded-full whitespace-nowrap text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                  selected === cat.key
+                    ? 'bg-accent text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <span>{cat.icon}</span>
+                {cat.label}
+                <span className={`text-xs ${selected === cat.key ? 'opacity-80' : 'text-gray-400'}`}>{count}</span>
+              </button>
+            );
+          })}
         </div>
       )}
 
       <div className="product-grid">
-        {filteredProducts.map((product, index) => (
-          <div
-            key={product.id}
-            style={{ animationDelay: `${index * 60}ms` }}
-          >
+        {visible.map((product, index) => (
+          <div key={product.id} style={{ animationDelay: `${index * 60}ms` }}>
             <ProductCard product={product} onAddToCart={onAddToCart} />
           </div>
         ))}

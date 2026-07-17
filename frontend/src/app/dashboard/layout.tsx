@@ -7,13 +7,10 @@ import { Suspense } from 'react';
 import { whatsappLink, instagramLink, messengerLink, smsLink } from '@/lib/site-config';
 import { hasAccess } from '@/lib/plans';
 
-// Features that are still being built. They are shown so merchants know what's
-// planned, but are never gated behind a paid plan — nobody should be asked to
-// pay for a feature that doesn't work yet.
-const COMING_SOON_FEATURES = [
-  { label: '🌐 Custom Domain', path: '/dashboard/domain' },
-  { label: '🎧 Priority Support', path: '/dashboard/support' },
-];
+// Nothing is "coming soon" any more — Custom Domain and Support are both real
+// pages now. Kept as an empty list so the section reappears the moment a
+// genuinely unbuilt feature is added, rather than being re-invented.
+const COMING_SOON_FEATURES: { label: string; path: string }[] = [];
 
 function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -224,10 +221,19 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
             {!hasAccess('starter', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
           </button>
 
+          <button onClick={(e) => handleFeatureClick(e, 'Custom Domain', 'pro', 249, '/dashboard/domain')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
+            <span>🌐 Custom Domain</span>
+            {!hasAccess('pro', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
+          </button>
+
           <button onClick={(e) => handleFeatureClick(e, 'White-Label Branding', 'business', 749, '/dashboard/whitelabel')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
             <span>🖌️ White-Label</span>
             {!hasAccess('business', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
           </button>
+
+          <Link href="/dashboard/support" className={`block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${pathname === '/dashboard/support' ? 'bg-accent text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}>
+            🎧 Support
+          </Link>
 
           {/* Features that are not built yet. These are intentionally NOT plan-gated:
               a merchant must never be prompted to pay for something that doesn't work. */}
