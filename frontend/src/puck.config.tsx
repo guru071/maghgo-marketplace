@@ -49,49 +49,83 @@ const StoreHeaderComponent = ({ title, subtitle, logoUrl, bgImage, bgColor, text
   );
 };
 
+// Pick a readable text colour for a given card background. The title used to be
+// hardcoded dark navy, so on a dark-themed card (cardBg #161616) it was
+// invisible. Now light cards get dark text and dark cards get light text.
+function readableOn(bg: string): { title: string; muted: string; border: string; isDark: boolean } {
+  const hex = (bg || '#ffffff').replace('#', '');
+  const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
+  const r = parseInt(full.slice(0, 2), 16) || 255;
+  const g = parseInt(full.slice(2, 4), 16) || 255;
+  const b = parseInt(full.slice(4, 6), 16) || 255;
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  const isDark = lum < 0.5;
+  return isDark
+    ? { title: '#ffffff', muted: 'rgba(255,255,255,0.65)', border: 'rgba(255,255,255,0.12)', isDark }
+    : { title: '#111827', muted: '#6B7280', border: '#ECECEC', isDark };
+}
+
+function ProductCardMini({ title, priceLabel, imageUrl, cardBg, accent, onClick, disabled }: any) {
+  const c = readableOn(cardBg);
+  return (
+    <div
+      onClick={disabled ? undefined : onClick}
+      style={{
+        backgroundColor: cardBg, border: `1px solid ${c.border}`, borderRadius: '10px',
+        overflow: 'hidden', display: 'flex', flexDirection: 'column',
+        cursor: disabled ? 'default' : 'pointer', transition: 'transform .15s ease, box-shadow .15s ease',
+      }}
+      onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 10px 24px rgba(0,0,0,0.12)'; } }}
+      onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
+    >
+      <div style={{
+        width: '100%', aspectRatio: '4 / 5',
+        background: imageUrl ? `url(${imageUrl}) center/cover` : (c.isDark ? '#242424' : '#f3f4f6'),
+      }} />
+      <div style={{ padding: '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: c.title, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</h3>
+        {priceLabel && <span style={{ fontWeight: 700, color: accent, fontSize: '1rem' }}>{priceLabel}</span>}
+        <button
+          disabled={disabled}
+          style={{ marginTop: '2px', backgroundColor: accent, color: '#fff', border: 'none', padding: '8px', borderRadius: '6px', cursor: disabled ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.82rem', width: '100%' }}
+        >
+          Add to Cart
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const ProductGridComponent = ({ columns, showPrices, cardBg, gap }: any) => {
   const storeCtx = React.useContext(StoreContext);
   const hasLiveProducts = storeCtx && storeCtx.products.length > 0;
+  const accent = '#FF7518';
+  // Dense, professional grid: cards auto-fill at ~180px, so a wide screen shows
+  // 5–6 per row like a real marketplace instead of four oversized boxes.
+  const bg = cardBg || '#ffffff';
 
   return (
-    <div style={{ padding: "2rem 0", width: "100%" }}>
-      <div style={{ 
-        display: "grid", 
-        gridTemplateColumns: `repeat(auto-fill, minmax(${columns === 4 ? '200px' : columns === 3 ? '250px' : '300px'}, 1fr))`, 
-        gap: gap 
-      }}>
-        {hasLiveProducts ? (
-          // Render Live Products
-          storeCtx.products.map((p: any) => (
-            <div key={p.id} style={{ backgroundColor: cardBg, border: "1px solid #eee", borderRadius: "12px", padding: "16px", display: 'flex', flexDirection: 'column', transition: "transform 0.2s", cursor: "pointer" }}>
-              <div style={{ width: "100%", aspectRatio: "1", backgroundImage: `url(${p.processed_image_url || p.original_image_url})`, backgroundSize: 'cover', backgroundPosition: 'center', borderRadius: "8px", marginBottom: "16px" }} />
-              <h3 style={{ margin: "0 0 8px 0", fontSize: "1.1rem", fontWeight: "600", color: "#1A1A2E" }}>{p.title}</h3>
-              {showPrices && <span style={{ fontWeight: "700", color: "#E07A5F", fontSize: "1.2rem", marginBottom: "16px" }}>{p.currency}{p.price}</span>}
-              <button 
+    <div style={{ padding: '1.5rem 0', width: '100%' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: gap || '16px' }}>
+        {hasLiveProducts
+          ? storeCtx.products.map((p: any) => (
+              <ProductCardMini
+                key={p.id}
+                title={p.title}
+                priceLabel={showPrices ? `${p.currency || '₹'}${Number(p.price).toLocaleString('en-IN')}` : ''}
+                imageUrl={p.processed_image_url || p.original_image_url}
+                cardBg={bg}
+                accent={accent}
                 onClick={() => storeCtx.onAddToCart(p)}
-                style={{ marginTop: 'auto', backgroundColor: '#25D366', color: '#fff', border: 'none', padding: '12px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: "100%" }}
-              >
-                Add to Cart
-              </button>
-            </div>
-          ))
-        ) : (
-          // Render Placeholders for Builder
-          [1, 2, 3, 4].map((i) => (
-            <div key={i} style={{ backgroundColor: cardBg, border: "1px solid #eee", borderRadius: "12px", padding: "16px", display: 'flex', flexDirection: 'column' }}>
-              <div style={{ width: "100%", aspectRatio: "1", backgroundColor: "#f3f4f6", borderRadius: "8px", marginBottom: "16px" }} />
-              <h3 style={{ margin: "0 0 8px 0", fontSize: "1.1rem", color: "#1A1A2E", fontWeight: "600" }}>Sample Product {i}</h3>
-              {showPrices && <span style={{ fontWeight: "700", color: "#E07A5F", fontSize: "1.2rem", marginBottom: "16px" }}>₹999</span>}
-              <button style={{ marginTop: 'auto', backgroundColor: '#25D366', color: '#fff', border: 'none', padding: '12px', borderRadius: '8px', cursor: 'not-allowed', fontWeight: 'bold', width: "100%" }}>
-                Add to Cart
-              </button>
-            </div>
-          ))
-        )}
+              />
+            ))
+          : [1, 2, 3, 4, 5].map((i) => (
+              <ProductCardMini key={i} title={`Sample Product ${i}`} priceLabel={showPrices ? '₹999' : ''} imageUrl="" cardBg={bg} accent={accent} disabled />
+            ))}
       </div>
       {!hasLiveProducts && (
-        <p style={{ textAlign: 'center', color: '#9CA3AF', margin: '2rem 0 0', fontStyle: 'italic' }}>
-          * Your live products will automatically populate this grid.
+        <p style={{ textAlign: 'center', color: '#9CA3AF', margin: '1.5rem 0 0', fontStyle: 'italic', fontSize: '0.85rem' }}>
+          Your live products will automatically fill this grid.
         </p>
       )}
     </div>
