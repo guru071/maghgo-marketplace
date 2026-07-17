@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { supabase } from '../db/supabase';
-import { getProducts, updateProductPrice, deleteAllProducts, deleteProduct, createProduct } from '../services/product.service';
+import { getProducts, updateProductPrice, deleteAllProducts, deleteProduct, createProduct, setProductFulfillmentById } from '../services/product.service';
 import { updateStoreDescription, toggleStoreStatus, getProductLimit } from '../services/merchant.service';
 import { getOrders, updateOrderStatus, getAnalytics } from '../services/order.service';
 import { createPaymentLink } from '../services/payment.service';
@@ -202,6 +202,25 @@ router.put('/theme', async (req: AuthRequest, res) => {
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Set a product's fulfilment mode (buy delivers / prebook = reserve at shop).
+router.patch('/products/:id/fulfillment', async (req: AuthRequest, res) => {
+  try {
+    const { fulfillment_type } = req.body;
+    if (fulfillment_type !== 'buy' && fulfillment_type !== 'prebook') {
+      return res.status(400).json({ error: "fulfillment_type must be 'buy' or 'prebook'" });
+    }
+    const ok = await setProductFulfillmentById(req.merchantId!, String(req.params.id), fulfillment_type);
+    if (!ok) return res.status(404).json({ error: 'Product not found' });
+
+    const { data: merchant } = await supabase.from('merchants').select('store_slug').eq('id', req.merchantId).single();
+    if (merchant) await triggerRevalidation(merchant.store_slug);
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
   }
 });
 

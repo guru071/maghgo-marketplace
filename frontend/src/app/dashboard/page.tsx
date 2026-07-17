@@ -89,6 +89,28 @@ export default function DashboardInventory() {
     }
   };
 
+  const handleToggleFulfillment = async (id: string, current?: string) => {
+    const next = current === 'prebook' ? 'buy' : 'prebook';
+    const token = localStorage.getItem('maghgo_merchant_token');
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    // Optimistic: flip in the UI, roll back if the request fails.
+    setProducts((ps) => ps.map((p) => (p.id === id ? { ...p, fulfillment_type: next as any } : p)));
+    try {
+      const res = await fetch(`${apiUrl}/api/dashboard/products/${id}/fulfillment`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ fulfillment_type: next }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed');
+      }
+    } catch (e: any) {
+      setProducts((ps) => ps.map((p) => (p.id === id ? { ...p, fulfillment_type: current as any } : p)));
+      alert(e.message || 'Could not change the mode.');
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this product?')) return;
     const token = localStorage.getItem('maghgo_merchant_token');
@@ -136,6 +158,7 @@ export default function DashboardInventory() {
                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Product Image</th>
                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Title</th>
                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Price</th>
+                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Mode</th>
                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Actions</th>
               </tr>
             </thead>
@@ -154,8 +177,21 @@ export default function DashboardInventory() {
                   </td>
                   <td className="px-6 py-4 font-medium text-gray-900">{p.title}</td>
                   <td className="px-6 py-4 text-gray-600">₹{p.price.toLocaleString('en-IN')}</td>
+                  <td className="px-6 py-4">
+                    <button
+                      onClick={() => handleToggleFulfillment(p.id, p.fulfillment_type)}
+                      title="Tap to switch between Buy (delivered) and Pre-book (collect at shop)"
+                      className={`text-xs font-bold px-3 py-1.5 rounded-full transition-colors ${
+                        p.fulfillment_type === 'prebook'
+                          ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {p.fulfillment_type === 'prebook' ? '📅 Pre-book' : '🛒 Buy'}
+                    </button>
+                  </td>
                   <td className="px-6 py-4 text-right">
-                    <button 
+                    <button
                       onClick={() => handleDelete(p.id)}
                       className="text-red-500 hover:text-red-700 text-sm font-medium"
                     >

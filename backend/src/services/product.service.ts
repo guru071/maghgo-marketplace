@@ -165,6 +165,32 @@ export async function setProductFulfillment(
 }
 
 /**
+ * Set a product's fulfilment mode by id (dashboard). Scoped to the merchant.
+ * Same graceful handling as setProductFulfillment for the pre-migration case.
+ */
+export async function setProductFulfillmentById(
+  merchantId: string,
+  productId: string,
+  type: FulfillmentType
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('products')
+    .update({ fulfillment_type: type })
+    .eq('id', productId)
+    .eq('merchant_id', merchantId)
+    .select('id');
+
+  if (error) {
+    const code = (error as any).code;
+    if (code === '42703' || code === 'PGRST204' || /fulfillment_type|schema cache/i.test(error.message || '')) {
+      throw new Error('Pre-book needs one setup step (migration 13) before it can be used.');
+    }
+    throw new Error(`Failed to update fulfilment: ${error.message}`);
+  }
+  return (data?.length ?? 0) > 0;
+}
+
+/**
  * Soft-delete all products for a merchant (Clear Catalog)
  */
 export async function deleteAllProducts(merchantId: string): Promise<number> {
