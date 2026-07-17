@@ -11,12 +11,25 @@ import { isPublicPlan } from '@/lib/plans';
 export const revalidate = 60; // Ensure fresh settings are fetched
 
 export default async function LandingPage() {
-  const supabase = createServerSupabaseClient();
-  const [{ data: settings }, { data: plans }, { data: activeOffer }] = await Promise.all([
-    supabase.from('platform_settings').select('*').eq('id', 1).single(),
-    supabase.from('plans').select('*').order('monthly_price', { ascending: true }),
-    supabase.from('offers').select('*').eq('is_active', true).single()
-  ]);
+  // Never let a missing env var or a transient query crash the build. If Supabase
+  // is unreachable at prerender time, the page still renders (with no offer and
+  // an empty pricing grid) rather than failing the whole deploy.
+  let settings: any = null;
+  let plans: any[] = [];
+  let activeOffer: any = null;
+  try {
+    const supabase = createServerSupabaseClient();
+    const [s, p, o] = await Promise.all([
+      supabase.from('platform_settings').select('*').eq('id', 1).single(),
+      supabase.from('plans').select('*').order('monthly_price', { ascending: true }),
+      supabase.from('offers').select('*').eq('is_active', true).single(),
+    ]);
+    settings = s.data;
+    plans = p.data ?? [];
+    activeOffer = o.data;
+  } catch (err) {
+    console.error('Landing page data fetch failed (rendering with defaults):', err);
+  }
 
   const enabledPlatforms = settings || {
     whatsapp_enabled: true,

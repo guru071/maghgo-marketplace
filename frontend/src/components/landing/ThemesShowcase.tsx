@@ -50,22 +50,24 @@ function ThemeCard({ theme }: { theme: ThemeRow }) {
 }
 
 export async function ThemesShowcase() {
-  const supabase = createServerSupabaseClient();
-
-  // Show the real catalogue. The previous version hardcoded three stock JPEGs
-  // of themes that were not even in the database, under a headline claiming
-  // "100+". Both the count and the previews now come from real rows.
-  const { data, error } = await supabase
-    .from('themes')
-    .select('id, name, plan_required, config')
-    .eq('is_active', true)
-    .order('name');
-
-  const all = (data ?? []) as ThemeRow[];
+  // Show the real catalogue. Wrapped so a missing env var or a failed query
+  // drops the section instead of crashing the whole landing-page prerender.
+  let all: ThemeRow[] = [];
+  try {
+    const supabase = createServerSupabaseClient();
+    const { data } = await supabase
+      .from('themes')
+      .select('id, name, plan_required, config')
+      .eq('is_active', true)
+      .order('name');
+    all = (data ?? []) as ThemeRow[];
+  } catch (err) {
+    console.error('ThemesShowcase fetch failed (hiding section):', err);
+  }
 
   // Nothing to show (query failed, or the catalogue was never seeded) — drop the
   // section rather than advertise a theme count we cannot back up.
-  if (error || all.length === 0) return null;
+  if (all.length === 0) return null;
 
   // One theme per family so the band shows real breadth, not many near-identical
   // variations. Rich layout themes are named "Palette · Archetype"; simple ones
