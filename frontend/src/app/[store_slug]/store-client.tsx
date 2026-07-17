@@ -89,8 +89,16 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
     );
   }
 
+  // A theme's canvas colour must reach the page itself. Without this, a dark
+  // palette painted its light text onto the default light background and the
+  // headings were unreadable.
+  const themeBg = activeTheme?.root?.props?.background;
+
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div
+      className={`min-h-screen pb-24 ${themeBg ? '' : 'bg-gray-50'}`}
+      style={themeBg ? { backgroundColor: themeBg } : undefined}
+    >
       {activeTheme ? (
         <StoreContext.Provider value={{ products, onAddToCart: handleAddToCart, storeName: merchant.store_name, storeDescription: merchant.store_description }}>
           <Render config={config} data={activeTheme} />

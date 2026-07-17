@@ -29,17 +29,20 @@ const contrast = (a, b) => { const la = luminance(a), lb = luminance(b); return 
 
 // ── premium palettes (each a real identity: colour + type + imagery) ──────────
 // `dark` = light text belongs on the header/banner; `light` = dark text.
+// cardStyle + animation are part of the palette's identity: a brutalist theme
+// gets hard framed cards that press on hover, a lookbook gets image-overlay
+// cards that rise in, a gallery gets chrome-less minimal cards that fade.
 const PALETTES = [
-  { key: 'Noir Gold',   plan: 'business',   bg: '#0D0D0D', surface: '#161616', text: '#F5F0E6', accent: '#C6A03A', heading: "'Playfair Display', Georgia, serif", body: "'Georgia', serif", radius: '0px', dark: true,  hero: 'photo-1515886657613-9f3515b0c78f' },
-  { key: 'Ivory Atelier', plan: 'agency',   bg: '#FAF8F4', surface: '#FFFFFF', text: '#2C2416', accent: '#B08D57', heading: "'Playfair Display', Georgia, serif", body: "'Georgia', serif", radius: '2px', dark: false, hero: 'photo-1483985988355-763728e1935b' },
-  { key: 'Neon Arcade', plan: 'agency',     bg: '#0A0A0F', surface: '#12121A', text: '#E8FBFF', accent: '#12E6E6', heading: "'Courier New', monospace",           body: "'Courier New', monospace", radius: '2px', dark: true, hero: 'photo-1550745165-9bc0b252726f' },
-  { key: 'Rose Couture', plan: 'business',  bg: '#FFF5F7', surface: '#FFFFFF', text: '#3A1220', accent: '#C2185B', heading: "'Playfair Display', serif",          body: "'Inter', sans-serif", radius: '16px', dark: false, hero: 'photo-1490481651871-ab68de25d43d' },
-  { key: 'Emerald Estate', plan: 'agency',  bg: '#0B1F17', surface: '#12241B', text: '#EAF5EF', accent: '#3FB984', heading: "'Playfair Display', serif",          body: "'Inter', sans-serif", radius: '8px', dark: true, hero: 'photo-1441984904996-e0b6ba687e04' },
-  { key: 'Sapphire Suite', plan: 'business', bg: '#0A1428', surface: '#111E3A', text: '#EAF0FF', accent: '#4C82F7', heading: "'Inter', sans-serif",              body: "'Inter', sans-serif", radius: '10px', dark: true, hero: 'photo-1523275335684-37898b6baf30' },
-  { key: 'Sunset Bazaar', plan: 'starter',  bg: '#FFF8F0', surface: '#FFFFFF', text: '#3B2410', accent: '#E8590C', heading: "'Poppins', sans-serif",             body: "'Inter', sans-serif", radius: '20px', dark: false, hero: 'photo-1441986300917-64674bd600d8' },
-  { key: 'Mono Brutal', plan: 'pro',        bg: '#FFFFFF', surface: '#F4F4F4', text: '#000000', accent: '#FF3B30', heading: "'Arial Black', Helvetica, sans-serif", body: "'Helvetica', sans-serif", radius: '0px', dark: false, hero: 'photo-1441984904996-e0b6ba687e04' },
-  { key: 'Vintage Press', plan: 'business', bg: '#F4ECD8', surface: '#FBF6E9', text: '#3B2F2F', accent: '#8C4A2F', heading: "'Georgia', serif",                  body: "'Georgia', serif", radius: '4px', dark: false, hero: 'photo-1472851294608-062f824d29cc' },
-  { key: 'Slate Minimal', plan: 'starter',  bg: '#FFFFFF', surface: '#F8FAFC', text: '#0F172A', accent: '#334155', heading: "'Inter', sans-serif",               body: "'Inter', sans-serif", radius: '6px', dark: false, hero: 'photo-1441984904996-e0b6ba687e04' },
+  { key: 'Noir Gold',   plan: 'business',   bg: '#0D0D0D', surface: '#161616', text: '#F5F0E6', accent: '#C6A03A', heading: "'Playfair Display', Georgia, serif", body: "'Georgia', serif", radius: '0px', dark: true,  hero: 'photo-1515886657613-9f3515b0c78f', cardStyle: 'overlay', animation: 'rise' },
+  { key: 'Ivory Atelier', plan: 'agency',   bg: '#FAF8F4', surface: '#FFFFFF', text: '#2C2416', accent: '#B08D57', heading: "'Playfair Display', Georgia, serif", body: "'Georgia', serif", radius: '2px', dark: false, hero: 'photo-1483985988355-763728e1935b', cardStyle: 'minimal', animation: 'fade' },
+  { key: 'Neon Arcade', plan: 'agency',     bg: '#0A0A0F', surface: '#12121A', text: '#E8FBFF', accent: '#12E6E6', heading: "'Courier New', monospace",           body: "'Courier New', monospace", radius: '2px', dark: true, hero: 'photo-1550745165-9bc0b252726f', cardStyle: 'frame', animation: 'zoom' },
+  { key: 'Rose Couture', plan: 'business',  bg: '#FFF5F7', surface: '#FFFFFF', text: '#3A1220', accent: '#C2185B', heading: "'Playfair Display', serif",          body: "'Inter', sans-serif", radius: '16px', dark: false, hero: 'photo-1490481651871-ab68de25d43d', cardStyle: 'overlay', animation: 'zoom' },
+  { key: 'Emerald Estate', plan: 'agency',  bg: '#0B1F17', surface: '#12241B', text: '#EAF5EF', accent: '#3FB984', heading: "'Playfair Display', serif",          body: "'Inter', sans-serif", radius: '8px', dark: true, hero: 'photo-1441984904996-e0b6ba687e04', cardStyle: 'classic', animation: 'rise' },
+  { key: 'Sapphire Suite', plan: 'business', bg: '#0A1428', surface: '#111E3A', text: '#EAF0FF', accent: '#4C82F7', heading: "'Inter', sans-serif",              body: "'Inter', sans-serif", radius: '10px', dark: true, hero: 'photo-1523275335684-37898b6baf30', cardStyle: 'split', animation: 'slide' },
+  { key: 'Sunset Bazaar', plan: 'starter',  bg: '#FFF8F0', surface: '#FFFFFF', text: '#3B2410', accent: '#E8590C', heading: "'Poppins', sans-serif",             body: "'Inter', sans-serif", radius: '20px', dark: false, hero: 'photo-1441986300917-64674bd600d8', cardStyle: 'classic', animation: 'zoom' },
+  { key: 'Mono Brutal', plan: 'pro',        bg: '#FFFFFF', surface: '#F4F4F4', text: '#000000', accent: '#FF3B30', heading: "'Arial Black', Helvetica, sans-serif", body: "'Helvetica', sans-serif", radius: '0px', dark: false, hero: 'photo-1441984904996-e0b6ba687e04', cardStyle: 'frame', animation: 'slide' },
+  { key: 'Vintage Press', plan: 'business', bg: '#F4ECD8', surface: '#FBF6E9', text: '#3B2F2F', accent: '#8C4A2F', heading: "'Georgia', serif",                  body: "'Georgia', serif", radius: '4px', dark: false, hero: 'photo-1472851294608-062f824d29cc', cardStyle: 'split', animation: 'fade' },
+  { key: 'Slate Minimal', plan: 'starter',  bg: '#FFFFFF', surface: '#F8FAFC', text: '#0F172A', accent: '#334155', heading: "'Inter', sans-serif",               body: "'Inter', sans-serif", radius: '6px', dark: false, hero: 'photo-1441984904996-e0b6ba687e04', cardStyle: 'minimal', animation: 'rise' },
 ];
 
 const img = (id, w = 1400) => `https://images.unsplash.com/${id}?w=${w}&q=80&auto=format&fit=crop`;
@@ -126,7 +129,21 @@ const heading = (p, text, size, align) => ({ type: 'Heading', props: { text, siz
 const text = (p, t, align) => ({ type: 'Text', props: { text: t, color: p.dark ? p.text : '#555', align } });
 const spacer = (height) => ({ type: 'Spacer', props: { height } });
 const divider = (p, margin, _w) => ({ type: 'Divider', props: { color: p.accent, margin } });
-const grid = (p, columns) => ({ type: 'ProductGrid', props: { columns, gap: columns >= 4 ? '16px' : '28px', cardBg: p.surface, showPrices: true } });
+
+// The grid carries the theme's card design, entrance animation and accent — so
+// a theme changes how the store is built and how it moves, not just its colours.
+const grid = (p, columns) => ({
+  type: 'ProductGrid',
+  props: {
+    columns,
+    gap: columns >= 4 ? '16px' : '24px',
+    cardBg: p.surface,
+    accent: p.accent,
+    cardStyle: p.cardStyle || 'classic',
+    animation: p.animation || 'rise',
+    showPrices: true,
+  },
+});
 function features(p) {
   return { type: 'FeatureGrid', props: { features: [
     { title: 'Fast Delivery', description: 'Ships within 24 hours', icon: '🚚' },
@@ -148,9 +165,11 @@ function buildThemes() {
     for (const [archName, build] of Object.entries(ARCHETYPES)) {
       themes.push({
         name: `${p.key} · ${archName}`,
-        description: `${archName} layout with the ${p.key} palette — hero, curated sections and live product grid.`,
+        description: `${archName} layout · ${p.cardStyle} cards · ${p.animation} animation — the ${p.key} palette with its own type and imagery.`,
         plan_required: p.plan,
-        config: { content: build(p), root: { props: { title: p.key } }, zones: {} },
+        // root carries the page canvas, so a dark palette darkens the whole page
+        // rather than painting light text onto the default light background.
+        config: { content: build(p), root: { props: { title: p.key, background: p.bg, text: p.text } }, zones: {} },
       });
     }
   }

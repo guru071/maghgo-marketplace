@@ -49,6 +49,11 @@ const StoreHeaderComponent = ({ title, subtitle, logoUrl, bgImage, bgColor, text
   );
 };
 
+// Products store currency as a code ("INR"), which rendered as "INR2,499".
+// Show the symbol shoppers expect.
+const CURRENCY_SYMBOL: Record<string, string> = { INR: '₹', USD: '$', EUR: '€', GBP: '£', AED: 'د.إ' };
+const currencySymbol = (code?: string) => CURRENCY_SYMBOL[(code || 'INR').toUpperCase()] ?? (code || '₹');
+
 // Pick a readable text colour for a given card background. The title used to be
 // hardcoded dark navy, so on a dark-themed card (cardBg #161616) it was
 // invisible. Now light cards get dark text and dark cards get light text.
@@ -65,60 +70,177 @@ function readableOn(bg: string): { title: string; muted: string; border: string;
     : { title: '#111827', muted: '#6B7280', border: '#ECECEC', isDark };
 }
 
-function ProductCardMini({ title, priceLabel, imageUrl, cardBg, accent, onClick, disabled, isPrebook }: any) {
+/**
+ * Animation + card-style CSS, injected once.
+ *
+ * A theme is meant to change how the store *feels*, not just its hex codes.
+ * These classes give each theme a real entrance animation and hover behaviour,
+ * picked per-theme via the ProductGrid's `animation` / `cardStyle` props.
+ */
+const MAGHGO_THEME_CSS = `
+@keyframes mg-rise { from { opacity:0; transform:translateY(18px) } to { opacity:1; transform:none } }
+@keyframes mg-fade { from { opacity:0 } to { opacity:1 } }
+@keyframes mg-zoom { from { opacity:0; transform:scale(.92) } to { opacity:1; transform:none } }
+@keyframes mg-slide { from { opacity:0; transform:translateX(-22px) } to { opacity:1; transform:none } }
+.mg-card { animation-duration:.55s; animation-fill-mode:both; animation-timing-function:cubic-bezier(.22,1,.36,1); }
+.mg-anim-rise .mg-card { animation-name: mg-rise }
+.mg-anim-fade .mg-card { animation-name: mg-fade }
+.mg-anim-zoom .mg-card { animation-name: mg-zoom }
+.mg-anim-slide .mg-card { animation-name: mg-slide }
+.mg-anim-none .mg-card { animation: none }
+.mg-card__img { transition: transform .5s cubic-bezier(.22,1,.36,1) }
+.mg-card:hover .mg-card__img { transform: scale(1.07) }
+.mg-hover-lift { transition: transform .25s ease, box-shadow .25s ease }
+.mg-hover-lift:hover { transform: translateY(-6px); box-shadow: 0 14px 30px rgba(0,0,0,.16) }
+.mg-hover-tilt { transition: transform .25s ease }
+.mg-hover-tilt:hover { transform: perspective(700px) rotateX(4deg) translateY(-4px) }
+.mg-hover-press { transition: transform .12s ease, box-shadow .12s ease }
+.mg-hover-press:hover { transform: translate(-3px,-3px) }
+.mg-reveal { opacity:0; transform:translateY(8px); transition: opacity .3s ease, transform .3s ease }
+.mg-card:hover .mg-reveal { opacity:1; transform:none }
+@media (prefers-reduced-motion: reduce) {
+  .mg-card, .mg-card__img, .mg-hover-lift, .mg-hover-tilt, .mg-hover-press, .mg-reveal { animation:none !important; transition:none !important; transform:none !important; opacity:1 !important }
+}
+`;
+
+function ThemeStyles() {
+  return <style dangerouslySetInnerHTML={{ __html: MAGHGO_THEME_CSS }} />;
+}
+
+/**
+ * Product card with genuinely different designs per theme — not one card in
+ * different colours. `cardStyle` changes the structure and the hover feel:
+ *   classic  — image over details (marketplace)
+ *   overlay  — details float on the image behind a scrim (lookbook)
+ *   minimal  — no chrome, gallery-like, actions appear on hover
+ *   frame    — hard offset border, no radius (brutalist/editorial)
+ *   split    — image beside details (catalogue row)
+ */
+function ProductCardMini({ title, priceLabel, imageUrl, cardBg, accent, onClick, disabled, isPrebook, cardStyle = 'classic', index = 0 }: any) {
   const c = readableOn(cardBg);
+  const delay = { animationDelay: `${Math.min(index, 12) * 55}ms` };
+  const img = imageUrl ? `url(${imageUrl}) center/cover` : (c.isDark ? '#242424' : '#f3f4f6');
+  const cta = isPrebook ? 'Pre-book' : 'Add to Cart';
+  const ctaBg = isPrebook ? '#7C3AED' : accent;
+
+  const Badge = () =>
+    isPrebook ? (
+      <span style={{ position: 'absolute', top: 8, left: 8, zIndex: 3, background: '#7C3AED', color: '#fff', fontSize: '0.58rem', fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', padding: '3px 7px', borderRadius: '5px' }}>
+        Pre-book
+      </span>
+    ) : null;
+
+  const clickable = { cursor: disabled ? 'default' : 'pointer' } as const;
+  const onCardClick = disabled ? undefined : onClick;
+
+  if (cardStyle === 'overlay') {
+    return (
+      <div className="mg-card mg-hover-lift" style={{ ...delay, ...clickable, position: 'relative', borderRadius: '12px', overflow: 'hidden', aspectRatio: '3 / 4' }} onClick={onCardClick}>
+        <Badge />
+        <div className="mg-card__img" style={{ position: 'absolute', inset: 0, background: img }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(0,0,0,.82) 100%)' }} />
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '12px', color: '#fff' }}>
+          <h3 style={{ margin: 0, fontSize: '.92rem', fontWeight: 700, textShadow: '0 1px 6px rgba(0,0,0,.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</h3>
+          {priceLabel && <span style={{ fontWeight: 800, fontSize: '1rem', color: '#fff' }}>{priceLabel}</span>}
+          <div className="mg-reveal" style={{ marginTop: 8 }}>
+            <button disabled={disabled} style={{ background: ctaBg, color: '#fff', border: 'none', padding: '8px', borderRadius: '6px', fontWeight: 700, fontSize: '.78rem', width: '100%', cursor: disabled ? 'not-allowed' : 'pointer' }}>{cta}</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (cardStyle === 'minimal') {
+    return (
+      <div className="mg-card" style={{ ...delay, ...clickable, position: 'relative' }} onClick={onCardClick}>
+        <Badge />
+        <div style={{ overflow: 'hidden', borderRadius: '4px' }}>
+          <div className="mg-card__img" style={{ width: '100%', aspectRatio: '1', background: img }} />
+        </div>
+        <div style={{ paddingTop: 10 }}>
+          <h3 style={{ margin: 0, fontSize: '.82rem', fontWeight: 500, color: c.title, letterSpacing: '.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</h3>
+          {priceLabel && <span style={{ fontSize: '.86rem', color: c.muted }}>{priceLabel}</span>}
+          <div className="mg-reveal" style={{ marginTop: 6 }}>
+            <button disabled={disabled} style={{ background: 'transparent', color: accent, border: `1px solid ${accent}`, padding: '6px', borderRadius: '4px', fontWeight: 700, fontSize: '.72rem', width: '100%', cursor: disabled ? 'not-allowed' : 'pointer' }}>{cta}</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (cardStyle === 'frame') {
+    return (
+      <div className="mg-card mg-hover-press" style={{ ...delay, ...clickable, position: 'relative', background: cardBg, border: `2px solid ${c.title}`, boxShadow: `5px 5px 0 ${accent}`, display: 'flex', flexDirection: 'column' }} onClick={onCardClick}>
+        <Badge />
+        <div style={{ overflow: 'hidden' }}>
+          <div className="mg-card__img" style={{ width: '100%', aspectRatio: '1', background: img }} />
+        </div>
+        <div style={{ padding: '10px', borderTop: `2px solid ${c.title}` }}>
+          <h3 style={{ margin: 0, fontSize: '.85rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.02em', color: c.title, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</h3>
+          {priceLabel && <span style={{ fontWeight: 800, color: accent, fontSize: '.95rem' }}>{priceLabel}</span>}
+          <button disabled={disabled} style={{ marginTop: 8, background: c.title, color: cardBg, border: 'none', padding: '8px', fontWeight: 800, fontSize: '.74rem', textTransform: 'uppercase', width: '100%', cursor: disabled ? 'not-allowed' : 'pointer' }}>{cta}</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (cardStyle === 'split') {
+    return (
+      <div className="mg-card mg-hover-lift" style={{ ...delay, ...clickable, position: 'relative', background: cardBg, border: `1px solid ${c.border}`, borderRadius: '10px', overflow: 'hidden', display: 'flex', gap: 0 }} onClick={onCardClick}>
+        <Badge />
+        <div style={{ width: '42%', flexShrink: 0, overflow: 'hidden' }}>
+          <div className="mg-card__img" style={{ width: '100%', height: '100%', minHeight: 120, background: img }} />
+        </div>
+        <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 6, minWidth: 0 }}>
+          <h3 style={{ margin: 0, fontSize: '.88rem', fontWeight: 600, color: c.title, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</h3>
+          {priceLabel && <span style={{ fontWeight: 700, color: accent, fontSize: '.98rem' }}>{priceLabel}</span>}
+          <button disabled={disabled} style={{ background: ctaBg, color: '#fff', border: 'none', padding: '7px', borderRadius: '6px', fontWeight: 700, fontSize: '.75rem', cursor: disabled ? 'not-allowed' : 'pointer' }}>{cta}</button>
+        </div>
+      </div>
+    );
+  }
+
+  // classic
   return (
-    <div
-      onClick={disabled ? undefined : onClick}
-      style={{
-        position: 'relative',
-        backgroundColor: cardBg, border: `1px solid ${c.border}`, borderRadius: '10px',
-        overflow: 'hidden', display: 'flex', flexDirection: 'column',
-        cursor: disabled ? 'default' : 'pointer', transition: 'transform .15s ease, box-shadow .15s ease',
-      }}
-      onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 10px 24px rgba(0,0,0,0.12)'; } }}
-      onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
-    >
-      {isPrebook && (
-        <span style={{ position: 'absolute', top: 8, left: 8, zIndex: 2, background: '#7C3AED', color: '#fff', fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', padding: '3px 7px', borderRadius: '5px' }}>
-          Pre-book
-        </span>
-      )}
-      <div style={{
-        width: '100%', aspectRatio: '4 / 5',
-        background: imageUrl ? `url(${imageUrl}) center/cover` : (c.isDark ? '#242424' : '#f3f4f6'),
-      }} />
+    <div className="mg-card mg-hover-lift" style={{ ...delay, ...clickable, position: 'relative', backgroundColor: cardBg, border: `1px solid ${c.border}`, borderRadius: '10px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={onCardClick}>
+      <Badge />
+      <div style={{ overflow: 'hidden' }}>
+        <div className="mg-card__img" style={{ width: '100%', aspectRatio: '4 / 5', background: img }} />
+      </div>
       <div style={{ padding: '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
         <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: c.title, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</h3>
         {priceLabel && <span style={{ fontWeight: 700, color: accent, fontSize: '1rem' }}>{priceLabel}</span>}
-        <button
-          disabled={disabled}
-          style={{ marginTop: '2px', backgroundColor: isPrebook ? '#7C3AED' : accent, color: '#fff', border: 'none', padding: '8px', borderRadius: '6px', cursor: disabled ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.82rem', width: '100%' }}
-        >
-          {isPrebook ? 'Pre-book' : 'Add to Cart'}
-        </button>
+        <button disabled={disabled} style={{ marginTop: '2px', backgroundColor: ctaBg, color: '#fff', border: 'none', padding: '8px', borderRadius: '6px', cursor: disabled ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.82rem', width: '100%' }}>{cta}</button>
       </div>
     </div>
   );
 }
 
-const ProductGridComponent = ({ columns, showPrices, cardBg, gap }: any) => {
+const ProductGridComponent = ({ columns, showPrices, cardBg, gap, cardStyle, animation, accent: accentProp }: any) => {
   const storeCtx = React.useContext(StoreContext);
   const hasLiveProducts = storeCtx && storeCtx.products.length > 0;
-  const accent = '#FF7518';
-  // Dense, professional grid: cards auto-fill at ~180px, so a wide screen shows
-  // 5–6 per row like a real marketplace instead of four oversized boxes.
+  // Accent comes from the theme so the CTA matches the palette rather than
+  // every theme sharing one orange.
+  const accent = accentProp || '#FF7518';
   const bg = cardBg || '#ffffff';
+  const style = cardStyle || 'classic';
+  const anim = animation || 'rise';
+
+  // A 'split' card is horizontal, so it needs a wider track than a portrait one.
+  const minTrack = style === 'split' ? '280px' : style === 'minimal' ? '150px' : '170px';
 
   return (
-    <div style={{ padding: '1.5rem 0', width: '100%' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: gap || '16px' }}>
+    <div className={`mg-anim-${anim}`} style={{ padding: '1.5rem 0', width: '100%' }}>
+      <ThemeStyles />
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${minTrack}, 1fr))`, gap: gap || '16px' }}>
         {hasLiveProducts
-          ? storeCtx.products.map((p: any) => (
+          ? storeCtx.products.map((p: any, i: number) => (
               <ProductCardMini
                 key={p.id}
+                index={i}
+                cardStyle={style}
                 title={p.title}
-                priceLabel={showPrices ? `${p.currency || '₹'}${Number(p.price).toLocaleString('en-IN')}` : ''}
+                priceLabel={showPrices ? `${currencySymbol(p.currency)}${Number(p.price).toLocaleString('en-IN')}` : ''}
                 imageUrl={p.processed_image_url || p.original_image_url}
                 cardBg={bg}
                 accent={accent}
@@ -127,7 +249,7 @@ const ProductGridComponent = ({ columns, showPrices, cardBg, gap }: any) => {
               />
             ))
           : [1, 2, 3, 4, 5].map((i) => (
-              <ProductCardMini key={i} title={`Sample Product ${i}`} priceLabel={showPrices ? '₹999' : ''} imageUrl="" cardBg={bg} accent={accent} disabled />
+              <ProductCardMini key={i} index={i} cardStyle={style} title={`Sample Product ${i}`} priceLabel={showPrices ? '₹999' : ''} imageUrl="" cardBg={bg} accent={accent} disabled />
             ))}
       </div>
       {!hasLiveProducts && (
@@ -158,7 +280,12 @@ export type Props = {
   
   // E-commerce
   StoreHeader: { title: string; subtitle: string; logoUrl?: string; bgImage?: string; bgColor: string; textColor: string };
-  ProductGrid: { columns: number; showPrices: boolean; cardBg: string; gap: string };
+  ProductGrid: {
+    columns: number; showPrices: boolean; cardBg: string; gap: string;
+    accent: string;
+    cardStyle: "classic" | "overlay" | "minimal" | "frame" | "split";
+    animation: "rise" | "fade" | "zoom" | "slide" | "none";
+  };
   Banner: { imageUrl: string; text: string; linkUrl: string; textColor: string; height: string };
 };
 
@@ -491,12 +618,36 @@ export const config: Config<Props> = {
         },
         gap: { type: "text" },
         cardBg: { type: "text" },
+        accent: { type: "text" },
+        cardStyle: {
+          type: "select",
+          options: [
+            { label: "Classic", value: "classic" },
+            { label: "Overlay", value: "overlay" },
+            { label: "Minimal", value: "minimal" },
+            { label: "Frame", value: "frame" },
+            { label: "Split", value: "split" },
+          ],
+        },
+        animation: {
+          type: "select",
+          options: [
+            { label: "Rise", value: "rise" },
+            { label: "Fade", value: "fade" },
+            { label: "Zoom", value: "zoom" },
+            { label: "Slide", value: "slide" },
+            { label: "None", value: "none" },
+          ],
+        },
         showPrices: { type: "radio", options: [{ label: "Yes", value: true }, { label: "No", value: false }] },
       },
       defaultProps: {
         columns: 3,
         gap: "24px",
         cardBg: "#ffffff",
+        accent: "#FF7518",
+        cardStyle: "classic",
+        animation: "rise",
         showPrices: true,
       },
       render: (props) => <ProductGridComponent {...props} />,
