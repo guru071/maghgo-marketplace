@@ -74,7 +74,32 @@ async function sendCatalogue(msg: BotMessage, s: Session): Promise<void> {
   if (msg.sendButtons) {
     await msg.sendButtons('Tap *Add* on a product, or:', [
       { id: 'CART', title: '🛒 View cart' },
+      { id: 'CONTACT', title: '📍 Contact & visit' },
       { id: 'SHOP', title: '🔄 Refresh' },
+    ]);
+  }
+}
+
+async function showContact(msg: BotMessage, s: Session): Promise<void> {
+  const merchant = await getMerchantBySlug(s.storeSlug);
+  const address = (merchant as any)?.store_address as string | undefined;
+  const phone = merchant?.phone_number;
+  const storeUrl = `${env.FRONTEND_URL}/${s.storeSlug}`;
+
+  let body = `📍 *${s.storeName}*\n`;
+  if (address) body += `\n🏠 ${address}`;
+  if (phone) body += `\n📞 ${phone}`;
+  body += `\n\n🔗 Full store: ${storeUrl}`;
+
+  if (address && msg.sendCtaUrl) {
+    await msg.sendCtaUrl(body, '🧭 Directions', `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`);
+  } else {
+    await msg.sendReply(body);
+  }
+  if (msg.sendButtons) {
+    await msg.sendButtons('Ready to shop?', [
+      { id: 'SHOP', title: '🛍️ Browse products' },
+      { id: 'CART', title: '🛒 View cart' },
     ]);
   }
 }
@@ -172,8 +197,9 @@ export async function handleShopperMessage(msg: BotMessage, text: string): Promi
   s.ts = Date.now();
 
   // "SHOP" alone → re-show the catalogue
-  if (upper === 'SHOP' || upper === 'REFRESH') { await sendCatalogue(msg, s); return true; }
+  if (upper === 'SHOP' || upper === 'REFRESH' || upper === 'BROWSE') { await sendCatalogue(msg, s); return true; }
   if (upper === 'CART') { await showCart(msg, s); return true; }
+  if (upper === 'CONTACT' || upper === 'VISIT' || upper === 'LOCATION') { await showContact(msg, s); return true; }
   if (upper === 'CHECKOUT' || upper === 'BUY' || upper === 'PAY') { await checkout(msg, s); return true; }
   if (upper === 'CLEAR') { s.cart = []; await msg.sendReply('🗑️ Cart cleared.'); return true; }
   if (upper === 'EXIT' || upper === 'STOP' || upper === 'CANCEL') {

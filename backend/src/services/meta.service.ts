@@ -77,6 +77,31 @@ export async function sendMetaQuickReplies(
   }
 }
 
+/**
+ * Whether an Instagram user follows the business account they messaged.
+ *
+ * Uses the Instagram messaging user-profile API
+ * (GET /{igsid}?fields=is_user_follow_business). Fails OPEN: if the field or
+ * permission isn't available we return true, so we never wrongly block a
+ * legitimate customer because of an API hiccup — the gate only turns people away
+ * when Meta positively tells us they don't follow.
+ */
+export async function instagramUserFollows(igsid: string): Promise<boolean> {
+  const accessToken = env.META_PAGE_ACCESS_TOKEN || env.WHATSAPP_TOKEN;
+  if (!accessToken) return true;
+  try {
+    const res = await axios.get(`https://graph.facebook.com/v21.0/${igsid}`, {
+      params: { fields: 'is_user_follow_business', access_token: accessToken },
+    });
+    // If the field is absent (older API / missing scope), don't block.
+    if (typeof res.data?.is_user_follow_business !== 'boolean') return true;
+    return res.data.is_user_follow_business;
+  } catch (error: any) {
+    console.warn('⚠️ Could not check IG follow status (allowing):', error?.response?.data?.error?.message || error.message);
+    return true;
+  }
+}
+
 export interface CardButton {
   type: 'postback' | 'web_url';
   title: string;

@@ -42,6 +42,8 @@ const envSchema = z.object({
   // Server
   PORT: z.string().default('4000').transform(Number),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  // When 'true', the Instagram bot only replies to users who follow the account.
+  REQUIRE_INSTAGRAM_FOLLOW: z.string().optional().transform((v) => v === 'true' || v === '1'),
   RAZORPAY_KEY_ID: z.string().min(1, 'RAZORPAY_KEY_ID is required'),
   RAZORPAY_KEY_SECRET: z.string().min(1, 'RAZORPAY_KEY_SECRET is required'),
   RAZORPAY_WEBHOOK_SECRET: z.string().min(1, 'RAZORPAY_WEBHOOK_SECRET is required'),

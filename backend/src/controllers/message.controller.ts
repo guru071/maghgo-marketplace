@@ -1,8 +1,9 @@
 import { Request, Response } from 'express';
+import { env } from '../config/env';
 import { WhatsAppWebhookPayload } from '../types/whatsapp';
 import { processBotMessage, BotMessage } from '../services/bot.service';
 import { getMediaUrl, downloadMedia, sendReply as sendWhatsappReply, sendButtons as sendWhatsappButtons, sendList as sendWhatsappList, sendCtaUrl as sendWhatsappCta, sendImage as sendWhatsappImage } from '../services/whatsapp.service';
-import { sendMetaReply, sendMetaQuickReplies, sendMetaCards, downloadMetaMedia } from '../services/meta.service';
+import { sendMetaReply, sendMetaQuickReplies, sendMetaCards, downloadMetaMedia, instagramUserFollows } from '../services/meta.service';
 
 export function handleIncomingMessage(req: Request, res: Response): void {
   console.log('📬 Webhook received:', JSON.stringify(req.body, null, 2));
@@ -126,6 +127,17 @@ function handleInstagram(body: any) {
               })));
             },
           };
+
+          // Follow gate: on Instagram we only engage users who follow the
+          // account. Fails open (see instagramUserFollows), so a real customer
+          // is never wrongly blocked — only positively-not-following users are.
+          if (env.REQUIRE_INSTAGRAM_FOLLOW && !(await instagramUserFollows(senderId))) {
+            await sendMetaReply(
+              senderId,
+              '👋 Thanks for reaching out! Please *follow us* first, then send any message to start shopping. 🛍️'
+            );
+            return;
+          }
 
           if (isImage) {
             const url = message.attachments[0].payload.url;
