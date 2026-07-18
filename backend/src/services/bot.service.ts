@@ -1,9 +1,11 @@
-import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, toggleStoreStatus, updateMerchantSocial, listThemes, applyThemeById, Channel } from './merchant.service';
+import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, updateStoreAddress, toggleStoreStatus, updateMerchantSocial, listThemes, applyThemeById, Channel } from './merchant.service';
 import { parseCaption } from './parser.service';
 import { removeBackground } from './media.service';
 import { uploadImage } from './storage.service';
-import { createProduct, getProducts, deleteProduct, getProductCount, updateProductPrice, deleteAllProducts, setProductFulfillment, setProductStock } from './product.service';
-import { getOrders, getAnalytics } from './order.service';
+import { createProduct, getProducts, deleteProduct, getProductCount, updateProductPrice, deleteAllProducts, setProductFulfillment, setProductStock, setProductInfo } from './product.service';
+import { getOrders, getAnalytics, updateOrderStatus, OrderStatus } from './order.service';
+import { listCoupons, createCoupon, deleteCoupon } from './coupon.service';
+import { importMetaCatalog } from './metaCatalog.service';
 import { triggerRevalidation } from './revalidate.service';
 import { createPaymentLink, getAmountFromPlan, getPlanFromAmount, getAllPlans } from './payment.service';
 import { env } from '../config/env';
@@ -81,14 +83,39 @@ async function sendMainMenu(msg: BotMessage, storeName?: string): Promise<void> 
     [
       { id: 'LIST', title: '📦 My products', description: 'See everything in your store' },
       { id: 'HELP', title: '➕ Add a product', description: 'How to add with a photo' },
-      { id: 'ORDERS', title: '🧾 Recent orders', description: 'Your latest orders' },
+      { id: 'ORDERS', title: '🧾 Recent orders', description: 'View & update orders' },
       { id: 'SALES', title: '📊 Sales snapshot', description: 'Revenue & best seller' },
+      { id: 'COUPONS', title: '🏷️ Coupons', description: 'Discount codes for customers' },
       { id: 'THEMES', title: '🎨 Change theme', description: 'Restyle your storefront' },
       { id: 'UPGRADE', title: '🚀 Upgrade plan', description: 'See all plans' },
       { id: 'LOGIN', title: '🔐 Web dashboard', description: 'Manage on the web' },
       { id: 'PAUSE', title: '⏸️ Pause store', description: 'Temporarily go offline' },
+      { id: 'MORE', title: '⚙️ More tools', description: 'Address, Meta import, QR…' },
     ],
     'Maghgo Menu'
+  );
+}
+
+// Second page of tools — WhatsApp lists max out at 10 rows, so the main menu
+// keeps daily actions and this holds setup/occasional ones.
+async function sendMoreMenu(msg: BotMessage): Promise<void> {
+  await replyMenu(
+    msg,
+    'More store tools:',
+    '⚙️ Tools',
+    [
+      { id: 'IMPORT META', title: '📷 Import Meta Shop', description: 'Pull your FB/Insta catalog in' },
+      { id: 'QR', title: '🔳 Store QR code', description: 'Print it for your counter' },
+      { id: 'RESUME', title: '▶️ Resume store', description: 'Go back online' },
+      { id: 'LINK', title: '🔗 Link channels', description: 'Manage from Insta/Messenger too' },
+      { id: 'HELP ADDRESS', title: '📍 Shop address', description: 'Show "Visit us" + directions' },
+      { id: 'HELP SOCIALS', title: '📱 Social links', description: 'Set Instagram/Facebook/WhatsApp' },
+      { id: 'HELP DETAILS', title: '📝 Product details', description: 'Description, category, specs' },
+      { id: 'HELP OPTIONS', title: '📐 Sizes & colours', description: 'Let buyers pick options' },
+      { id: 'HELP STOCK', title: '📦 Stock tracking', description: 'Quantities & out-of-stock' },
+      { id: 'MENU', title: '⬅️ Back', description: 'Main menu' },
+    ],
+    'More Tools'
   );
 }
 
@@ -745,6 +772,230 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     return;
   }
 
+  if (command === 'MORE' || command === 'TOOLS' || command === 'SETTINGS') {
+    await sendMoreMenu(msg);
+    return;
+  }
+
+  // Topic help — tapped from the More menu or typed directly.
+  if (command.startsWith('HELP ')) {
+    const topic = command.substring(5).trim();
+    const topics: Record<string, string> = {
+      ADDRESS: '📍 *Shop address*\n\nReply:\n*ADDRESS 12 MG Road, Villupuram, TN 605602*\n\nIt appears on your storefront with a "Get directions" button, and the shopper bot can share it too.\n\nTo remove it: *ADDRESS off*',
+      SOCIALS: '📱 *Social links*\n\nThese power the contact buttons on your storefront:\n\n• SET INSTAGRAM yourhandle\n• SET FACEBOOK https://facebook.com/yourpage\n• SET WHATSAPP 9198xxxxxxx',
+      DETAILS: '📝 *Product details*\n\n• DETAILS Red Shirt - Soft premium cotton, made in India\n• CATEGORY Red Shirt - T-Shirt\n\nDetails show when a customer taps the product on your store.',
+      OPTIONS: '📐 *Sizes & colours*\n\nLet buyers choose options before adding to cart:\n\n*OPTIONS Red Shirt - Size: S,M,L,XL; Colour: Red,Blue*\n\nEach option becomes tappable chips on the product page.\n\nTo clear: *OPTIONS Red Shirt - off*',
+      STOCK: '📦 *Stock tracking*\n\n• STOCK Red Shirt 10 — set quantity\n• STOCK Red Shirt off — stop tracking\n\nAt 0 the product shows "Out of stock" and can\'t be bought. Stock reduces automatically with each order.',
+      COUPON: '🏷️ *Coupons*\n\nCreate:\n• COUPON CREATE DIWALI20 20%\n• COUPON CREATE FLAT100 ₹100\n• Add a minimum: COUPON CREATE BIG10 10% MIN 999\n\nDelete: COUPON DELETE DIWALI20\nSee all: COUPONS',
+    };
+    const help = topics[topic];
+    if (help) {
+      await replyButtons(msg, help, [
+        { id: 'MORE', title: '⚙️ More tools' },
+        { id: 'MENU', title: '📋 Menu' },
+      ]);
+      return;
+    }
+    // Unknown topic → fall through to the main HELP below via MENU.
+  }
+
+  // ── Coupons ────────────────────────────────────────────────────────────────
+  if (command === 'COUPONS') {
+    const coupons = await listCoupons(merchant.id);
+    if (coupons.length === 0) {
+      await replyButtons(msg, '🏷️ You have no coupons yet.\n\nCreate one like:\n*COUPON CREATE DIWALI20 20%*', [
+        { id: 'HELP COUPON', title: '➕ How to create' },
+        { id: 'MENU', title: '📋 Menu' },
+      ]);
+      return;
+    }
+    const lines = coupons.slice(0, 10).map((c) => {
+      const value = c.discount_type === 'percent' ? `${c.discount_value}% off` : `₹${Number(c.discount_value).toLocaleString('en-IN')} off`;
+      const min = Number(c.min_order) > 0 ? ` · min ₹${Number(c.min_order).toLocaleString('en-IN')}` : '';
+      const uses = c.max_uses != null ? `${c.used_count}/${c.max_uses}` : `${c.used_count}`;
+      return `• *${c.code}* — ${value}${min} · used ${uses}${c.is_active ? '' : ' · inactive'}`;
+    }).join('\n');
+    await replyButtons(msg, `🏷️ *Your coupons:*\n\n${lines}\n\nCustomers apply them at checkout (web or chat).`, [
+      { id: 'HELP COUPON', title: '➕ Create / delete' },
+      { id: 'MENU', title: '📋 Menu' },
+    ]);
+    return;
+  }
+
+  if (command.startsWith('COUPON CREATE ')) {
+    const m = text.trim().match(/^COUPON\s+CREATE\s+(\S+)\s+(?:(\d+)\s*%|(?:₹|RS\.?\s*)(\d[\d,]*))(?:\s+MIN\s+(\d[\d,]*))?\s*$/i);
+    if (!m) {
+      await sendReply('⚠️ Format:\n• COUPON CREATE DIWALI20 20%\n• COUPON CREATE FLAT100 ₹100\n• COUPON CREATE BIG10 10% MIN 999');
+      return;
+    }
+    try {
+      const coupon = await createCoupon(merchant.id, {
+        code: m[1],
+        discount_type: m[2] ? 'percent' : 'flat',
+        discount_value: Number((m[2] || m[3]).replace(/,/g, '')),
+        min_order: m[4] ? Number(m[4].replace(/,/g, '')) : 0,
+      });
+      const value = coupon.discount_type === 'percent' ? `${coupon.discount_value}% off` : `₹${coupon.discount_value} off`;
+      await sendReply(`🏷️ *Coupon ${coupon.code} created!* (${value}${Number(coupon.min_order) > 0 ? `, min order ₹${coupon.min_order}` : ''})\n\nShare it with your customers — they type it at checkout.`);
+    } catch (err: any) {
+      await sendReply(`❌ ${err.message || 'Could not create the coupon.'}`);
+    }
+    return;
+  }
+
+  if (command.startsWith('COUPON DELETE ')) {
+    const code = command.substring(14).trim();
+    const coupons = await listCoupons(merchant.id);
+    const found = coupons.find((c) => c.code === code.toUpperCase());
+    if (!found) {
+      await sendReply(`❌ No coupon "*${code}*" found. Reply *COUPONS* to see your list.`);
+      return;
+    }
+    await deleteCoupon(merchant.id, found.id);
+    await sendReply(`🗑️ Coupon *${found.code}* deleted. Customers can no longer use it.`);
+    return;
+  }
+
+  // ── Shop address ───────────────────────────────────────────────────────────
+  if (command.startsWith('ADDRESS')) {
+    const value = text.trim().substring(7).trim();
+    if (!value) {
+      await sendReply('⚠️ Reply like:\n*ADDRESS 12 MG Road, Villupuram, TN 605602*\n\nOr *ADDRESS off* to remove it.');
+      return;
+    }
+    try {
+      await updateStoreAddress(merchant.id, /^off$/i.test(value) ? '' : value);
+      await sendReply(/^off$/i.test(value)
+        ? '📍 Address removed from your storefront.'
+        : `📍 *Address saved!*\n\n${value}\n\nCustomers now see "Visit us" with a directions button on your store.`);
+      await triggerRevalidation(merchant.store_slug);
+    } catch (err: any) {
+      await sendReply(`❌ ${err.message || 'Could not save the address.'}`);
+    }
+    return;
+  }
+
+  // ── Order actions: CONFIRM/SHIP/DELIVER/CANCEL <n> (n from the ORDERS list) ─
+  {
+    const om = command.match(/^(CONFIRM|SHIP|DELIVER|CANCEL)\s+(\d+)$/);
+    if (om) {
+      const statusMap: Record<string, OrderStatus> = { CONFIRM: 'confirmed', SHIP: 'processing', DELIVER: 'delivered', CANCEL: 'cancelled' };
+      const idx = parseInt(om[2], 10);
+      const orders = await getOrders(merchant.id, 9);
+      const order = orders[idx - 1];
+      if (!order) {
+        await sendReply(`❌ Order #${idx} not found. Reply *ORDERS* to see the numbered list.`);
+        return;
+      }
+      const status = statusMap[om[1]];
+      await updateOrderStatus(merchant.id, order.id, status);
+      const total = `₹${Number(order.total).toLocaleString('en-IN')}`;
+      const notified = order.customer_phone ? ' The customer has been notified on WhatsApp. 📲' : '';
+      await sendReply(`✅ Order #${idx} (${total}) marked *${status}*.${notified}`);
+      return;
+    }
+  }
+
+  // ── Meta catalogue import ──────────────────────────────────────────────────
+  if (command === 'IMPORT META' || command === 'IMPORT') {
+    await sendReply('📷 Importing your Meta Shop catalogue — one moment…');
+    try {
+      const r = await importMetaCatalog(merchant.id);
+      await sendReply(
+        `✅ *Meta import done!*\n\n📦 Imported: ${r.imported} new product(s)\n⏭️ Skipped: ${r.skipped} (already added or empty)` +
+        (r.limitReached ? '\n\n⚠️ Some were skipped — you reached your plan\'s product limit. Reply *UPGRADE* to raise it.' : '')
+      );
+      if (r.imported > 0) await triggerRevalidation(merchant.store_slug);
+    } catch (err: any) {
+      const token = jwt.sign({ merchantId: merchant.id }, env.JWT_SECRET, { expiresIn: '24h' });
+      await replyCta(
+        msg,
+        `❌ ${err.message || 'Import failed.'}\n\nConnect your catalogue on the web first:`,
+        '📷 Open Meta Catalog',
+        `${env.FRONTEND_URL}/dashboard/meta?token=${token}`
+      );
+    }
+    return;
+  }
+
+  // ── Product details / category / options ───────────────────────────────────
+  if (command.startsWith('DETAILS ') || command.startsWith('CATEGORY ')) {
+    const isDetails = command.startsWith('DETAILS ');
+    const rest = text.trim().substring(isDetails ? 8 : 9).trim();
+    const parts = rest.split(/\s+-\s+/);
+    if (parts.length < 2 || !parts[0].trim() || !parts[1].trim()) {
+      await sendReply(isDetails
+        ? '⚠️ Format: *DETAILS Red Shirt - Soft premium cotton, made in India*'
+        : '⚠️ Format: *CATEGORY Red Shirt - T-Shirt*');
+      return;
+    }
+    const name = parts[0].trim();
+    const value = parts.slice(1).join(' - ').trim();
+    try {
+      const count = await setProductInfo(merchant.id, name, isDetails ? { description: value } : { category: value });
+      if (count === 0) await sendReply(`❌ No product found matching "*${name}*".`);
+      else {
+        await sendReply(`✅ ${isDetails ? 'Details' : 'Category'} updated for ${count} product(s) matching "*${name}*".`);
+        await triggerRevalidation(merchant.store_slug);
+      }
+    } catch (err: any) {
+      await sendReply(`❌ ${err.message || 'Could not update the product.'}`);
+    }
+    return;
+  }
+
+  if (command.startsWith('OPTIONS ')) {
+    const rest = text.trim().substring(8).trim();
+    const parts = rest.split(/\s+-\s+/);
+    if (parts.length < 2) {
+      await sendReply('⚠️ Format:\n*OPTIONS Red Shirt - Size: S,M,L; Colour: Red,Blue*\n\nOr *OPTIONS Red Shirt - off* to clear.');
+      return;
+    }
+    const name = parts[0].trim();
+    const spec = parts.slice(1).join(' - ').trim();
+    let variants: { name: string; values: string[] }[] = [];
+    if (!/^off$/i.test(spec)) {
+      variants = spec.split(';').map((group) => {
+        const [gName, gValues] = group.split(':');
+        return {
+          name: (gName || '').trim().slice(0, 40),
+          values: (gValues || '').split(',').map((v) => v.trim().slice(0, 40)).filter(Boolean).slice(0, 20),
+        };
+      }).filter((g) => g.name && g.values.length > 0).slice(0, 6);
+      if (variants.length === 0) {
+        await sendReply('⚠️ I couldn\'t read any options. Example:\n*OPTIONS Red Shirt - Size: S,M,L; Colour: Red,Blue*');
+        return;
+      }
+    }
+    try {
+      const count = await setProductInfo(merchant.id, name, { variants });
+      if (count === 0) await sendReply(`❌ No product found matching "*${name}*".`);
+      else if (variants.length === 0) {
+        await sendReply(`✅ Options cleared for ${count} product(s) matching "*${name}*".`);
+        await triggerRevalidation(merchant.store_slug);
+      } else {
+        const summary = variants.map((v) => `${v.name}: ${v.values.join(', ')}`).join(' · ');
+        await sendReply(`✅ *Options saved* for ${count} product(s) matching "*${name}*"\n\n${summary}\n\nBuyers now pick these before adding to cart.`);
+        await triggerRevalidation(merchant.store_slug);
+      }
+    } catch (err: any) {
+      await sendReply(`❌ ${err.message || 'Could not save the options.'}`);
+    }
+    return;
+  }
+
+  // ── Store QR code ──────────────────────────────────────────────────────────
+  if (command === 'QR') {
+    const token = jwt.sign({ merchantId: merchant.id }, env.JWT_SECRET, { expiresIn: '24h' });
+    await replyCta(
+      msg,
+      '🔳 *Your store QR code*\n\nDownload or print it for your shop counter — customers scan it to open your store.',
+      '🔳 Open QR code',
+      `${env.FRONTEND_URL}/dashboard/qr?token=${token}`
+    );
+    return;
+  }
+
   // Recent orders, straight in chat.
   if (command === 'ORDERS' || command === 'ORDER') {
     const orders = await getOrders(merchant.id, 5);
@@ -753,13 +1004,23 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
       await replyCta(msg, '🧾 No orders yet.\n\nShare your store link so customers can start ordering!', '🛍️ My store', `${env.FRONTEND_URL}/${merchant.store_slug}`);
       return;
     }
-    const lines = orders.map((o) => {
+    const lines = orders.map((o, i) => {
       const when = new Date(o.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
       const paid = o.payment_status === 'paid' ? ' 💰' : '';
-      const items = (o.items || []).reduce((n: number, i: any) => n + (i.quantity || 0), 0);
-      return `• ${when} — ₹${Number(o.total).toLocaleString('en-IN')} · ${items} item(s) · _${o.status}_${paid}`;
+      const items = (o.items || []).reduce((n: number, x: any) => n + (x.quantity || 0), 0);
+      return `*${i + 1}.* ${when} — ₹${Number(o.total).toLocaleString('en-IN')} · ${items} item(s) · _${o.status}_${paid}`;
     }).join('\n');
-    await replyCta(msg, `🧾 *Your last ${orders.length} order(s):*\n\n${lines}`, '📦 Manage orders', dashUrl);
+    await replyCta(
+      msg,
+      `🧾 *Your last ${orders.length} order(s):*\n\n${lines}\n\nUpdate one by number: *CONFIRM 1* · *SHIP 1* · *DELIVER 1* · *CANCEL 1*\n(The customer is notified automatically.)`,
+      '📦 Manage orders',
+      dashUrl
+    );
+    await replyButtons(msg, `Quick actions for order *#1*:`, [
+      { id: 'CONFIRM 1', title: '✅ Confirm #1' },
+      { id: 'DELIVER 1', title: '🚚 Deliver #1' },
+      { id: 'CANCEL 1', title: '❌ Cancel #1' },
+    ]);
     return;
   }
 
@@ -785,7 +1046,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   if (command === 'HELP') {
     await replyButtons(
       msg,
-      `➕ *Add a product*\n\nSend a *photo* of your product with a caption:\n\n_Product name  Price_\nExample: *Red Cotton T-Shirt ₹499*\n\n(Include ₹, Rs, INR or MRP before the price.)\n\nOther things you can type:\n✏️ EDIT name - ₹price\n🗑️ DELETE name\n📦 STOCK name qty\n🧾 ORDERS  ·  📊 SALES\n🎨 THEMES  ·  🚀 UPGRADE\n📅 PREBOOK name  ·  🛒 SELL name\n📝 DESCRIBE your store text`,
+      `➕ *Add a product*\n\nSend a *photo* of your product with a caption:\n\n_Product name  Price_\nExample: *Red Cotton T-Shirt ₹499*\n\n(Include ₹, Rs, INR or MRP before the price.)\n\nOther things you can type:\n✏️ EDIT name - ₹price  ·  🗑️ DELETE name\n📦 STOCK name qty  ·  📐 OPTIONS name - Size: S,M,L\n📝 DETAILS name - text  ·  🗂 CATEGORY name - type\n🧾 ORDERS (then CONFIRM 1 / DELIVER 1)\n🏷️ COUPONS  ·  📊 SALES  ·  🎨 THEMES\n📍 ADDRESS your address  ·  📷 IMPORT META\n🔳 QR  ·  🚀 UPGRADE  ·  ⚙️ MORE`,
       [
         { id: 'MENU', title: '📋 Main menu' },
         { id: 'LIST', title: '📦 My products' },

@@ -201,6 +201,54 @@ export async function setProductStockById(
   return (data?.length ?? 0) > 0;
 }
 
+/**
+ * Set a product's descriptive info by title (bot commands DETAILS / CATEGORY /
+ * OPTIONS). `description` is base-schema; category/variants degrade gracefully
+ * if migrations 17/18 haven't run.
+ *
+ * @returns the number of products updated.
+ */
+export async function setProductInfo(
+  merchantId: string,
+  title: string,
+  info: { description?: string; category?: string | null; variants?: { name: string; values: string[] }[] }
+): Promise<number> {
+  const escapedTitle = title.replace(/[%_\\]/g, '\\$&');
+
+  const updates: Record<string, any> = {};
+  if (info.description !== undefined) updates.description = info.description.slice(0, 2000);
+  if (info.category !== undefined) updates.category = info.category ? info.category.slice(0, 60) : null;
+  if (info.variants !== undefined) updates.variants = info.variants;
+  if (Object.keys(updates).length === 0) return 0;
+
+  let { data, error } = await supabase
+    .from('products')
+    .update(updates)
+    .eq('merchant_id', merchantId)
+    .ilike('title', `%${escapedTitle}%`)
+    .eq('is_available', true)
+    .select('id');
+
+  if (error && /category|variants|schema cache|42703|PGRST204/i.test(error.message || '')) {
+    // Column(s) missing pre-migration: if description was part of the update it
+    // still applies; otherwise surface a friendly setup message.
+    const { category, variants, ...base } = updates;
+    if (Object.keys(base).length === 0) {
+      throw new Error('This needs one setup step (migration 17/18) before it can be used.');
+    }
+    ({ data, error } = await supabase
+      .from('products')
+      .update(base)
+      .eq('merchant_id', merchantId)
+      .ilike('title', `%${escapedTitle}%`)
+      .eq('is_available', true)
+      .select('id'));
+  }
+
+  if (error) throw new Error(`Failed to update product info: ${error.message}`);
+  return data?.length ?? 0;
+}
+
 export type FulfillmentType = 'buy' | 'prebook';
 
 /**

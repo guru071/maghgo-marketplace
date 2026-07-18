@@ -263,6 +263,26 @@ export async function updateMerchantSocial(merchantId: string, platform: 'instag
   }
 }
 
+/**
+ * Set the store's physical address (shown as "Visit us" on the storefront and
+ * used for the shopper bot's Directions button). Graceful if migration 15
+ * hasn't added the column yet.
+ */
+export async function updateStoreAddress(merchantId: string, address: string): Promise<void> {
+  const value = (address || '').trim().slice(0, 300) || null;
+  const { error } = await supabase
+    .from('merchants')
+    .update({ store_address: value })
+    .eq('id', merchantId);
+
+  if (error) {
+    if (/store_address|schema cache|42703|PGRST204/i.test(error.message || '')) {
+      throw new Error('Store address needs one setup step (migration 15) before it can be saved.');
+    }
+    throw new Error(`Failed to save address: ${error.message}`);
+  }
+}
+
 // ─── Themes (for the bot's theme picker) ─────────────────────────────────────
 
 export interface ThemeSummary {
