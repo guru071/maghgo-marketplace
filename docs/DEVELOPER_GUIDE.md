@@ -330,36 +330,17 @@ All under `/api/dashboard`, all require a `Authorization: Bearer <jwt>` header
 Public storefront API (no auth) under `/api/store`:
 `POST /:slug/orders`, `POST /:slug/coupon`, `POST /pay/verify`.
 
-### The Merchant API (`/api/v1`) — connect your own website
+### Meta catalog import
 
-A shop can drive its Maghgo catalogue from its **own** website or any system,
-authenticated by an **API key** (no Meta approval needed). The owner generates
-the key in **Dashboard → API & Integrations**; it's shown once and stored only
-as a hash.
-
-Auth: `Authorization: Bearer mgk_live_…` (or the `X-API-Key` header).
-
-| Method + path | Purpose |
-|---|---|
-| `GET /api/v1/store` | Store details |
-| `GET /api/v1/products` | List this shop's products |
-| `POST /api/v1/products` | Create a product (`title`, `price`, optional `image_url`, `description`, `category`, `stock`, `specifications`, `variants`) |
-| `PATCH /api/v1/products/:id` | Update (price, stock, `available`, …) |
-| `DELETE /api/v1/products/:id` | Delete a product |
-| `GET /api/v1/orders?limit=100` | List orders (read-only) |
-
-Products created through the API appear on the storefront and in the bot
-immediately (the route triggers ISR revalidation). Code:
-`backend/src/routes/api-v1.ts`, `middleware/apiAuth.ts`, `utils/apikey.ts`.
-
-```bash
-# create a product from your site
-curl -X POST https://<backend>/api/v1/products \
-  -H "Authorization: Bearer mgk_live_YOUR_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"title":"Red T-Shirt","price":499,"stock":20,
-       "variants":[{"name":"Size","values":["S","M","L"]}]}'
-```
+A shop can pull products from its **own** Facebook/Instagram Shop catalog into
+Maghgo. In **Dashboard → Meta Catalog** the owner pastes their **Catalog ID** and
+a **Meta access token** (with catalog access) from Meta Business settings; the
+backend calls `GET /{catalog_id}/products` and creates the products in Maghgo
+(where they then flow to the storefront and bot like any other product). The
+token is encrypted at rest. Code: `backend/src/services/metaCatalog.service.ts`,
+dashboard routes `/meta-catalog/connect|import`. Reading the shop's *own*
+catalog with the shop's *own* token needs no Meta App Review; a public OAuth
+button acting on other users' catalogs would.
 
 ---
 

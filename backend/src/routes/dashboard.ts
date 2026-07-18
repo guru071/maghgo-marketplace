@@ -7,7 +7,7 @@ import { getOrders, updateOrderStatus, getAnalytics } from '../services/order.se
 import { createPaymentLink } from '../services/payment.service';
 import { listCoupons, createCoupon, deleteCoupon } from '../services/coupon.service';
 import { encryptSecret } from '../utils/crypto';
-import { generateApiKey } from '../utils/apikey';
+import { connectMetaCatalog, importMetaCatalog, disconnectMetaCatalog } from '../services/metaCatalog.service';
 
 // Normalise buyer-selectable options: [{name, values:[...]}], trimmed & capped.
 function sanitizeVariants(raw: any): { name: string; values: string[] }[] | undefined {
@@ -73,9 +73,10 @@ router.get('/store', async (req: AuthRequest, res) => {
     if (error) throw error;
 
     // Whether the shop has connected its own Razorpay (never expose the secret),
-    // and the non-secret prefix of their API key (never the key itself).
+    // and whether a Meta catalog is connected (never expose the token).
     let razorpay_connected = false;
-    let api_key_prefix: string | null = null;
+    let meta_catalog_id: string | null = null;
+    let meta_catalog_last_sync: string | null = null;
     try {
       const { data: rk } = await supabase
         .from('merchants')
@@ -85,15 +86,16 @@ router.get('/store', async (req: AuthRequest, res) => {
       razorpay_connected = !!rk?.razorpay_key_id;
     } catch { /* pre-migration 17 → not connected */ }
     try {
-      const { data: ak } = await supabase
+      const { data: mc } = await supabase
         .from('merchants')
-        .select('api_key_prefix')
+        .select('meta_catalog_id, meta_catalog_last_sync')
         .eq('id', req.merchantId)
         .maybeSingle();
-      api_key_prefix = ak?.api_key_prefix ?? null;
-    } catch { /* pre-migration 19 → no key */ }
+      meta_catalog_id = mc?.meta_catalog_id ?? null;
+      meta_catalog_last_sync = mc?.meta_catalog_last_sync ?? null;
+    } catch { /* pre-migration 20 → not connected */ }
 
-    res.json({ ...(data as Record<string, any>), razorpay_connected, api_key_prefix });
+    res.json({ ...(data as Record<string, any>), razorpay_connected, meta_catalog_id, meta_catalog_last_sync });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -144,37 +146,33 @@ router.put('/payment-keys', async (req: AuthRequest, res) => {
   }
 });
 
-// Generate (or regenerate) the shop's API key. The full key is returned exactly
-// once here and never stored — only its hash + a display prefix are kept.
-router.post('/api-key', async (req: AuthRequest, res) => {
-  try {
-    const { key, hash, displayPrefix } = generateApiKey();
-    const { error } = await supabase
-      .from('merchants')
-      .update({ api_key_hash: hash, api_key_prefix: displayPrefix, api_key_created_at: new Date().toISOString() })
-      .eq('id', req.merchantId);
+// ─── Meta catalogue ──────────────────────────────────────────────────────────
 
-    if (error) {
-      if (/api_key|schema cache|42703|PGRST204/i.test(error.message || '')) {
-        return res.status(400).json({ error: 'The API needs one setup step (migration 19) first.' });
-      }
-      throw error;
-    }
-    // Show the secret ONCE. Regenerating invalidates any previous key.
-    res.json({ api_key: key, api_key_prefix: displayPrefix });
+// Connect the shop's own Meta (Facebook/Instagram) product catalogue. The token
+// is validated against Meta and stored encrypted; it is never returned.
+router.post('/meta-catalog/connect', async (req: AuthRequest, res) => {
+  try {
+    const { catalog_id, access_token } = req.body ?? {};
+    await connectMetaCatalog(req.merchantId!, String(catalog_id ?? ''), String(access_token ?? ''));
+    res.json({ success: true, meta_catalog_id: String(catalog_id).trim() });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(400).json({ error: err.message });
   }
 });
 
-// Revoke the shop's API key.
-router.delete('/api-key', async (req: AuthRequest, res) => {
+// Import products from the connected catalogue into Maghgo.
+router.post('/meta-catalog/import', async (req: AuthRequest, res) => {
   try {
-    const { error } = await supabase
-      .from('merchants')
-      .update({ api_key_hash: null, api_key_prefix: null, api_key_created_at: null })
-      .eq('id', req.merchantId);
-    if (error && !/api_key|schema cache|42703|PGRST204/i.test(error.message || '')) throw error;
+    const result = await importMetaCatalog(req.merchantId!);
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/meta-catalog', async (req: AuthRequest, res) => {
+  try {
+    await disconnectMetaCatalog(req.merchantId!);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
