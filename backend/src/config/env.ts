@@ -47,6 +47,11 @@ const envSchema = z.object({
   RAZORPAY_KEY_ID: z.string().min(1, 'RAZORPAY_KEY_ID is required'),
   RAZORPAY_KEY_SECRET: z.string().min(1, 'RAZORPAY_KEY_SECRET is required'),
   RAZORPAY_WEBHOOK_SECRET: z.string().min(1, 'RAZORPAY_WEBHOOK_SECRET is required'),
+
+  // Optional 32-byte hex key (64 chars) used to encrypt shops' stored Razorpay
+  // secrets at rest. If unset, a key is derived from JWT_SECRET. Generate one
+  // with: openssl rand -hex 32
+  PAYMENTS_ENCRYPTION_KEY: z.string().optional(),
 });
 
 // ─── Parse & Validate ─────────────────────────────────────────────────────────

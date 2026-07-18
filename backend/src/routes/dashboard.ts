@@ -6,6 +6,7 @@ import { updateStoreDescription, toggleStoreStatus, getProductLimit } from '../s
 import { getOrders, updateOrderStatus, getAnalytics } from '../services/order.service';
 import { createPaymentLink } from '../services/payment.service';
 import { listCoupons, createCoupon, deleteCoupon } from '../services/coupon.service';
+import { encryptSecret } from '../utils/crypto';
 import { triggerRevalidation } from '../services/revalidate.service';
 import { hasAccess } from '../utils/plans';
 import multer from 'multer';
@@ -98,7 +99,7 @@ router.put('/payment-keys', async (req: AuthRequest, res) => {
 
     const { error } = await supabase
       .from('merchants')
-      .update({ razorpay_key_id: keyId, razorpay_key_secret: keySecret })
+      .update({ razorpay_key_id: keyId, razorpay_key_secret: encryptSecret(keySecret) })
       .eq('id', req.merchantId);
 
     if (error) {

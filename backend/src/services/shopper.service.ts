@@ -3,6 +3,7 @@ import { getProducts } from './product.service';
 import { createOrder, attachOrderPaymentLink } from './order.service';
 import { createOrderPaymentLink } from './payment.service';
 import { validateCoupon } from './coupon.service';
+import { decryptSecret } from '../utils/crypto';
 import { sendTextMessage } from './whatsapp.service';
 import { env } from '../config/env';
 import type { BotMessage, BotCard } from './bot.service';
@@ -194,7 +195,7 @@ async function checkout(msg: BotMessage, s: Session): Promise<void> {
       amount: Number(order.total),
       customerPhone,
       razorpayKeyId: shop?.razorpay_key_id,
-      razorpayKeySecret: shop?.razorpay_key_secret,
+      razorpayKeySecret: decryptSecret(shop?.razorpay_key_secret),
     });
 
     if (payLink) {

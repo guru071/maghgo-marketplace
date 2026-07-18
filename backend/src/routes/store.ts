@@ -5,6 +5,7 @@ import { validateCoupon } from '../services/coupon.service';
 import { createOrderPaymentLink, verifyOrderPaymentSignature } from '../services/payment.service';
 import { getMerchantBySlug } from '../services/merchant.service';
 import { sendTextMessage } from '../services/whatsapp.service';
+import { decryptSecret } from '../utils/crypto';
 import { supabase } from '../db/supabase';
 import { env } from '../config/env';
 
@@ -61,7 +62,7 @@ router.post('/:slug/orders', orderLimiter, async (req: Request, res: Response) =
         amount: Number(order.total),
         customerPhone: customer_phone,
         razorpayKeyId: merchant?.razorpay_key_id,
-        razorpayKeySecret: merchant?.razorpay_key_secret,
+        razorpayKeySecret: decryptSecret(merchant?.razorpay_key_secret),
       });
       if (payLink) {
         payment_url = payLink.url;
@@ -148,11 +149,14 @@ router.post('/pay/verify', verifyLimiter, async (req: Request, res: Response) =>
       .eq('id', order.merchant_id)
       .maybeSingle();
 
-    if (!merchant?.razorpay_key_secret) {
+    if (!merchant) return res.status(404).json({ error: 'Store not found.' });
+
+    const shopSecret = decryptSecret(merchant.razorpay_key_secret);
+    if (!shopSecret) {
       return res.status(400).json({ error: 'This store is not set up for online payments.' });
     }
 
-    const valid = verifyOrderPaymentSignature(merchant.razorpay_key_secret, {
+    const valid = verifyOrderPaymentSignature(shopSecret, {
       razorpay_payment_link_id: String(razorpay_payment_link_id),
       razorpay_payment_link_reference_id: String(razorpay_payment_link_reference_id ?? ''),
       razorpay_payment_link_status: String(razorpay_payment_link_status ?? ''),
