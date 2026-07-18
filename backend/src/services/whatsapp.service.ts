@@ -5,6 +5,10 @@ import { env } from '../config/env';
 
 const GRAPH_API = 'https://graph.facebook.com/v21.0';
 
+// Every outbound call to Meta is bounded: a stalled Graph API request must fail
+// fast rather than hang a bot reply (or a media download) indefinitely.
+const HTTP_TIMEOUT_MS = 15000;
+
 /**
  * Retrieve the temporary download URL for a media asset.
  */
@@ -13,6 +17,7 @@ export async function getMediaUrl(mediaId: string): Promise<string> {
     `${GRAPH_API}/${mediaId}`,
     {
       headers: { Authorization: `Bearer ${env.WHATSAPP_TOKEN}` },
+      timeout: HTTP_TIMEOUT_MS,
     }
   );
   return response.data.url;
@@ -25,6 +30,7 @@ export async function downloadMedia(mediaUrl: string): Promise<Buffer> {
   const response = await axios.get(mediaUrl, {
     headers: { Authorization: `Bearer ${env.WHATSAPP_TOKEN}` },
     responseType: 'arraybuffer',
+    timeout: HTTP_TIMEOUT_MS,
   });
   return Buffer.from(response.data);
 }
@@ -50,6 +56,7 @@ export async function sendTextMessage(
         Authorization: `Bearer ${env.WHATSAPP_TOKEN}`,
         'Content-Type': 'application/json',
       },
+      timeout: HTTP_TIMEOUT_MS,
     }
   );
 }
@@ -77,6 +84,7 @@ export async function sendReply(
         Authorization: `Bearer ${env.WHATSAPP_TOKEN}`,
         'Content-Type': 'application/json',
       },
+      timeout: HTTP_TIMEOUT_MS,
     }
   );
 }
@@ -86,6 +94,7 @@ export async function sendReply(
 async function postMessage(payload: any): Promise<void> {
   await axios.post(`${GRAPH_API}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`, payload, {
     headers: { Authorization: `Bearer ${env.WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
+    timeout: HTTP_TIMEOUT_MS,
   });
 }
 

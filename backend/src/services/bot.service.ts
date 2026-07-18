@@ -240,8 +240,11 @@ async function handleImageMessage(msg: BotMessage): Promise<void> {
     return;
   }
 
-  const currentProductCount = await getProductCount(merchant.id);
-  const limit = await getProductLimit(merchant.subscription_plan);
+  // Two independent reads → one round trip instead of two.
+  const [currentProductCount, limit] = await Promise.all([
+    getProductCount(merchant.id),
+    getProductLimit(merchant.subscription_plan),
+  ]);
 
   if (currentProductCount >= limit) {
     await sendReply(`⚠️ *Plan Limit Reached!*\n\nYour current plan allows a maximum of ${limit} products. Please reply with "UPGRADE" to see higher tier plans and unlock more capacity.`);
@@ -254,6 +257,11 @@ async function handleImageMessage(msg: BotMessage): Promise<void> {
     await sendReply('⚠️ Could not parse product details from your caption.\n\nPlease include a currency symbol (Rs, ₹, INR, MRP) before the price:\n📝 *Product Name Rs Price*\n\nExamples:\n• Red Cotton T-Shirt Rs 499\n• Blue Jeans ₹1,299\n• Sneakers INR 2499');
     return;
   }
+
+  // Instant acknowledgement so the merchant isn't left staring at silence while
+  // the AI background-removal + uploads run (a few seconds). Fire-and-forget:
+  // its own latency must not delay the real work.
+  sendReply(`🎨 Got it! Adding *${parsed.title}* — one moment…`).catch(() => {});
 
   let processedBuffer: Buffer;
   try {

@@ -27,6 +27,11 @@ export async function removeBackground(imageBuffer: Buffer): Promise<Buffer> {
         'X-Api-Key': env.REMOVEBG_API_KEY,
       },
       responseType: 'arraybuffer',
+      // Bound the wait: remove.bg occasionally stalls, and without a timeout the
+      // whole "add product" reply hangs on it. On timeout the caller catches the
+      // error and falls back to the original image, so the merchant still gets a
+      // fast reply instead of silence.
+      timeout: 20000,
     }
   );
 
