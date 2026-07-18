@@ -111,6 +111,30 @@ export default function DashboardInventory() {
     }
   };
 
+  // Save a product's stock. Empty string clears tracking (sell freely).
+  const handleUpdateStock = async (id: string, raw: string) => {
+    const token = localStorage.getItem('maghgo_merchant_token');
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    const value = raw.trim() === '' ? null : Math.max(0, Math.floor(Number(raw)));
+    if (raw.trim() !== '' && !Number.isFinite(value as number)) return;
+    // Optimistic update.
+    setProducts((ps) => ps.map((p) => (p.id === id ? { ...p, stock: value } : p)));
+    try {
+      const res = await fetch(`${apiUrl}/api/dashboard/products/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ stock: value }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to update stock');
+      }
+    } catch (e: any) {
+      alert(e.message || 'Could not update stock.');
+      fetchDashboardData();
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this product?')) return;
     const token = localStorage.getItem('maghgo_merchant_token');
@@ -158,6 +182,7 @@ export default function DashboardInventory() {
                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Product Image</th>
                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Title</th>
                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Price</th>
+                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Stock</th>
                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Mode</th>
                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Actions</th>
               </tr>
@@ -177,6 +202,24 @@ export default function DashboardInventory() {
                   </td>
                   <td className="px-6 py-4 font-medium text-gray-900">{p.title}</td>
                   <td className="px-6 py-4 text-gray-600">₹{p.price.toLocaleString('en-IN')}</td>
+                  <td className="px-6 py-4">
+                    <input
+                      type="number"
+                      min="0"
+                      defaultValue={p.stock ?? ''}
+                      placeholder="∞"
+                      title="Blank = not tracked (always available). 0 = out of stock."
+                      onBlur={(e) => {
+                        const raw = e.target.value;
+                        const current = p.stock ?? '';
+                        if (String(raw) !== String(current)) handleUpdateStock(p.id, raw);
+                      }}
+                      className={`w-20 border rounded-lg px-2 py-1 text-sm focus:ring-accent focus:border-accent ${
+                        p.stock === 0 ? 'border-red-300 text-red-600 bg-red-50' : 'border-gray-300 text-gray-700'
+                      }`}
+                    />
+                    {p.stock === 0 && <div className="text-[10px] text-red-500 mt-0.5">Out of stock</div>}
+                  </td>
                   <td className="px-6 py-4">
                     <button
                       onClick={() => handleToggleFulfillment(p.id, p.fulfillment_type)}

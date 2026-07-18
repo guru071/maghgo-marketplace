@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { CartItem as CartItemType } from '@/types';
 import { generateWhatsAppLink, generateCheckoutMessage } from '@/lib/utils';
-import { Camera, MessageSquare, Phone } from 'lucide-react';
+import { Camera, MessageSquare, Phone, CreditCard, Loader2 } from 'lucide-react';
 
 interface CheckoutButtonProps {
   phone: string;
@@ -11,6 +11,7 @@ interface CheckoutButtonProps {
   storeSlug: string;
   items: CartItemType[];
   instagramHandle?: string;
+  couponCode?: string | null;
 }
 
 /** WhatsApp SVG icon */
@@ -22,10 +23,12 @@ function WhatsAppIcon() {
   );
 }
 
-export default function CheckoutButton({ phone, storeName, storeSlug, items, instagramHandle }: CheckoutButtonProps) {
+export default function CheckoutButton({ phone, storeName, storeSlug, items, instagramHandle, couponCode }: CheckoutButtonProps) {
   // One cart = one recorded order, however many times the shopper taps a
-  // channel button (they often try WhatsApp, then SMS).
-  const recorded = useRef(false);
+  // channel button (they often try WhatsApp, then SMS). The recording promise is
+  // memoised so "Pay online" and "WhatsApp" both reuse the same server order.
+  const orderPromise = useRef<Promise<{ payment_url?: string | null; total?: number } | null> | null>(null);
+  const [paying, setPaying] = useState(false);
 
   if (items.length === 0) return null;
 
@@ -36,41 +39,70 @@ export default function CheckoutButton({ phone, storeName, storeSlug, items, ins
   const igLink = instagramHandle ? `https://ig.me/m/${instagramHandle.replace('@', '')}` : null;
 
   /**
-   * Log the order so it reaches the merchant's dashboard and analytics.
+   * Log the order so it reaches the merchant's dashboard and analytics, and
+   * returns the server's response (which includes an online payment link).
    *
-   * Deliberately fire-and-forget: the shopper's chat must open whatever happens
-   * here. Losing an analytics row is a nuisance; blocking a real sale on our
-   * database being slow would be far worse. `keepalive` lets the request finish
-   * even if the browser hands off to the SMS or phone app.
-   *
-   * Only product ids and quantities are sent — the server re-reads prices from
-   * the database, so nothing here is trusted for money.
+   * Only product ids, quantities and a coupon code are sent — the server
+   * re-reads prices from the database, so nothing here is trusted for money.
+   * `keepalive` lets the request finish even if the browser hands off to the
+   * SMS or phone app.
    */
   const recordOrder = () => {
-    if (recorded.current) return;
-    recorded.current = true;
+    if (orderPromise.current) return orderPromise.current;
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-    fetch(`${apiUrl}/api/store/${encodeURIComponent(storeSlug)}/orders`, {
+    orderPromise.current = fetch(`${apiUrl}/api/store/${encodeURIComponent(storeSlug)}/orders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       keepalive: true,
       body: JSON.stringify({
         items: items.map((i) => ({ product_id: i.id, quantity: i.quantity })),
+        coupon_code: couponCode || undefined,
       }),
-    }).catch((err) => {
-      // Never surface this: the sale is happening in the chat app regardless.
-      console.warn('Could not record order for analytics:', err);
-    });
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch((err) => {
+        // Never surface this: the sale can still happen in the chat app.
+        console.warn('Could not record order:', err);
+        return null;
+      });
+    return orderPromise.current;
+  };
+
+  // Fire-and-forget for the chat channels — the shopper's app must open regardless.
+  const fireAndForget = () => { void recordOrder(); };
+
+  const payOnline = async () => {
+    if (paying) return;
+    setPaying(true);
+    const res = await recordOrder();
+    if (res?.payment_url) {
+      window.location.href = res.payment_url;
+      return;
+    }
+    // No link (Razorpay unavailable, or the store hasn't run migration 16):
+    // fall back to completing the order over WhatsApp.
+    setPaying(false);
+    window.open(waLink, '_blank', 'noopener,noreferrer');
   };
 
   return (
     <div className="flex flex-col gap-3">
+      <button
+        onClick={payOnline}
+        disabled={paying}
+        className="btn btn--primary btn--full"
+        aria-label="Pay online now"
+      >
+        {paying ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <CreditCard className="w-5 h-5 mr-2" />}
+        {paying ? 'Opening secure payment…' : 'Pay Online Now'}
+      </button>
+
       <a
         href={waLink}
         target="_blank"
         rel="noopener noreferrer"
-        onClick={recordOrder}
+        onClick={fireAndForget}
         className="btn btn--whatsapp btn--full"
         aria-label="Complete order via WhatsApp"
       >
@@ -81,7 +113,7 @@ export default function CheckoutButton({ phone, storeName, storeSlug, items, ins
       {igLink && (
         <button
           onClick={() => {
-            recordOrder();
+            fireAndForget();
             navigator.clipboard.writeText(message);
             window.open(igLink, '_blank');
           }}
@@ -96,7 +128,7 @@ export default function CheckoutButton({ phone, storeName, storeSlug, items, ins
       <div className="grid grid-cols-2 gap-3">
         <a
           href={smsLink}
-          onClick={recordOrder}
+          onClick={fireAndForget}
           className="btn btn--secondary w-full"
           aria-label="Order via SMS"
         >
@@ -105,7 +137,7 @@ export default function CheckoutButton({ phone, storeName, storeSlug, items, ins
         </a>
         <a
           href={telLink}
-          onClick={recordOrder}
+          onClick={fireAndForget}
           className="btn btn--secondary w-full"
           aria-label="Call Store"
         >

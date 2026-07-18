@@ -1,5 +1,8 @@
 import { supabase } from '../db/supabase';
 import { normalizePhone } from '../utils/phone';
+import { validateCoupon, redeemCoupon } from './coupon.service';
+import { sendTextMessage } from './whatsapp.service';
+import { env } from '../config/env';
 
 // ─── Order Service ───────────────────────────────────────────────────────────
 // Until now checkout only opened a WhatsApp link and the order left the system
@@ -25,6 +28,8 @@ export interface OrderLineItem {
   image_url?: string | null;
 }
 
+export type PaymentStatus = 'unpaid' | 'paid';
+
 export interface Order {
   id: string;
   merchant_id: string;
@@ -36,6 +41,13 @@ export interface Order {
   status: OrderStatus;
   notes: string | null;
   created_at: string;
+  // Added in migration 16 — optional so the type is valid pre-migration.
+  discount?: number;
+  coupon_code?: string | null;
+  payment_status?: PaymentStatus;
+  payment_link_url?: string | null;
+  payment_link_id?: string | null;
+  paid_at?: string | null;
 }
 
 const MAX_ITEMS_PER_ORDER = 50;
@@ -54,7 +66,7 @@ const MAX_QTY_PER_ITEM = 99;
 export async function createOrder(
   storeSlug: string,
   items: OrderItemInput[],
-  customer: { name?: string; phone?: string; notes?: string } = {}
+  customer: { name?: string; phone?: string; notes?: string; couponCode?: string } = {}
 ): Promise<Order | null> {
   if (!Array.isArray(items) || items.length === 0) {
     throw new Error('An order must contain at least one item.');
@@ -86,52 +98,210 @@ export async function createOrder(
   if (!merchant.is_active || subEnds < new Date()) return null;
 
   // Authoritative prices — scoped to this merchant so a product id from another
-  // store cannot be smuggled into the cart.
-  const { data: products, error: productsError } = await supabase
-    .from('products')
-    .select('id, title, price, currency, processed_image_url, original_image_url')
-    .eq('merchant_id', merchant.id)
-    .eq('is_available', true)
-    .in('id', [...wanted.keys()]);
+  // store cannot be smuggled into the cart. `stock` is read where the column
+  // exists (migration 16); pre-migration we fall back and simply don't track it.
+  const baseCols = 'id, title, price, currency, processed_image_url, original_image_url';
+  let products: any[] | null = null;
+  let stockTracked = true;
+  {
+    let { data, error }: { data: any[] | null; error: any } = await supabase
+      .from('products')
+      .select(`${baseCols}, stock`)
+      .eq('merchant_id', merchant.id)
+      .eq('is_available', true)
+      .in('id', [...wanted.keys()]);
 
-  if (productsError) throw new Error(`Failed to price order: ${productsError.message}`);
+    if (error && /stock|schema cache|42703/i.test(error.message || '')) {
+      stockTracked = false;
+      ({ data, error } = await supabase
+        .from('products')
+        .select(baseCols)
+        .eq('merchant_id', merchant.id)
+        .eq('is_available', true)
+        .in('id', [...wanted.keys()]));
+    }
+    if (error) throw new Error(`Failed to price order: ${error.message}`);
+    products = data;
+  }
   if (!products || products.length === 0) return null;
 
-  const lineItems: OrderLineItem[] = products.map((p) => {
-    const quantity = wanted.get(p.id)!;
+  const lineItems: OrderLineItem[] = [];
+  for (const p of products) {
+    let quantity = wanted.get(p.id)!;
+    // Never sell more than is in stock. A tracked product at 0 is dropped from
+    // the order entirely rather than overselling.
+    if (stockTracked && p.stock != null) {
+      const available = Math.max(0, Number(p.stock));
+      if (available === 0) continue;
+      quantity = Math.min(quantity, available);
+    }
     const price = Number(p.price);
     // Snapshot the image with the order so the owner sees the product later even
     // if it's edited or removed from the catalogue.
-    return {
+    lineItems.push({
       product_id: p.id,
       title: p.title,
       price,
       quantity,
       subtotal: price * quantity,
       image_url: p.processed_image_url || p.original_image_url || null,
-    };
-  });
+    });
+  }
 
-  const total = lineItems.reduce((sum, li) => sum + li.subtotal, 0);
+  // Everything the shopper asked for was out of stock.
+  if (lineItems.length === 0) return null;
 
-  const { data, error } = await supabase
-    .from('order_logs')
-    .insert({
-      merchant_id: merchant.id,
-      customer_name: customer.name?.trim().slice(0, 100) || null,
-      customer_phone: customer.phone ? normalizePhone(customer.phone).slice(0, 20) : null,
-      items: lineItems,
-      total,
-      currency: products[0].currency || 'INR',
-      status: 'sent',
-      notes: customer.notes?.trim().slice(0, 500) || null,
-    })
-    .select()
-    .single();
+  const subtotal = lineItems.reduce((sum, li) => sum + li.subtotal, 0);
 
-  if (error) throw new Error(`Failed to record order: ${error.message}`);
+  // Coupons are re-validated here (server-side) even if the client already
+  // showed a discount: an expired or used-up code is silently dropped rather
+  // than blocking the sale, so the shopper never loses their order over it.
+  let discount = 0;
+  let couponCode: string | null = null;
+  let couponId: string | null = null;
+  if (customer.couponCode) {
+    try {
+      const applied = await validateCoupon(merchant.id, customer.couponCode, subtotal);
+      if (applied) {
+        discount = applied.discount;
+        couponCode = applied.code;
+        couponId = applied.id;
+      }
+    } catch {
+      /* invalid/expired coupon → no discount, order proceeds */
+    }
+  }
+  const total = Math.max(0, subtotal - discount);
+
+  const insertRow: Record<string, any> = {
+    merchant_id: merchant.id,
+    customer_name: customer.name?.trim().slice(0, 100) || null,
+    customer_phone: customer.phone ? normalizePhone(customer.phone).slice(0, 20) : null,
+    items: lineItems,
+    total,
+    currency: products[0].currency || 'INR',
+    status: 'sent',
+    notes: customer.notes?.trim().slice(0, 500) || null,
+    discount,
+    coupon_code: couponCode,
+  };
+
+  const data = await insertOrderRow(insertRow);
+
+  // Best-effort side effects — the order is already saved, so none of these may
+  // throw back to the caller and undo a real sale.
+  if (couponId) await redeemCoupon(couponId);
+  if (stockTracked) await decrementStock(merchant.id, lineItems).catch(() => {});
 
   return data as Order;
+}
+
+/**
+ * Insert an order row, tolerating a pre-migration-16 schema. If the discount /
+ * coupon columns don't exist yet, strip them and retry so the order still saves.
+ */
+async function insertOrderRow(row: Record<string, any>): Promise<Order> {
+  let { data, error } = await supabase.from('order_logs').insert(row).select().single();
+
+  if (error && /discount|coupon_code|payment_status|schema cache|42703/i.test(error.message || '')) {
+    const { discount, coupon_code, ...base } = row;
+    ({ data, error } = await supabase.from('order_logs').insert(base).select().single());
+  }
+  if (error) throw new Error(`Failed to record order: ${error.message}`);
+  return data as Order;
+}
+
+/**
+ * Decrement stock for the ordered products. Only touches rows that actually
+ * track stock (non-null). Best-effort and per-product so one failure can't stop
+ * the rest; a rare race that lets stock dip slightly negative is corrected the
+ * next time the merchant sets it.
+ */
+async function decrementStock(merchantId: string, lineItems: OrderLineItem[]): Promise<void> {
+  for (const li of lineItems) {
+    const { data } = await supabase
+      .from('products')
+      .select('stock')
+      .eq('id', li.product_id)
+      .eq('merchant_id', merchantId)
+      .maybeSingle();
+    if (!data || data.stock == null) continue;
+    const next = Math.max(0, Number(data.stock) - li.quantity);
+    await supabase.from('products').update({ stock: next }).eq('id', li.product_id).eq('merchant_id', merchantId);
+  }
+}
+
+/** Persist the Razorpay payment link generated for an order. Best-effort. */
+export async function attachOrderPaymentLink(orderId: string, url: string, id: string): Promise<void> {
+  const { error } = await supabase
+    .from('order_logs')
+    .update({ payment_link_url: url, payment_link_id: id })
+    .eq('id', orderId);
+  if (error && !/payment_link|schema cache|42703/i.test(error.message || '')) {
+    console.error('Failed to attach payment link:', error.message);
+  }
+}
+
+/**
+ * Mark an order paid from a verified Razorpay webhook, looked up by its payment
+ * link id. Returns the order + merchant so the caller can notify both parties.
+ * Idempotent: an already-paid order is returned but not re-processed.
+ */
+export async function markOrderPaidByLink(
+  paymentLinkId: string
+): Promise<{ order: Order; alreadyPaid: boolean } | null> {
+  const { data: order, error } = await supabase
+    .from('order_logs')
+    .select('*')
+    .eq('payment_link_id', paymentLinkId)
+    .maybeSingle();
+
+  if (error || !order) return null;
+  if ((order as Order).payment_status === 'paid') return { order: order as Order, alreadyPaid: true };
+
+  await supabase
+    .from('order_logs')
+    .update({ payment_status: 'paid', paid_at: new Date().toISOString() })
+    .eq('id', order.id);
+
+  return { order: { ...(order as Order), payment_status: 'paid' }, alreadyPaid: false };
+}
+
+/**
+ * Authoritatively price a cart without recording an order — used to validate a
+ * coupon against a real, server-computed subtotal (never a client figure).
+ * @returns the merchant id and subtotal, or null if the store/items don't resolve.
+ */
+export async function priceCart(
+  storeSlug: string,
+  items: OrderItemInput[]
+): Promise<{ merchantId: string; subtotal: number } | null> {
+  const wanted = new Map<string, number>();
+  for (const item of Array.isArray(items) ? items : []) {
+    if (!item || typeof item.product_id !== 'string') continue;
+    const qty = Math.floor(Number(item.quantity));
+    if (!Number.isFinite(qty) || qty < 1) continue;
+    wanted.set(item.product_id, Math.min((wanted.get(item.product_id) ?? 0) + qty, MAX_QTY_PER_ITEM));
+  }
+  if (wanted.size === 0) return null;
+
+  const { data: merchant } = await supabase
+    .from('merchants')
+    .select('id')
+    .eq('store_slug', storeSlug)
+    .single();
+  if (!merchant) return null;
+
+  const { data: products } = await supabase
+    .from('products')
+    .select('id, price')
+    .eq('merchant_id', merchant.id)
+    .eq('is_available', true)
+    .in('id', [...wanted.keys()]);
+  if (!products || products.length === 0) return null;
+
+  const subtotal = products.reduce((sum, p) => sum + Number(p.price) * wanted.get(p.id)!, 0);
+  return { merchantId: merchant.id, subtotal };
 }
 
 /** Orders for a merchant, newest first. */
@@ -165,10 +335,61 @@ export async function updateOrderStatus(
     .update({ status })
     .eq('id', orderId)
     .eq('merchant_id', merchantId)
-    .select('id');
+    .select('id, customer_phone, total, currency')
+    .single();
 
-  if (error) throw new Error(`Failed to update order: ${error.message}`);
-  return (data?.length ?? 0) > 0;
+  if (error) {
+    if ((error as any).code === 'PGRST116') return false; // no row matched
+    throw new Error(`Failed to update order: ${error.message}`);
+  }
+  if (!data) return false;
+
+  // Keep the customer in the loop over WhatsApp — but never let a notification
+  // failure roll back a status the merchant successfully changed.
+  notifyCustomerOfStatus(merchantId, data.customer_phone, status, Number(data.total), data.currency)
+    .catch((e) => console.error('Order status notification failed:', e?.message || e));
+
+  return true;
+}
+
+/**
+ * Message the shopper when their order moves forward. Only fires when we have a
+ * phone number for them (orders placed by phone-based channels) and only for the
+ * transitions a customer cares about — 'sent' is the initial state and produces
+ * no message.
+ */
+const STATUS_MESSAGES: Partial<Record<OrderStatus, (store: string, total: string) => string>> = {
+  confirmed: (store, total) => `✅ Your order at *${store}* (${total}) is *confirmed*! We'll update you as it progresses. 🙏`,
+  processing: (store, total) => `📦 Good news — your order at *${store}* (${total}) is now being *prepared*.`,
+  delivered: (store, total) => `🎉 Your order at *${store}* (${total}) has been *delivered*. Thank you for shopping with us! ⭐`,
+  cancelled: (store, total) => `⚠️ Your order at *${store}* (${total}) has been *cancelled*. Please reach out if you have any questions.`,
+};
+
+async function notifyCustomerOfStatus(
+  merchantId: string,
+  customerPhone: string | null,
+  status: OrderStatus,
+  total: number,
+  currency: string
+): Promise<void> {
+  const build = STATUS_MESSAGES[status];
+  if (!build || !customerPhone) return;
+
+  // Only a real phone number can receive a WhatsApp message (Instagram/Messenger
+  // ids are stored elsewhere and aren't reachable this way).
+  const phone = normalizePhone(customerPhone);
+  if (!/^[1-9]\d{9,14}$/.test(phone)) return;
+
+  const { data: merchant } = await supabase
+    .from('merchants')
+    .select('store_name')
+    .eq('id', merchantId)
+    .maybeSingle();
+
+  const store = merchant?.store_name || 'the store';
+  const symbol = currency === 'INR' ? '₹' : `${currency} `;
+  const totalStr = `${symbol}${Number(total).toLocaleString('en-IN')}`;
+  await sendTextMessage(phone, build(store, totalStr));
 }
 
 export interface Analytics {

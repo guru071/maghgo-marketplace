@@ -2,7 +2,7 @@ import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductL
 import { parseCaption } from './parser.service';
 import { removeBackground } from './media.service';
 import { uploadImage } from './storage.service';
-import { createProduct, getProducts, deleteProduct, getProductCount, updateProductPrice, deleteAllProducts, setProductFulfillment } from './product.service';
+import { createProduct, getProducts, deleteProduct, getProductCount, updateProductPrice, deleteAllProducts, setProductFulfillment, setProductStock } from './product.service';
 import { triggerRevalidation } from './revalidate.service';
 import { createPaymentLink, getAmountFromPlan, getPlanFromAmount } from './payment.service';
 import { env } from '../config/env';
@@ -477,9 +477,11 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
 
     // Visual catalogue: image cards where the channel supports it, text otherwise.
     if (msg.sendCards) {
+      const stockNote = (p: any) =>
+        p.stock == null ? '' : Number(p.stock) === 0 ? ' · Out of stock' : ` · ${p.stock} in stock`;
       const cards: BotCard[] = products.slice(0, 10).map((p) => ({
         title: p.title,
-        subtitle: `₹${p.price.toLocaleString('en-IN')}`,
+        subtitle: `₹${p.price.toLocaleString('en-IN')}${stockNote(p)}`,
         imageUrl: p.processed_image_url || p.original_image_url || undefined,
         actionId: `DELETE ${p.title}`,
         actionTitle: '🗑️ Remove',
@@ -589,6 +591,35 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     return;
   }
 
+  // STOCK <name> <qty>  → set inventory.  STOCK <name> OFF → stop tracking.
+  if (command.startsWith('STOCK ')) {
+    const rest = text.trim().substring(6).trim();
+    const m = rest.match(/^(.*?)[\s,]+(\d+|off|unlimited|none)$/i);
+    if (!m || !m[1].trim()) {
+      await sendReply('⚠️ Format: *STOCK <product> <quantity>*\n\nExamples:\n• STOCK Red Shirt 10\n• STOCK Red Shirt off  _(stop tracking)_');
+      return;
+    }
+    const name = m[1].trim();
+    const qtyRaw = m[2].toLowerCase();
+    const qty = /^\d+$/.test(qtyRaw) ? parseInt(qtyRaw, 10) : null;
+    try {
+      const count = await setProductStock(merchant.id, name, qty);
+      if (count === 0) {
+        await sendReply(`❌ No product found matching "*${name}*".`);
+      } else {
+        await sendReply(
+          qty === null
+            ? `♾️ Stock tracking turned *off* for ${count} product(s) matching "*${name}*" — they'll always be available.`
+            : `📦 Stock for ${count} product(s) matching "*${name}*" set to *${qty}*.${qty === 0 ? '\n\n⚠️ At 0 they show as *Out of stock*.' : ''}`
+        );
+        await triggerRevalidation(merchant.store_slug);
+      }
+    } catch (err: any) {
+      await sendReply(`❌ ${err.message || 'Could not update stock.'}`);
+    }
+    return;
+  }
+
   if (command === 'CLEAR CATALOG') {
     const deletedCount = await deleteAllProducts(merchant.id);
     await sendReply(`🗑️ Your catalog has been cleared. Removed ${deletedCount} products.`);
@@ -640,7 +671,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   if (command === 'HELP') {
     await replyButtons(
       msg,
-      `➕ *Add a product*\n\nSend a *photo* of your product with a caption:\n\n_Product name  Price_\nExample: *Red Cotton T-Shirt ₹499*\n\n(Include ₹, Rs, INR or MRP before the price.)\n\nOther things you can type:\n✏️ EDIT name - ₹price\n🗑️ DELETE name\n📅 PREBOOK name  ·  🛒 SELL name\n📝 DESCRIBE your store text`,
+      `➕ *Add a product*\n\nSend a *photo* of your product with a caption:\n\n_Product name  Price_\nExample: *Red Cotton T-Shirt ₹499*\n\n(Include ₹, Rs, INR or MRP before the price.)\n\nOther things you can type:\n✏️ EDIT name - ₹price\n🗑️ DELETE name\n📦 STOCK name qty\n📅 PREBOOK name  ·  🛒 SELL name\n📝 DESCRIBE your store text`,
       [
         { id: 'MENU', title: '📋 Main menu' },
         { id: 'LIST', title: '📦 My products' },

@@ -86,3 +86,55 @@ export async function createPaymentLink(senderId: string, amount: number): Promi
     throw new Error('Could not generate payment link');
   }
 }
+
+/**
+ * Create a Razorpay payment link so a *shopper* can pay for their order online,
+ * instead of only arranging payment manually in chat.
+ *
+ * This is distinct from createPaymentLink (which sells merchant subscriptions):
+ * the notes carry `type: 'order'` and the order id, so the shared webhook can
+ * tell the two apart and mark the right thing paid. The amount is passed in
+ * rupees and is whatever the *server* computed for the order — never a
+ * client-supplied figure.
+ *
+ * @returns the link's short URL and id, or null if Razorpay is unavailable
+ *          (the order is already recorded, so a failed link must not throw).
+ */
+export async function createOrderPaymentLink(params: {
+  orderId: string;
+  merchantId: string;
+  storeName: string;
+  amount: number; // rupees
+  customerPhone?: string | null;
+}): Promise<{ url: string; id: string } | null> {
+  try {
+    if (!params.amount || params.amount < 1) return null;
+
+    const payload: any = {
+      amount: Math.round(params.amount * 100), // paise
+      currency: 'INR',
+      accept_partial: false,
+      description: `Order at ${params.storeName}`.slice(0, 250),
+      reminder_enable: true,
+      notes: {
+        type: 'order',
+        order_id: params.orderId,
+        merchant_id: params.merchantId,
+      },
+    };
+
+    const phone = (params.customerPhone || '').replace(/\D/g, '');
+    if (/^[1-9]\d{9,14}$/.test(phone)) {
+      payload.customer = { contact: phone };
+      payload.notify = { sms: true, email: false };
+    } else {
+      payload.notify = { sms: false, email: false };
+    }
+
+    const response = await razorpay.paymentLink.create(payload);
+    return { url: response.short_url, id: String(response.id) };
+  } catch (error) {
+    console.error('❌ Failed to create order payment link:', error);
+    return null; // order stands; shopper can still pay manually
+  }
+}

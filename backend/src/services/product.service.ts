@@ -135,6 +135,58 @@ export async function updateProductPrice(
   return data?.length ?? 0;
 }
 
+/**
+ * Set a product's stock quantity by title (bot: "STOCK Red Shirt 10").
+ * `null` clears tracking (sell freely). Graceful if migration 16 hasn't run.
+ *
+ * @returns the number of products updated.
+ */
+export async function setProductStock(
+  merchantId: string,
+  title: string,
+  qty: number | null
+): Promise<number> {
+  const escapedTitle = title.replace(/[%_\\]/g, '\\$&');
+
+  const { data, error } = await supabase
+    .from('products')
+    .update({ stock: qty })
+    .eq('merchant_id', merchantId)
+    .ilike('title', `%${escapedTitle}%`)
+    .eq('is_available', true)
+    .select();
+
+  if (error) {
+    if (/stock|schema cache|42703/i.test(error.message || '') || (error as any).code === '42703' || (error as any).code === 'PGRST204') {
+      throw new Error('Stock tracking needs one setup step (migration 16) before it can be used.');
+    }
+    throw new Error(`Failed to update stock: ${error.message}`);
+  }
+  return data?.length ?? 0;
+}
+
+/** Set a product's stock by id (dashboard). Scoped to the merchant. */
+export async function setProductStockById(
+  merchantId: string,
+  productId: string,
+  qty: number | null
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('products')
+    .update({ stock: qty })
+    .eq('id', productId)
+    .eq('merchant_id', merchantId)
+    .select('id');
+
+  if (error) {
+    if (/stock|schema cache|42703/i.test(error.message || '') || (error as any).code === '42703' || (error as any).code === 'PGRST204') {
+      throw new Error('Stock tracking needs one setup step (migration 16) before it can be used.');
+    }
+    throw new Error(`Failed to update stock: ${error.message}`);
+  }
+  return (data?.length ?? 0) > 0;
+}
+
 export type FulfillmentType = 'buy' | 'prebook';
 
 /**

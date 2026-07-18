@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { supabase } from '../db/supabase';
-import { getProducts, updateProductPrice, deleteAllProducts, deleteProduct, createProduct, setProductFulfillmentById } from '../services/product.service';
+import { getProducts, updateProductPrice, deleteAllProducts, deleteProduct, createProduct, setProductFulfillmentById, setProductStockById } from '../services/product.service';
 import { updateStoreDescription, toggleStoreStatus, getProductLimit } from '../services/merchant.service';
 import { getOrders, updateOrderStatus, getAnalytics } from '../services/order.service';
 import { createPaymentLink } from '../services/payment.service';
+import { listCoupons, createCoupon, deleteCoupon } from '../services/coupon.service';
 import { triggerRevalidation } from '../services/revalidate.service';
 import { hasAccess } from '../utils/plans';
 import multer from 'multer';
@@ -143,19 +144,38 @@ router.post('/products', upload.single('image'), async (req: AuthRequest, res) =
   }
 });
 
-// Update Product
+// Update Product (title / price / stock). Stock is optional and degrades
+// gracefully if migration 16 hasn't added the column yet.
 router.put('/products/:id', async (req: AuthRequest, res) => {
   try {
-    const { title, price } = req.body;
-    
-    // updateProductPrice uses ILIKE on title currently, let's update by ID instead
-    // Actually, updateProductPrice expects a title. Let's write a quick inline supabase update by ID.
-    const { error } = await supabase
+    const { title, price, stock } = req.body;
+
+    const updates: Record<string, any> = {};
+    if (title !== undefined) updates.title = title;
+    if (price !== undefined) updates.price = price;
+    if (stock !== undefined) {
+      // '' / null / 'off' clears tracking; a number sets the count.
+      updates.stock =
+        stock === '' || stock === null || String(stock).toLowerCase() === 'off'
+          ? null
+          : Math.max(0, Math.floor(Number(stock)));
+    }
+
+    let { error } = await supabase
       .from('products')
-      .update({ title, price })
+      .update(updates)
       .eq('id', req.params.id)
       .eq('merchant_id', req.merchantId);
 
+    // Retry without stock if that column doesn't exist yet.
+    if (error && 'stock' in updates && /stock|schema cache|42703/i.test(error.message || '')) {
+      const { stock: _dropped, ...base } = updates;
+      ({ error } = await supabase
+        .from('products')
+        .update(base)
+        .eq('id', req.params.id)
+        .eq('merchant_id', req.merchantId));
+    }
     if (error) throw error;
 
     const { data: merchant } = await supabase.from('merchants').select('store_slug').eq('id', req.merchantId).single();
@@ -415,6 +435,46 @@ router.post('/upgrade', async (req: AuthRequest, res) => {
     res.json({ url });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Coupons ─────────────────────────────────────────────────────────────────
+
+// List this merchant's discount codes.
+router.get('/coupons', async (req: AuthRequest, res) => {
+  try {
+    res.json(await listCoupons(req.merchantId!));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create a discount code.
+router.post('/coupons', async (req: AuthRequest, res) => {
+  try {
+    const { code, discount_type, discount_value, max_uses, min_order, expires_at } = req.body ?? {};
+    const coupon = await createCoupon(req.merchantId!, {
+      code,
+      discount_type,
+      discount_value: Number(discount_value),
+      max_uses: max_uses === '' || max_uses == null ? null : Math.max(1, Math.floor(Number(max_uses))),
+      min_order: min_order == null || min_order === '' ? 0 : Math.max(0, Number(min_order)),
+      expires_at: expires_at || null,
+    });
+    res.status(201).json(coupon);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Delete a discount code.
+router.delete('/coupons/:id', async (req: AuthRequest, res) => {
+  try {
+    const ok = await deleteCoupon(req.merchantId!, String(req.params.id));
+    if (!ok) return res.status(404).json({ error: 'Coupon not found' });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
   }
 });
 

@@ -17,7 +17,9 @@ interface Order {
   customer_phone: string | null;
   items: OrderLineItem[];
   total: number;
+  discount?: number;
   status: string;
+  payment_status?: 'paid' | 'unpaid';
   created_at: string;
 }
 
@@ -131,6 +133,11 @@ export default function OrdersPage() {
                       <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase ${STATUS_STYLE[o.status] ?? 'bg-gray-100'}`}>
                         {o.status}
                       </span>
+                      {o.payment_status === 'paid' ? (
+                        <span className="text-[10px] px-2 py-1 rounded font-bold uppercase bg-green-100 text-green-700">💰 Paid</span>
+                      ) : (
+                        <span className="text-[10px] px-2 py-1 rounded font-bold uppercase bg-amber-50 text-amber-700">Unpaid</span>
+                      )}
                     </div>
                     <div className="text-sm text-gray-500 mt-1">
                       {new Date(o.created_at).toLocaleString('en-IN')}
@@ -138,7 +145,12 @@ export default function OrdersPage() {
                       {o.customer_phone && ` · ${o.customer_phone}`}
                     </div>
                   </div>
-                  <div className="text-2xl font-black text-gray-900 shrink-0">{inr(o.total)}</div>
+                  <div className="text-right shrink-0">
+                    <div className="text-2xl font-black text-gray-900">{inr(o.total)}</div>
+                    {Number(o.discount) > 0 && (
+                      <div className="text-xs text-green-600 font-medium">−{inr(Number(o.discount))} discount</div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="border-t border-gray-100 pt-3 space-y-2 mb-4">

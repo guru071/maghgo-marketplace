@@ -24,10 +24,17 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
   }, [onAddToCart, product]);
 
   const isPrebook = product.fulfillment_type === 'prebook';
+  const outOfStock = product.stock != null && product.stock <= 0;
+  const lowStock = product.stock != null && product.stock > 0 && product.stock <= 5;
 
   return (
-    <article className="product-card">
+    <article className="product-card" style={outOfStock ? { opacity: 0.75 } : undefined}>
       <div className="product-card__image-wrapper">
+        {outOfStock && (
+          <span style={{ position: 'absolute', top: 8, right: 8, zIndex: 2, background: '#4b5563', color: '#fff', fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', padding: '3px 8px', borderRadius: '6px' }}>
+            Out of stock
+          </span>
+        )}
         {isPrebook && (
           <span style={{ position: 'absolute', top: 8, left: 8, zIndex: 2, background: '#7C3AED', color: '#fff', fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', padding: '3px 8px', borderRadius: '6px' }}>
             Pre-book
@@ -68,13 +75,22 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
         )}
         <p className="product-card__price">
           {formatPrice(product.price, product.currency)}
+          {lowStock && (
+            <span style={{ marginLeft: 8, fontSize: '0.7rem', fontWeight: 700, color: '#d97706' }}>
+              Only {product.stock} left
+            </span>
+          )}
         </p>
         <button
           className={`product-card__add-btn ${isAdded ? 'product-card__add-btn--added' : ''}`}
           onClick={handleAdd}
-          aria-label={`Add ${product.title} to cart`}
+          disabled={outOfStock}
+          style={outOfStock ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+          aria-label={outOfStock ? `${product.title} is out of stock` : `Add ${product.title} to cart`}
         >
-          {isAdded ? (
+          {outOfStock ? (
+            'Out of Stock'
+          ) : isAdded ? (
             <>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12" />

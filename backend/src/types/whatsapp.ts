@@ -84,5 +84,6 @@ export interface Product {
   processed_image_url: string;
   is_available: boolean;
   fulfillment_type?: 'buy' | 'prebook';
+  stock?: number | null; // null/undefined = not tracked; 0 = out of stock
   created_at: string;
 }
