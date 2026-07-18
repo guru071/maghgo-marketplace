@@ -42,26 +42,6 @@ export function hasAccess(requiredPlan: string, currentPlan: string): boolean {
   return current >= required;
 }
 
-/**
- * The tiers we actually sell, in display order.
- *
- * Everything else (advanced, premium, agency, vip, enterprise) is grandfathered:
- * still honoured in full for merchants already on it — one is on `vip` today —
- * but no longer offered. Those rows must never be deleted, or getProductLimit()
- * would fall back to the 50-product default and lock a paying merchant out of
- * their own catalogue.
- *
- * Deliberately a constant rather than an `is_public` column: it needs no
- * migration, cannot drift out of sync with a half-applied database, and this
- * is a product decision that belongs in the codebase anyway.
- */
-export const PUBLIC_PLAN_SLUGS = ['basic', 'starter', 'pro', 'business', 'custom'] as const;
-
-/** Whether a plan should appear on the public pricing page. */
-export function isPublicPlan(slug: string): boolean {
-  return (PUBLIC_PLAN_SLUGS as readonly string[]).includes(slug);
-}
-
 /** Lowest plan that removes Maghgo branding from the storefront. */
 export const WHITE_LABEL_MIN_PLAN = 'business';
 

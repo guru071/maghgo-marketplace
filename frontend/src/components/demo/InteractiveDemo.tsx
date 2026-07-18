@@ -142,42 +142,41 @@ export function InteractiveDemo() {
             </div>
           </div>
 
-          <div className={`demo-store-card demo-store-card--${plan.toLowerCase()}`}>
-            <div className="demo-store-card__image-container">
+          {/* Self-contained styles: the old .demo-store-card CSS was removed with
+              the demo-store cleanup, so this card styles itself inline. */}
+          <div style={{ position: 'relative', background: '#fff', border: plan === 'Premium' ? '2px solid var(--accent)' : '1px solid #e5e7eb', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.06)' }}>
+            <div style={{ width: '100%', aspectRatio: '1', background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {isProcessing ? (
-                <div className="demo-skeleton"></div>
+                <div className="demo-skeleton" style={{ width: '100%', height: '100%' }}></div>
               ) : processedImageUrl ? (
-                <img src={processedImageUrl} alt="Product" className="demo-store-card__img" />
+                <img src={processedImageUrl} alt="Product" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
-                <div className="demo-placeholder">Waiting for product...</div>
+                <div style={{ color: '#9ca3af', fontSize: '0.9rem' }}>Waiting for product...</div>
               )}
             </div>
-            
-            <div className="demo-store-card__details">
-              <h4 className="demo-store-card__title">Test Product</h4>
-              <div className="demo-store-card__price">{price}</div>
-              
+
+            <div style={{ padding: '1.25rem' }}>
+              <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#111827' }}>Test Product</h4>
+              <div style={{ marginTop: '4px', fontSize: '1.15rem', fontWeight: 800, color: 'var(--accent)' }}>{price}</div>
+
               {plan !== 'Basic' && (
-                <p className="demo-store-card__desc">Premium auto-generated description utilizing AI.</p>
+                <p style={{ marginTop: '8px', fontSize: '0.85rem', color: '#6b7280' }}>Premium auto-generated description utilizing AI.</p>
               )}
-              
+
               <Button className={plan === 'Basic' ? 'btn--secondary' : 'btn--primary'} style={{ width: '100%', marginTop: '1rem' }}>
                 {plan === 'Enterprise' ? 'Buy Now with 1-Click' : 'Add to Cart'}
               </Button>
             </div>
-            
+
             {plan === 'Enterprise' && (
-              <div className="demo-enterprise-badge">Enterprise Storefront</div>
-            )}
-            {plan === 'Premium' && (
-              <div className="demo-premium-border"></div>
+              <div style={{ position: 'absolute', top: 10, right: 10, background: '#111', color: '#fff', fontSize: '0.65rem', fontWeight: 700, padding: '4px 10px', borderRadius: '6px' }}>Enterprise Storefront</div>
             )}
           </div>
-          
+
           <div style={{ textAlign: 'center', marginTop: '1rem' }}>
-            <a href={`/demo/store?plan=${plan.toLowerCase()}`}>
+            <a href="/register">
               <Button className="btn--primary btn--large" style={{ width: '100%' }}>
-                Enter My Demo Store 🚀
+                Create my store 🚀
               </Button>
             </a>
           </div>

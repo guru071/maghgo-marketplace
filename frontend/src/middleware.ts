@@ -5,8 +5,7 @@ export function middleware(req: NextRequest) {
   // Only apply basic auth to admin routes and sensitive APIs
   if (
     req.nextUrl.pathname.startsWith('/goatech-admin-hq') ||
-    req.nextUrl.pathname.startsWith('/api/goatech-admin-hq') ||
-    req.nextUrl.pathname.startsWith('/api/store/apply-theme')
+    req.nextUrl.pathname.startsWith('/api/goatech-admin-hq')
   ) {
     const basicAuth = req.headers.get('authorization');
     
@@ -51,6 +50,5 @@ export const config = {
   matcher: [
     '/goatech-admin-hq/:path*',
     '/api/goatech-admin-hq/:path*',
-    '/api/store/apply-theme',
   ],
 };
