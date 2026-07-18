@@ -4,8 +4,14 @@ import { WorkingModelDemo } from '@/components/landing/WorkingModelDemo';
 import { HowItWorks } from '@/components/landing/HowItWorks';
 import { ThemesShowcase } from '@/components/landing/ThemesShowcase';
 import { Pricing } from '@/components/landing/Pricing';
+import { Marketplace } from '@/components/landing/Marketplace';
 
 import { createServerSupabaseClient } from '@/lib/supabase-server';
+
+// The home page highlights a focused set of plans rather than the full ladder —
+// too many tiers cause choice paralysis. The rest stay available for upgrades in
+// the dashboard. Order here is the display order; 'pro' is the featured default.
+const FEATURED_PLAN_SLUGS = ['basic', 'pro', 'business', 'custom'];
 
 export const revalidate = 60; // Ensure fresh settings are fetched
 
@@ -16,19 +22,39 @@ export default async function LandingPage() {
   let settings: any = null;
   let plans: any[] = [];
   let activeOffer: any = null;
+  let shops: any[] = [];
   try {
     const supabase = createServerSupabaseClient();
-    const [s, p, o] = await Promise.all([
+    const [s, p, o, m] = await Promise.all([
       supabase.from('platform_settings').select('*').eq('id', 1).single(),
       supabase.from('plans').select('*').order('monthly_price', { ascending: true }),
       supabase.from('offers').select('*').eq('is_active', true).single(),
+      // Live stores: active, subscribed, and with their products embedded.
+      supabase
+        .from('merchants')
+        .select('store_name, store_slug, store_logo_url, store_description, products(title, price, processed_image_url, original_image_url, is_available)')
+        .eq('is_active', true)
+        .gt('subscription_ends_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(12),
     ]);
     settings = s.data;
     plans = p.data ?? [];
     activeOffer = o.data;
+    shops = m.data ?? [];
   } catch (err) {
     console.error('Landing page data fetch failed (rendering with defaults):', err);
   }
+
+  // Only show stores that actually have something to sell, and keep just their
+  // available products (newest shops first, capped at 8 cards).
+  const liveShops = (shops ?? [])
+    .map((shop: any) => ({
+      ...shop,
+      products: (shop.products ?? []).filter((p: any) => p.is_available !== false),
+    }))
+    .filter((shop: any) => shop.products.length > 0)
+    .slice(0, 8);
 
   const enabledPlatforms = settings || {
     whatsapp_enabled: true,
@@ -37,10 +63,19 @@ export default async function LandingPage() {
     sms_enabled: true,
   };
 
-  // Show every plan in the catalogue, cheapest first.
-  const publicPlans = (plans ?? []).slice().sort(
+  // Curate to a focused set (Pro featured). Fall back to the full list, cheapest
+  // first, if none of the featured slugs are present (e.g. a customised catalogue).
+  const curated = (plans ?? [])
+    .filter((p: any) => FEATURED_PLAN_SLUGS.includes(p.slug))
+    .sort((a: any, b: any) => FEATURED_PLAN_SLUGS.indexOf(a.slug) - FEATURED_PLAN_SLUGS.indexOf(b.slug));
+
+  const publicPlans = (curated.length > 0 ? curated : (plans ?? []).slice().sort(
     (a: any, b: any) => (a.monthly_price ?? 0) - (b.monthly_price ?? 0)
-  );
+  )).map((p: any) => ({
+    ...p,
+    featured: p.slug === 'pro' || p.is_popular === true,
+    colorTheme: p.slug === 'pro' ? '#2563eb' : '#e5e7eb',
+  }));
 
   return (
     <main className="landing-page">
@@ -61,6 +96,7 @@ export default async function LandingPage() {
       <Hero />
       <WorkingModelDemo />
       <HowItWorks />
+      <Marketplace shops={liveShops} />
       <ThemesShowcase />
       <Pricing enabledPlatforms={enabledPlatforms} plans={publicPlans} />
       

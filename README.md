@@ -2,6 +2,10 @@
 
 > Turn your WhatsApp into a premium web store. Just send photos. We do the rest.
 
+> 👉 **New developer? Read [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) first** —
+> a beginner-friendly, end-to-end tour: architecture, local setup, env vars, the
+> bot commands, the database, the payment flows, and how to make a change safely.
+
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Node](https://img.shields.io/badge/node-%3E%3D18-green)
 ![Next.js](https://img.shields.io/badge/Next.js-14-black)

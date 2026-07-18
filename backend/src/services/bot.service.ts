@@ -3,6 +3,7 @@ import { parseCaption } from './parser.service';
 import { removeBackground } from './media.service';
 import { uploadImage } from './storage.service';
 import { createProduct, getProducts, deleteProduct, getProductCount, updateProductPrice, deleteAllProducts, setProductFulfillment, setProductStock } from './product.service';
+import { getOrders, getAnalytics } from './order.service';
 import { triggerRevalidation } from './revalidate.service';
 import { createPaymentLink, getAmountFromPlan, getPlanFromAmount } from './payment.service';
 import { env } from '../config/env';
@@ -80,7 +81,8 @@ async function sendMainMenu(msg: BotMessage, storeName?: string): Promise<void> 
     [
       { id: 'LIST', title: '📦 My products', description: 'See everything in your store' },
       { id: 'HELP', title: '➕ Add a product', description: 'How to add with a photo' },
-      { id: 'STATUS', title: '📊 Store status', description: 'Link & product count' },
+      { id: 'ORDERS', title: '🧾 Recent orders', description: 'Your latest orders' },
+      { id: 'SALES', title: '📊 Sales snapshot', description: 'Revenue & best seller' },
       { id: 'UPGRADE', title: '🚀 Upgrade plan', description: 'Unlock higher limits' },
       { id: 'LOGIN', title: '🔐 Web dashboard', description: 'Manage on the web' },
       { id: 'PAUSE', title: '⏸️ Pause store', description: 'Temporarily go offline' },
@@ -676,10 +678,47 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     return;
   }
 
+  // Recent orders, straight in chat.
+  if (command === 'ORDERS' || command === 'ORDER') {
+    const orders = await getOrders(merchant.id, 5);
+    const dashUrl = `${env.FRONTEND_URL}/dashboard/orders`;
+    if (orders.length === 0) {
+      await replyCta(msg, '🧾 No orders yet.\n\nShare your store link so customers can start ordering!', '🛍️ My store', `${env.FRONTEND_URL}/${merchant.store_slug}`);
+      return;
+    }
+    const lines = orders.map((o) => {
+      const when = new Date(o.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+      const paid = o.payment_status === 'paid' ? ' 💰' : '';
+      const items = (o.items || []).reduce((n: number, i: any) => n + (i.quantity || 0), 0);
+      return `• ${when} — ₹${Number(o.total).toLocaleString('en-IN')} · ${items} item(s) · _${o.status}_${paid}`;
+    }).join('\n');
+    await replyCta(msg, `🧾 *Your last ${orders.length} order(s):*\n\n${lines}`, '📦 Manage orders', dashUrl);
+    return;
+  }
+
+  // A quick sales snapshot from real order data.
+  if (command === 'SALES' || command === 'STATS' || command === 'REVENUE') {
+    const a = await getAnalytics(merchant.id);
+    const top = a.top_products[0];
+    const rupee = (n: number) => `₹${Number(n).toLocaleString('en-IN')}`;
+    await replyCta(
+      msg,
+      `📊 *Your sales*\n\n` +
+      `💰 Total revenue: *${rupee(a.revenue)}*\n` +
+      `📅 This month: ${rupee(a.revenue_this_month)} (${a.orders_this_month} orders)\n` +
+      `🧾 Total orders: ${a.order_count}\n` +
+      `📈 Avg order value: ${rupee(a.average_order_value)}` +
+      (top ? `\n🏆 Best seller: ${top.title} (${top.quantity} sold)` : ''),
+      '📊 Full analytics',
+      `${env.FRONTEND_URL}/dashboard/analytics`
+    );
+    return;
+  }
+
   if (command === 'HELP') {
     await replyButtons(
       msg,
-      `➕ *Add a product*\n\nSend a *photo* of your product with a caption:\n\n_Product name  Price_\nExample: *Red Cotton T-Shirt ₹499*\n\n(Include ₹, Rs, INR or MRP before the price.)\n\nOther things you can type:\n✏️ EDIT name - ₹price\n🗑️ DELETE name\n📦 STOCK name qty\n📅 PREBOOK name  ·  🛒 SELL name\n📝 DESCRIBE your store text`,
+      `➕ *Add a product*\n\nSend a *photo* of your product with a caption:\n\n_Product name  Price_\nExample: *Red Cotton T-Shirt ₹499*\n\n(Include ₹, Rs, INR or MRP before the price.)\n\nOther things you can type:\n✏️ EDIT name - ₹price\n🗑️ DELETE name\n📦 STOCK name qty\n🧾 ORDERS  ·  📊 SALES\n📅 PREBOOK name  ·  🛒 SELL name\n📝 DESCRIBE your store text`,
       [
         { id: 'MENU', title: '📋 Main menu' },
         { id: 'LIST', title: '📦 My products' },
