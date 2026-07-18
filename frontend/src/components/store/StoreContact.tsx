@@ -1,5 +1,6 @@
 import React from 'react';
 import { Merchant } from '@/types';
+import { whatsappLink } from '@/lib/site-config';
 
 /**
  * Contact & location block for the storefront.
@@ -17,7 +18,13 @@ export default function StoreContact({ merchant }: { merchant: Merchant }) {
   const x = merchant.x_handle?.replace('@', '');
 
   const hasContact = phone || ig || fb || x;
-  if (!address && !hasContact) return null;
+
+  // Deep link to the Maghgo bot pre-filled to browse THIS store in chat. Uses
+  // the bot's number (site-config), not the merchant's, so the shopper lands in
+  // the interactive catalogue rather than a normal DM.
+  const botShopLink = whatsappLink(`SHOP ${merchant.store_slug}`);
+
+  if (!address && !hasContact && !botShopLink) return null;
 
   const mapsUrl = address
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
@@ -25,6 +32,18 @@ export default function StoreContact({ merchant }: { merchant: Merchant }) {
 
   return (
     <section className="max-w-3xl mx-auto px-4 py-10">
+      {botShopLink && (
+        <a
+          href={botShopLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-2 w-full mb-6 bg-[#25D366] hover:bg-[#1DA851] text-white font-bold py-4 rounded-2xl shadow-sm transition-colors text-lg"
+        >
+          🛍️ Browse &amp; order on WhatsApp
+        </a>
+      )}
+
+      {(address || hasContact) && (
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 sm:p-8">
         <h2 className="text-lg font-bold text-gray-900 mb-5 flex items-center gap-2">
           <span>📍</span> Visit &amp; Contact
@@ -80,6 +99,7 @@ export default function StoreContact({ merchant }: { merchant: Merchant }) {
           </div>
         )}
       </div>
+      )}
     </section>
   );
 }

@@ -36,6 +36,21 @@ export async function getMerchantByChannel(
   return data as Merchant;
 }
 
+/** Look up an active store by its public slug (for customer bot shopping). */
+export async function getMerchantBySlug(slug: string): Promise<Merchant | null> {
+  const { data, error } = await supabase
+    .from('merchants')
+    .select('*')
+    .eq('store_slug', slug.toLowerCase())
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw new Error(`Store lookup failed: ${error.message}`);
+  }
+  return data as Merchant;
+}
+
 export async function createMerchant(
   channel: Channel,
   senderId: string,

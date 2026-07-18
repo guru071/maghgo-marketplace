@@ -8,6 +8,7 @@ import { createPaymentLink, getAmountFromPlan, getPlanFromAmount } from './payme
 import { env } from '../config/env';
 import { buildStoreSlug } from '../utils/slug';
 import { canUseChannel, minPlanForChannel, channelLabel, hasAccess } from '../utils/plans';
+import { isShopTrigger, hasSession, handleShopperMessage } from './shopper.service';
 import jwt from 'jsonwebtoken';
 
 export interface BotMessage {
@@ -185,12 +186,20 @@ export async function processBotMessage(msg: BotMessage): Promise<void> {
         // Treat text as caption for the pending image
         const pending = pendingImages.get(pendingKey)!;
         pendingImages.delete(pendingKey);
-        
+
         msg.type = 'image';
         msg.image = { caption: msg.text, buffer: pending.buffer, mime_type: pending.mime_type };
         await handleImageMessage(msg);
         return;
       }
+
+      // Customer shopping takes precedence: if they're mid-session or starting
+      // one ("SHOP <store>"), handle it as a shopper, not a merchant command.
+      if (isShopTrigger(msg.text) || hasSession(msg)) {
+        const handled = await handleShopperMessage(msg, msg.text);
+        if (handled) return;
+      }
+
       await handleTextCommand(msg, msg.text!);
     }
   } catch (error) {

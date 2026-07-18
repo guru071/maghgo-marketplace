@@ -83,5 +83,6 @@ export interface Product {
   original_image_url: string;
   processed_image_url: string;
   is_available: boolean;
+  fulfillment_type?: 'buy' | 'prebook';
   created_at: string;
 }
