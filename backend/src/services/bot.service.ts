@@ -32,6 +32,18 @@ export interface BotMessage {
     rows: { id: string; title: string; description?: string }[],
     header?: string
   ) => Promise<void>;
+  // A link surfaced as a tappable button ("🛍️ View store") rather than raw URL.
+  sendCtaUrl?: (body: string, buttonText: string, url: string) => Promise<void>;
+  // A visual product catalogue — a carousel on Meta, image cards on WhatsApp.
+  sendCards?: (cards: BotCard[], storeUrl?: string) => Promise<void>;
+}
+
+export interface BotCard {
+  title: string;
+  subtitle?: string;
+  imageUrl?: string;
+  actionId?: string;    // postback command when tapped
+  actionTitle?: string;
 }
 
 // Tappable buttons where supported, otherwise a bulleted text fallback so the
@@ -74,6 +86,12 @@ async function sendMainMenu(msg: BotMessage, storeName?: string): Promise<void> 
     ],
     'Maghgo Menu'
   );
+}
+
+// Surface a link as a CTA button where supported, else append the URL to text.
+async function replyCta(msg: BotMessage, body: string, buttonText: string, url: string): Promise<void> {
+  if (msg.sendCtaUrl) return msg.sendCtaUrl(body, buttonText, url);
+  await msg.sendReply(`${body}\n\n${buttonText}: ${url}`);
 }
 
 const GREETINGS = new Set(['HI', 'HELLO', 'HEY', 'MENU', 'START', 'MAGHGO', 'HII', 'HELLO!', 'HÍ']);
@@ -439,6 +457,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
 
   if (command === 'LIST') {
     const products = await getProducts(merchant.id);
+    const storeUrl = `${env.FRONTEND_URL}/${merchant.store_slug}`;
     if (products.length === 0) {
       await replyButtons(msg, '📭 Your store has no products yet.\n\nSend a product photo with a caption to add one!', [
         { id: 'HELP', title: '➕ How to add' },
@@ -446,12 +465,29 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
       ]);
       return;
     }
+
+    // Visual catalogue: image cards where the channel supports it, text otherwise.
+    if (msg.sendCards) {
+      const cards: BotCard[] = products.slice(0, 10).map((p) => ({
+        title: p.title,
+        subtitle: `₹${p.price.toLocaleString('en-IN')}`,
+        imageUrl: p.processed_image_url || p.original_image_url || undefined,
+        actionId: `DELETE ${p.title}`,
+        actionTitle: '🗑️ Remove',
+      }));
+      await msg.sendCards(cards, storeUrl);
+      if (products.length > 10) {
+        await sendReply(`…and ${products.length - 10} more. See all on your store: ${storeUrl}`);
+      }
+      await replyButtons(msg, `📦 You have *${products.length}* product(s).`, [
+        { id: 'HELP', title: '➕ Add another' },
+        { id: 'MENU', title: '📋 Menu' },
+      ]);
+      return;
+    }
+
     const productList = products.map((p, i) => `${i + 1}. *${p.title}* — ₹${p.price.toLocaleString('en-IN')}`).join('\n');
-    await replyButtons(msg, `📦 *Your Products (${products.length}):*\n\n${productList}`, [
-      { id: 'HELP', title: '➕ Add another' },
-      { id: 'STATUS', title: '📊 Status' },
-      { id: 'MENU', title: '📋 Menu' },
-    ]);
+    await replyCta(msg, `📦 *Your Products (${products.length}):*\n\n${productList}`, '🛍️ View store', storeUrl);
     return;
   }
 
@@ -578,15 +614,17 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   if (command === 'STATUS') {
     const count = await getProductCount(merchant.id);
     const storeUrl = `${env.FRONTEND_URL}/${merchant.store_slug}`;
-    await replyButtons(
+    await replyCta(
       msg,
-      `📊 *Store Status*\n\n🏪 *${merchant.store_name}*\n📦 Products: ${count}\n🔗 ${storeUrl}`,
-      [
-        { id: 'LIST', title: '📦 My products' },
-        { id: 'HELP', title: '➕ Add product' },
-        { id: 'MENU', title: '📋 Menu' },
-      ]
+      `📊 *Store Status*\n\n🏪 *${merchant.store_name}*\n📦 Products: ${count}\n${count === 0 ? '\nSend a product photo to add your first one!' : ''}`,
+      '🛍️ View my store',
+      storeUrl
     );
+    await replyButtons(msg, 'Anything else?', [
+      { id: 'LIST', title: '📦 My products' },
+      { id: 'HELP', title: '➕ Add product' },
+      { id: 'MENU', title: '📋 Menu' },
+    ]);
     return;
   }
 

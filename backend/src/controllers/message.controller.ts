@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
 import { WhatsAppWebhookPayload } from '../types/whatsapp';
 import { processBotMessage, BotMessage } from '../services/bot.service';
-import { getMediaUrl, downloadMedia, sendReply as sendWhatsappReply, sendButtons as sendWhatsappButtons, sendList as sendWhatsappList } from '../services/whatsapp.service';
-import { sendMetaReply, sendMetaQuickReplies, downloadMetaMedia } from '../services/meta.service';
+import { getMediaUrl, downloadMedia, sendReply as sendWhatsappReply, sendButtons as sendWhatsappButtons, sendList as sendWhatsappList, sendCtaUrl as sendWhatsappCta, sendImage as sendWhatsappImage } from '../services/whatsapp.service';
+import { sendMetaReply, sendMetaQuickReplies, sendMetaCards, downloadMetaMedia } from '../services/meta.service';
 
 export function handleIncomingMessage(req: Request, res: Response): void {
   console.log('📬 Webhook received:', JSON.stringify(req.body, null, 2));
@@ -48,6 +48,16 @@ function handleWhatsapp(body: WhatsAppWebhookPayload) {
               },
               sendMenu: async (body, buttonLabel, rows, header) => {
                 await sendWhatsappList(message.from, body, buttonLabel, rows, header);
+              },
+              sendCtaUrl: async (body, buttonText, url) => {
+                await sendWhatsappCta(message.from, body, buttonText, url);
+              },
+              // WhatsApp has no carousel: render each card as an image + caption.
+              sendCards: async (cards) => {
+                for (const c of cards) {
+                  if (c.imageUrl) await sendWhatsappImage(message.from, c.imageUrl, `*${c.title}*${c.subtitle ? `\n${c.subtitle}` : ''}`);
+                  else await sendWhatsappReply(message.from, message.id, `*${c.title}*${c.subtitle ? `\n${c.subtitle}` : ''}`);
+                }
               },
             };
 
@@ -103,6 +113,18 @@ function handleInstagram(body: any) {
             sendMenu: async (body, _label, rows) => {
               await sendMetaQuickReplies(senderId, body, rows.map((r) => ({ id: r.id, title: r.title })));
             },
+            sendCtaUrl: async (body, buttonText, url) => {
+              await sendMetaCards(senderId, [{ title: buttonText, subtitle: body.slice(0, 80), buttons: [{ type: 'web_url', title: buttonText, url }] }]);
+            },
+            sendCards: async (cards, storeUrl) => {
+              await sendMetaCards(senderId, cards.map((c) => ({
+                title: c.title, subtitle: c.subtitle, image_url: c.imageUrl,
+                buttons: [
+                  ...(storeUrl ? [{ type: 'web_url' as const, title: '🛍️ View store', url: storeUrl }] : []),
+                  ...(c.actionId ? [{ type: 'postback' as const, title: c.actionTitle || 'Select', payload: c.actionId }] : []),
+                ],
+              })));
+            },
           };
 
           if (isImage) {
@@ -155,6 +177,18 @@ function handleMessenger(body: any) {
             },
             sendMenu: async (body, _label, rows) => {
               await sendMetaQuickReplies(senderId, body, rows.map((r) => ({ id: r.id, title: r.title })));
+            },
+            sendCtaUrl: async (body, buttonText, url) => {
+              await sendMetaCards(senderId, [{ title: buttonText, subtitle: body.slice(0, 80), buttons: [{ type: 'web_url', title: buttonText, url }] }]);
+            },
+            sendCards: async (cards, storeUrl) => {
+              await sendMetaCards(senderId, cards.map((c) => ({
+                title: c.title, subtitle: c.subtitle, image_url: c.imageUrl,
+                buttons: [
+                  ...(storeUrl ? [{ type: 'web_url' as const, title: '🛍️ View store', url: storeUrl }] : []),
+                  ...(c.actionId ? [{ type: 'postback' as const, title: c.actionTitle || 'Select', payload: c.actionId }] : []),
+                ],
+              })));
             },
           };
 

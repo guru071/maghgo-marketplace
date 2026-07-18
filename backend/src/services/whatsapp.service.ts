@@ -118,6 +118,61 @@ export async function sendButtons(to: string, body: string, buttons: ReplyButton
   });
 }
 
+/**
+ * A single "call to action" URL button under a message — e.g. "🛍️ View store".
+ * The modern way to surface a link instead of pasting a raw URL in text.
+ */
+export async function sendCtaUrl(to: string, body: string, buttonText: string, url: string): Promise<void> {
+  await postMessage({
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive: {
+      type: 'cta_url',
+      body: { text: body.slice(0, 1024) },
+      action: { name: 'cta_url', parameters: { display_text: buttonText.slice(0, 20), url } },
+    },
+  });
+}
+
+/** A plain image with a caption — used to render product cards. */
+export async function sendImage(to: string, imageUrl: string, caption?: string): Promise<void> {
+  await postMessage({
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: 'image',
+    image: { link: imageUrl, ...(caption ? { caption: caption.slice(0, 1024) } : {}) },
+  });
+}
+
+/**
+ * An interactive message with an image header plus up to 3 reply buttons —
+ * a real product card: photo on top, details in the body, actions below.
+ */
+export async function sendImageButtons(
+  to: string,
+  imageUrl: string,
+  body: string,
+  buttons: ReplyButton[]
+): Promise<void> {
+  await postMessage({
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      header: { type: 'image', image: { link: imageUrl } },
+      body: { text: body.slice(0, 1024) },
+      action: {
+        buttons: buttons.slice(0, 3).map((b) => ({ type: 'reply', reply: { id: b.id, title: b.title.slice(0, 20) } })),
+      },
+    },
+  });
+}
+
 export interface ListRow {
   id: string;
   title: string;        // <= 24 chars
