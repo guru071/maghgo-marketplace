@@ -11,6 +11,7 @@ export interface Merchant {
   // The database column is subscription_ends_at; there is no trial_ends_at.
   // The old `trial_ends_at` field was a type-only fiction masked by select('*').
   subscription_ends_at: string;
+  store_address?: string;
   created_at: string;
   theme_id?: string;
   instagram_handle?: string;

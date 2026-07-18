@@ -106,11 +106,21 @@ export default async function StorePage({ params }: StorePageProps) {
   // NEVER select('*') here: this row is passed into a client component and is
   // therefore serialised into the HTML sent to every anonymous visitor. Using
   // '*' shipped the merchant's bcrypt password_hash to the public internet.
-  const { data: merchant, error: merchantError } = await supabase
+  const BASE_COLS = 'id, phone_number, store_name, store_slug, store_description, store_logo_url, is_active, subscription_plan, subscription_ends_at, created_at, theme_config, instagram_handle, facebook_url, x_handle';
+  // Include store_address, but fall back if migration 15 hasn't run.
+  let { data: merchant, error: merchantError } = await supabase
     .from('merchants')
-    .select('id, phone_number, store_name, store_slug, store_description, store_logo_url, is_active, subscription_plan, subscription_ends_at, created_at, theme_config, instagram_handle, facebook_url, x_handle')
+    .select(`${BASE_COLS}, store_address`)
     .eq('store_slug', store_slug)
     .single();
+
+  if (merchantError && /store_address|schema cache|42703/i.test(merchantError.message || '')) {
+    ({ data: merchant, error: merchantError } = await supabase
+      .from('merchants')
+      .select(BASE_COLS)
+      .eq('store_slug', store_slug)
+      .single());
+  }
 
   if (merchantError || !merchant || !merchant.is_active) {
     notFound();

@@ -6,7 +6,6 @@ import { ThemesShowcase } from '@/components/landing/ThemesShowcase';
 import { Pricing } from '@/components/landing/Pricing';
 
 import { createServerSupabaseClient } from '@/lib/supabase-server';
-import { isPublicPlan } from '@/lib/plans';
 
 export const revalidate = 60; // Ensure fresh settings are fetched
 
@@ -38,10 +37,10 @@ export default async function LandingPage() {
     sms_enabled: true,
   };
 
-  // Only sell the tiers that differ by something a merchant can feel.
-  // Deprecated tiers stay in the table so merchants already on them keep their
-  // limits — they just aren't offered any more. See lib/plans.ts.
-  const publicPlans = (plans ?? []).filter((p: any) => isPublicPlan(p.slug));
+  // Show every plan in the catalogue, cheapest first.
+  const publicPlans = (plans ?? []).slice().sort(
+    (a: any, b: any) => (a.monthly_price ?? 0) - (b.monthly_price ?? 0)
+  );
 
   return (
     <main className="landing-page">

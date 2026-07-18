@@ -30,11 +30,21 @@ router.use(requireAuth);
 // Get Store Details
 router.get('/store', async (req: AuthRequest, res) => {
   try {
-    const { data, error } = await supabase
+    // Try to include store_address; if migration 15 hasn't run yet the column
+    // is missing, so fall back to the base columns rather than 500.
+    let { data, error } = await supabase
       .from('merchants')
-      .select(MERCHANT_PUBLIC_COLUMNS)
+      .select(`${MERCHANT_PUBLIC_COLUMNS}, store_address`)
       .eq('id', req.merchantId)
       .single();
+
+    if (error && /store_address|schema cache|42703/i.test(error.message || '')) {
+      ({ data, error } = await supabase
+        .from('merchants')
+        .select(MERCHANT_PUBLIC_COLUMNS)
+        .eq('id', req.merchantId)
+        .single());
+    }
 
     if (error) throw error;
     res.json(data);
@@ -257,6 +267,32 @@ router.get('/themes', async (req: AuthRequest, res) => {
     }));
 
     res.json({ plan, themes });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Save the store's address (shown as a "Visit us" block on the storefront).
+router.put('/address', async (req: AuthRequest, res) => {
+  try {
+    const address = (req.body?.store_address ?? '').toString().trim().slice(0, 300) || null;
+
+    const { error } = await supabase
+      .from('merchants')
+      .update({ store_address: address })
+      .eq('id', req.merchantId);
+
+    if (error) {
+      if (/store_address|schema cache|42703/i.test(error.message || '')) {
+        return res.status(400).json({ error: 'Store address needs one setup step (migration 15) before it can be saved.' });
+      }
+      throw error;
+    }
+
+    const { data: m } = await supabase.from('merchants').select('store_slug').eq('id', req.merchantId).single();
+    if (m) await triggerRevalidation(m.store_slug);
+
+    res.json({ success: true, store_address: address });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -66,7 +66,7 @@ const ARCHETYPES = {
     divider(p, '12px auto 32px', '60px'),
     grid(p, 3),
     spacer('48px'),
-    testimonials(p),
+    features(p),
   ],
   Editorial: (p) => [
     header(p, { big: false }),
@@ -86,7 +86,7 @@ const ARCHETYPES = {
     heading(p, 'The Collection', '36px', 'center'),
     grid(p, 2),
     spacer('56px'),
-    testimonials(p),
+    features(p),
   ],
   Grand: (p) => [
     header(p, { big: true, image: true }),
@@ -97,8 +97,6 @@ const ARCHETYPES = {
     grid(p, 3),
     divider(p, '56px 0'),
     features(p),
-    spacer('32px'),
-    testimonials(p),
   ],
   GridFocus: (p) => [
     header(p, { big: false }),

@@ -11,6 +11,7 @@ export default function DashboardSettings() {
   // Form State
   const [storeName, setStoreName] = useState('');
   const [storeDescription, setStoreDescription] = useState('');
+  const [storeAddress, setStoreAddress] = useState('');
   const [isActive, setIsActive] = useState(true);
 
   const fetchStore = async () => {
@@ -25,6 +26,7 @@ export default function DashboardSettings() {
         setMerchant(data);
         setStoreName(data.store_name || '');
         setStoreDescription(data.store_description || '');
+        setStoreAddress(data.store_address || '');
         setIsActive(data.is_active);
       }
     } catch (err) {
@@ -45,6 +47,13 @@ export default function DashboardSettings() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
     try {
+      // Address saves through its own endpoint (graceful if migration 15 not run).
+      fetch(`${apiUrl}/api/dashboard/address`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('maghgo_merchant_token')}` },
+        body: JSON.stringify({ store_address: storeAddress }),
+      }).catch(() => {});
+
       const res = await fetch(`${apiUrl}/api/dashboard/store`, {
         method: 'PUT',
         headers: { 
@@ -106,6 +115,17 @@ export default function DashboardSettings() {
               placeholder="E.g. We sell the best quality shoes in Mumbai. Free shipping on all orders!"
             />
             <p className="text-xs text-gray-500 mt-2">A short bio to tell customers about your business.</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-900 mb-2">Store Address <span className="font-normal text-gray-400">(optional)</span></label>
+            <textarea
+              value={storeAddress}
+              onChange={e => setStoreAddress(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-accent focus:border-accent h-24"
+              placeholder="E.g. 12 MG Road, Villupuram, Tamil Nadu 605602"
+            />
+            <p className="text-xs text-gray-500 mt-2">Shown on your storefront with a &ldquo;Get directions&rdquo; button. Leave blank to hide.</p>
           </div>
 
           <div className="pt-4 border-t border-gray-100">

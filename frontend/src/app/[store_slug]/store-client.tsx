@@ -8,6 +8,7 @@ import CartDrawer from '@/components/store/CartDrawer';
 import FloatingCartButton from '@/components/store/FloatingCartButton';
 import { useCartStore } from '@/stores/cart';
 import EmptyStore from '@/components/store/EmptyStore';
+import StoreContact from '@/components/store/StoreContact';
 
 interface StoreClientProps {
   merchant: Merchant;
@@ -112,6 +113,8 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
         </>
       )}
       
+      <StoreContact merchant={merchant} />
+
       {/* Gated through the shared helper: this list was previously hardcoded here
           and omitted `business`, so Business merchants paid for white-label and
           still shipped our footer. */}
