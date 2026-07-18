@@ -8,6 +8,8 @@ export default function RegisterPage() {
   const [storeName, setStoreName] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [storeAddress, setStoreAddress] = useState('');
+  const [instagram, setInstagram] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -28,7 +30,13 @@ export default function RegisterPage() {
       const res = await fetch(`${apiUrl}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone_number: phone, store_name: storeName, password })
+        body: JSON.stringify({
+          phone_number: phone,
+          store_name: storeName,
+          password,
+          store_address: storeAddress || undefined,
+          instagram_handle: instagram || undefined,
+        })
       });
       
       const data = await res.json();
@@ -120,15 +128,40 @@ export default function RegisterPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Create Password</label>
-              <input 
-                type="password" 
-                value={password} 
+              <input
+                type="password"
+                value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
                 className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-accent focus:border-accent"
                 required
                 minLength={6}
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Shop Address <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <textarea
+                value={storeAddress}
+                onChange={e => setStoreAddress(e.target.value)}
+                placeholder="12 MG Road, Villupuram, Tamil Nadu 605602"
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-accent focus:border-accent h-20"
+              />
+              <p className="text-xs text-gray-400 mt-1">Shown on your store with a &ldquo;Get directions&rdquo; button. You can add or change it later.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Instagram <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={instagram}
+                onChange={e => setInstagram(e.target.value)}
+                placeholder="@yourshop"
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-accent focus:border-accent"
+              />
+              <p className="text-xs text-gray-400 mt-1">Adds an Instagram button to your store&apos;s contact section.</p>
             </div>
             <button 
               type="submit" 

@@ -20,7 +20,7 @@ router.use(authLimiter);
 // Register a new merchant directly via website
 router.post('/register', async (req, res) => {
   try {
-    const { phone_number, store_name, password } = req.body;
+    const { phone_number, store_name, password, store_address, instagram_handle } = req.body;
 
     if (!phone_number || !store_name || !password) {
       return res.status(400).json({ error: 'Phone number, store name, and password are required' });
@@ -66,19 +66,39 @@ router.post('/register', async (req, res) => {
     const subEndsAt = new Date();
     subEndsAt.setDate(subEndsAt.getDate() + 30);
 
-    const { data: newMerchant, error } = await supabase
+    const igHandle = typeof instagram_handle === 'string' && instagram_handle.trim()
+      ? instagram_handle.trim().replace(/^@/, '').slice(0, 60)
+      : null;
+    const address = typeof store_address === 'string' && store_address.trim()
+      ? store_address.trim().slice(0, 300)
+      : null;
+
+    const baseInsert: any = {
+      phone_number: normalizedPhone,
+      store_name,
+      store_slug: final_slug,
+      password_hash,
+      subscription_plan: 'starter',
+      is_active: true,
+      subscription_ends_at: subEndsAt.toISOString(),
+      instagram_handle: igHandle,
+    };
+
+    // store_address may not exist yet (migration 15). Try with it; if the column
+    // is missing, retry without so registration never fails over an optional field.
+    let { data: newMerchant, error } = await supabase
       .from('merchants')
-      .insert({
-        phone_number: normalizedPhone,
-        store_name,
-        store_slug: final_slug,
-        password_hash,
-        subscription_plan: 'starter',
-        is_active: true,
-        subscription_ends_at: subEndsAt.toISOString()
-      })
+      .insert({ ...baseInsert, store_address: address })
       .select()
       .single();
+
+    if (error && /store_address|schema cache|42703/i.test(error.message || '')) {
+      ({ data: newMerchant, error } = await supabase
+        .from('merchants')
+        .insert(baseInsert)
+        .select()
+        .single());
+    }
 
     if (error) throw error;
 
