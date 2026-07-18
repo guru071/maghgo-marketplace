@@ -8,6 +8,7 @@ interface OrderLineItem {
   price: number;
   quantity: number;
   subtotal: number;
+  image_url?: string | null;
 }
 
 interface Order {
@@ -140,13 +141,20 @@ export default function OrdersPage() {
                   <div className="text-2xl font-black text-gray-900 shrink-0">{inr(o.total)}</div>
                 </div>
 
-                <div className="border-t border-gray-100 pt-3 space-y-1 mb-4">
+                <div className="border-t border-gray-100 pt-3 space-y-2 mb-4">
                   {(o.items ?? []).map((li) => (
-                    <div key={li.product_id} className="flex justify-between text-sm">
-                      <span className="text-gray-700 truncate pr-3">
-                        {li.quantity} × {li.title}
-                      </span>
-                      <span className="text-gray-500 shrink-0">{inr(li.subtotal)}</span>
+                    <div key={li.product_id} className="flex items-center gap-3 text-sm">
+                      {li.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={li.image_url} alt={li.title} className="w-12 h-12 rounded-lg object-cover border border-gray-200 bg-gray-50 shrink-0" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-300 shrink-0">📦</div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-gray-800 font-medium truncate">{li.title}</div>
+                        <div className="text-xs text-gray-400">{inr(li.price)} × {li.quantity}</div>
+                      </div>
+                      <span className="text-gray-700 font-semibold shrink-0">{inr(li.subtotal)}</span>
                     </div>
                   ))}
                 </div>

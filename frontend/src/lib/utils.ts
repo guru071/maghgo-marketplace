@@ -46,11 +46,15 @@ export function generateCheckoutMessage(
 
   const currency = items[0]?.currency || 'INR';
 
+  // Include each product's image URL so the shop owner can actually see what
+  // was ordered — WhatsApp shows a preview for the first link, and the rest are
+  // tappable. (A wa.me click-to-chat link can only carry text, not attachments.)
   const itemLines = items
-    .map((item) => {
+    .map((item, i) => {
       const lineTotal = item.price * item.quantity;
       const tag = item.fulfillment_type === 'prebook' ? ' (Pre-book — collect at shop)' : '';
-      return `${item.quantity}x ${item.title}${tag} — ${formatPrice(lineTotal, currency)}`;
+      const line = `${i + 1}. ${item.title} × ${item.quantity}${tag} — ${formatPrice(lineTotal, currency)}`;
+      return item.image_url ? `${line}\n   📷 ${item.image_url}` : line;
     })
     .join('\n');
 

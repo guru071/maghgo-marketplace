@@ -22,6 +22,7 @@ export interface OrderLineItem {
   price: number;
   quantity: number;
   subtotal: number;
+  image_url?: string | null;
 }
 
 export interface Order {
@@ -88,7 +89,7 @@ export async function createOrder(
   // store cannot be smuggled into the cart.
   const { data: products, error: productsError } = await supabase
     .from('products')
-    .select('id, title, price, currency')
+    .select('id, title, price, currency, processed_image_url, original_image_url')
     .eq('merchant_id', merchant.id)
     .eq('is_available', true)
     .in('id', [...wanted.keys()]);
@@ -99,7 +100,16 @@ export async function createOrder(
   const lineItems: OrderLineItem[] = products.map((p) => {
     const quantity = wanted.get(p.id)!;
     const price = Number(p.price);
-    return { product_id: p.id, title: p.title, price, quantity, subtotal: price * quantity };
+    // Snapshot the image with the order so the owner sees the product later even
+    // if it's edited or removed from the catalogue.
+    return {
+      product_id: p.id,
+      title: p.title,
+      price,
+      quantity,
+      subtotal: price * quantity,
+      image_url: p.processed_image_url || p.original_image_url || null,
+    };
   });
 
   const total = lineItems.reduce((sum, li) => sum + li.subtotal, 0);
