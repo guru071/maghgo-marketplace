@@ -122,12 +122,15 @@ export default async function StorePage({ params }: StorePageProps) {
       .single());
   }
 
-  if (merchantError || !merchant || !merchant.is_active) {
+  // Only a genuinely unknown slug is a 404. A paused store must render the
+  // "unavailable" screen instead: notFound() here would be ISR-cached, so a
+  // pause → resume cycle could leave the link serving a stale 404.
+  if (merchantError || !merchant) {
     notFound();
   }
 
   const trialEnds = new Date(merchant.subscription_ends_at);
-  if (trialEnds < new Date()) {
+  if (trialEnds < new Date() || !merchant.is_active) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">

@@ -72,3 +72,50 @@ export function canUseChannel(plan: string, channel: Channel): boolean {
 export function minPlanForChannel(channel: Channel): PlanTier {
   return CHANNEL_MIN_PLAN[channel];
 }
+
+/**
+ * The feature → minimum-plan matrix. THE single source of truth for what each
+ * subscription unlocks beyond product limits and channels.
+ *
+ * Everything here is enforced SERVER-SIDE (dashboard routes + bot commands),
+ * not just hidden in the UI — before this, coupons/domain/Meta-import worked on
+ * any plan if you called the API directly, so the paid tiers sold restrictions
+ * that didn't exist.
+ *
+ * Free on every plan (the core selling loop is never paywalled): products,
+ * orders + customer notifications, online payments via the shop's own Razorpay,
+ * stock, product details/options, store QR, address.
+ */
+export type GatedFeature = 'coupons' | 'premium_themes' | 'custom_domain' | 'meta_import';
+
+export const FEATURE_MIN_PLAN: Record<GatedFeature, PlanTier> = {
+  coupons: 'starter',        // discount codes
+  premium_themes: 'starter', // rich full-layout themes (per-theme plan_required still applies)
+  custom_domain: 'pro',
+  meta_import: 'pro',        // Facebook/Instagram catalogue import
+};
+
+const FEATURE_LABEL: Record<GatedFeature, string> = {
+  coupons: 'Discount coupons',
+  premium_themes: 'Premium themes',
+  custom_domain: 'Custom domain',
+  meta_import: 'Meta catalogue import',
+};
+
+export function canUseFeature(plan: string, feature: GatedFeature): boolean {
+  return hasAccess(FEATURE_MIN_PLAN[feature], plan);
+}
+
+export function minPlanForFeature(feature: GatedFeature): PlanTier {
+  return FEATURE_MIN_PLAN[feature];
+}
+
+export function featureLabel(feature: GatedFeature): string {
+  return FEATURE_LABEL[feature];
+}
+
+/** Uniform upsell copy for a locked feature (used by routes and the bot). */
+export function featureLockedMessage(feature: GatedFeature, plan: string): string {
+  const needed = FEATURE_MIN_PLAN[feature].toUpperCase();
+  return `${FEATURE_LABEL[feature]} needs the ${needed} plan (you're on ${(plan || 'basic').toUpperCase()}). Reply UPGRADE ${needed} to unlock it.`;
+}

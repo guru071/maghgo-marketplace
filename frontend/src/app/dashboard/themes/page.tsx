@@ -108,7 +108,9 @@ export default function ThemesPage() {
       const res = await fetch(`${apiUrl}/api/dashboard/theme`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ theme_config: withCover(toPuck(t.config), cover) }),
+        // theme_id lets the server verify this theme's plan requirement —
+        // the disabled button above is UI, not enforcement.
+        body: JSON.stringify({ theme_config: withCover(toPuck(t.config), cover), theme_id: t.id }),
       });
       if (!res.ok) throw new Error((await res.json()).error || 'Failed');
       alert(`"${t.name}" applied. Your storefront is updated.`);

@@ -10,7 +10,7 @@ import { triggerRevalidation } from './revalidate.service';
 import { createPaymentLink, getAmountFromPlan, getPlanFromAmount, getAllPlans } from './payment.service';
 import { env } from '../config/env';
 import { buildStoreSlug } from '../utils/slug';
-import { canUseChannel, minPlanForChannel, channelLabel, hasAccess } from '../utils/plans';
+import { canUseChannel, minPlanForChannel, channelLabel, hasAccess, canUseFeature, featureLockedMessage } from '../utils/plans';
 import { isShopTrigger, hasSession, handleShopperMessage } from './shopper.service';
 import jwt from 'jsonwebtoken';
 
@@ -738,11 +738,12 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     return;
   }
 
-  // Apply a theme by id (from the THEMES menu).
+  // Apply a theme by id (from the THEMES menu). Plan-enforced: premium themes
+  // throw a friendly upgrade message for plans that don't include them.
   if (command.startsWith('THEME ')) {
     const themeId = text.trim().substring(6).trim();
     try {
-      const name = await applyThemeById(merchant.id, themeId);
+      const name = await applyThemeById(merchant.id, themeId, merchant.subscription_plan);
       if (!name) {
         await sendReply('❌ That theme could not be found. Reply *THEMES* to see the list.');
         return;
@@ -823,6 +824,13 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   }
 
   if (command.startsWith('COUPON CREATE ')) {
+    if (!canUseFeature(merchant.subscription_plan, 'coupons')) {
+      await replyButtons(msg, `🔒 ${featureLockedMessage('coupons', merchant.subscription_plan)}`, [
+        { id: 'UPGRADE', title: '🚀 See plans' },
+        { id: 'MENU', title: '📋 Menu' },
+      ]);
+      return;
+    }
     const m = text.trim().match(/^COUPON\s+CREATE\s+(\S+)\s+(?:(\d+)\s*%|(?:₹|RS\.?\s*)(\d[\d,]*))(?:\s+MIN\s+(\d[\d,]*))?\s*$/i);
     if (!m) {
       await sendReply('⚠️ Format:\n• COUPON CREATE DIWALI20 20%\n• COUPON CREATE FLAT100 ₹100\n• COUPON CREATE BIG10 10% MIN 999');
@@ -898,6 +906,13 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
 
   // ── Meta catalogue import ──────────────────────────────────────────────────
   if (command === 'IMPORT META' || command === 'IMPORT') {
+    if (!canUseFeature(merchant.subscription_plan, 'meta_import')) {
+      await replyButtons(msg, `🔒 ${featureLockedMessage('meta_import', merchant.subscription_plan)}`, [
+        { id: 'UPGRADE', title: '🚀 See plans' },
+        { id: 'MENU', title: '📋 Menu' },
+      ]);
+      return;
+    }
     await sendReply('📷 Importing your Meta Shop catalogue — one moment…');
     try {
       const r = await importMetaCatalog(merchant.id);

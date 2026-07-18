@@ -30,7 +30,7 @@ function sanitizeVariants(raw: any): { name: string; values: string[] }[] | unde
     .filter((v: { values: string[] }) => v.values.length > 0);
 }
 import { triggerRevalidation } from '../services/revalidate.service';
-import { hasAccess } from '../utils/plans';
+import { hasAccess, canUseFeature, minPlanForFeature, featureLockedMessage, GatedFeature } from '../utils/plans';
 import multer from 'multer';
 import { removeBackground } from '../services/media.service';
 import { uploadImage, deleteImagesByUrl } from '../services/storage.service';
@@ -50,6 +50,31 @@ const MERCHANT_PUBLIC_COLUMNS = [
 
 // Apply auth middleware to all routes
 router.use(requireAuth);
+
+/** The caller's current plan (for feature gating). */
+async function merchantPlan(merchantId: string): Promise<string> {
+  const { data } = await supabase
+    .from('merchants')
+    .select('subscription_plan')
+    .eq('id', merchantId)
+    .single();
+  return data?.subscription_plan ?? 'basic';
+}
+
+/**
+ * 403 with a consistent upsell payload when the caller's plan doesn't include
+ * `feature`. Server-side enforcement — the UI hiding a button is not a gate.
+ */
+async function requireFeature(req: AuthRequest, res: any, feature: GatedFeature): Promise<boolean> {
+  const plan = await merchantPlan(req.merchantId!);
+  if (canUseFeature(plan, feature)) return true;
+  res.status(403).json({
+    error: featureLockedMessage(feature, plan),
+    needed_plan: minPlanForFeature(feature),
+    current_plan: plan,
+  });
+  return false;
+}
 
 // Get Store Details
 router.get('/store', async (req: AuthRequest, res) => {
@@ -152,6 +177,7 @@ router.put('/payment-keys', async (req: AuthRequest, res) => {
 // is validated against Meta and stored encrypted; it is never returned.
 router.post('/meta-catalog/connect', async (req: AuthRequest, res) => {
   try {
+    if (!(await requireFeature(req, res, 'meta_import'))) return;
     const { catalog_id, access_token } = req.body ?? {};
     await connectMetaCatalog(req.merchantId!, String(catalog_id ?? ''), String(access_token ?? ''));
     res.json({ success: true, meta_catalog_id: String(catalog_id).trim() });
@@ -163,6 +189,7 @@ router.post('/meta-catalog/connect', async (req: AuthRequest, res) => {
 // Import products from the connected catalogue into Maghgo.
 router.post('/meta-catalog/import', async (req: AuthRequest, res) => {
   try {
+    if (!(await requireFeature(req, res, 'meta_import'))) return;
     const result = await importMetaCatalog(req.merchantId!);
     res.json(result);
   } catch (err: any) {
@@ -380,14 +407,31 @@ router.delete('/products/:id', async (req: AuthRequest, res) => {
 // another merchant's storefront (prevents the previous unauthenticated IDOR).
 router.put('/theme', async (req: AuthRequest, res) => {
   try {
-    const { theme_config } = req.body;
+    const { theme_config, theme_id } = req.body;
     if (theme_config === undefined) {
       return res.status(400).json({ error: 'theme_config is required' });
     }
 
+    // Applying a catalogue theme: enforce its plan requirement server-side.
+    // The themes page sends theme_id with the config; hiding the button in the
+    // UI is not a gate.
+    if (theme_id) {
+      const [{ data: theme }, plan] = await Promise.all([
+        supabase.from('themes').select('plan_required').eq('id', theme_id).maybeSingle(),
+        merchantPlan(req.merchantId!),
+      ]);
+      if (theme?.plan_required && !hasAccess(theme.plan_required, plan)) {
+        return res.status(403).json({
+          error: `This theme needs the ${theme.plan_required.toUpperCase()} plan (you're on ${plan.toUpperCase()}).`,
+          needed_plan: theme.plan_required,
+          current_plan: plan,
+        });
+      }
+    }
+
     const { data: merchant, error } = await supabase
       .from('merchants')
-      .update({ theme_config })
+      .update(theme_id ? { theme_config, theme_id } : { theme_config })
       .eq('id', req.merchantId)
       .select('store_slug')
       .single();
@@ -493,6 +537,9 @@ router.put('/address', async (req: AuthRequest, res) => {
 router.put('/domain', async (req: AuthRequest, res) => {
   try {
     const raw = (req.body?.custom_domain ?? '').toString().trim();
+    // Clearing is always allowed (a downgraded merchant must be able to detach);
+    // claiming a domain is the Pro feature.
+    if (raw && !(await requireFeature(req, res, 'custom_domain'))) return;
 
     // Empty clears it. Otherwise normalise: strip scheme, path, and any
     // trailing dot, and lowercase — merchants paste "https://Shop.com/" a lot.
@@ -605,9 +652,12 @@ router.get('/coupons', async (req: AuthRequest, res) => {
   }
 });
 
-// Create a discount code.
+// Create a discount code. Creation is the gated act — listing and deleting stay
+// open so a downgraded merchant can still see and clean up existing codes
+// (which keep redeeming; yanking them mid-campaign would punish customers).
 router.post('/coupons', async (req: AuthRequest, res) => {
   try {
+    if (!(await requireFeature(req, res, 'coupons'))) return;
     const { code, discount_type, discount_value, max_uses, min_order, expires_at } = req.body ?? {};
     const coupon = await createCoupon(req.merchantId!, {
       code,

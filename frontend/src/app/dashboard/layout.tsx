@@ -193,15 +193,17 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
           <Link href="/dashboard/settings" className={`block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${pathname === '/dashboard/settings' ? 'bg-accent text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}>
             ⚙️ Settings
           </Link>
-          <Link href="/dashboard/coupons" className={`block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${pathname === '/dashboard/coupons' ? 'bg-accent text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}>
-            🏷️ Coupons
-          </Link>
+          <button onClick={(e) => handleFeatureClick(e, 'Discount Coupons', 'starter', 149, '/dashboard/coupons')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
+            <span>🏷️ Coupons</span>
+            {!hasAccess('starter', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
+          </button>
           <Link href="/dashboard/qr" className={`block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${pathname === '/dashboard/qr' ? 'bg-accent text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}>
             🔳 Store QR
           </Link>
-          <Link href="/dashboard/meta" className={`block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${pathname === '/dashboard/meta' ? 'bg-accent text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}>
-            📷 Meta Catalog
-          </Link>
+          <button onClick={(e) => handleFeatureClick(e, 'Meta Catalog Import', 'pro', 249, '/dashboard/meta')} className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex justify-between items-center group">
+            <span>📷 Meta Catalog</span>
+            {!hasAccess('pro', merchantPlan) && <span className="text-gray-300 group-hover:text-gray-500">🔒</span>}
+          </button>
           <Link href="/dashboard/billing" className={`block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${pathname === '/dashboard/billing' ? 'bg-accent text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}>
             💳 Billing
           </Link>

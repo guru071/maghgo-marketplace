@@ -1,6 +1,7 @@
 import { supabase } from '../db/supabase';
 import { Merchant } from '../types/whatsapp';
 import { normalizePhone } from '../utils/phone';
+import { hasAccess } from '../utils/plans';
 
 export type Channel = 'whatsapp' | 'instagram' | 'messenger' | 'sms';
 
@@ -306,15 +307,23 @@ export async function listThemes(limit = 10): Promise<ThemeSummary[]> {
 /**
  * Apply a theme to a merchant's store by copying the theme's config onto the
  * merchant. Returns the theme name on success, or null if not found.
+ * Enforces the theme's plan requirement when `currentPlan` is given — the bot
+ * must not hand out premium themes the plan doesn't include.
  */
-export async function applyThemeById(merchantId: string, themeId: string): Promise<string | null> {
+export async function applyThemeById(merchantId: string, themeId: string, currentPlan?: string): Promise<string | null> {
   const { data: theme, error } = await supabase
     .from('themes')
-    .select('name, config')
+    .select('name, config, plan_required')
     .eq('id', themeId)
     .eq('is_active', true)
     .single();
   if (error || !theme) return null;
+
+  if (currentPlan && theme.plan_required && !hasAccess(theme.plan_required, currentPlan)) {
+    throw new Error(
+      `"${theme.name}" needs the ${String(theme.plan_required).toUpperCase()} plan. Reply UPGRADE ${String(theme.plan_required).toUpperCase()} to unlock it.`
+    );
+  }
 
   const { error: upErr } = await supabase
     .from('merchants')
