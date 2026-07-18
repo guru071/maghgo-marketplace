@@ -7,33 +7,68 @@ import { formatPrice } from '@/lib/utils';
 
 interface ProductCardProps {
   product: Product;
-  onAddToCart: (product: Product) => void;
+  onAddToCart: (product: Product, opts?: { variant?: string }) => void;
 }
 
 export default function ProductCard({ product, onAddToCart }: ProductCardProps) {
   const [isAdded, setIsAdded] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [chosen, setChosen] = useState<Record<string, string>>({});
 
   const specs = Array.isArray(product.specifications) ? product.specifications.filter((s) => s?.label && s?.value) : [];
-  const hasDetails = specs.length > 0 || Boolean(product.description);
+  const variants = Array.isArray(product.variants) ? product.variants.filter((v) => v?.name && v.values?.length) : [];
+  const hasVariants = variants.length > 0;
+  const hasDetails = specs.length > 0 || Boolean(product.description) || hasVariants;
 
   const imageUrl = product.processed_image_url || product.original_image_url;
   const showImage = imageUrl && !imgError;
-
-  const handleAdd = useCallback(() => {
-    onAddToCart(product);
-    setIsAdded(true);
-    setTimeout(() => setIsAdded(false), 800);
-  }, [onAddToCart, product]);
 
   const isPrebook = product.fulfillment_type === 'prebook';
   const outOfStock = product.stock != null && product.stock <= 0;
   const lowStock = product.stock != null && product.stock > 0 && product.stock <= 5;
 
+  const allChosen = variants.every((v) => chosen[v.name]);
+  const variantString = variants.map((v) => `${v.name}: ${chosen[v.name]}`).join(' · ');
+
+  const flashAdded = () => {
+    setIsAdded(true);
+    setTimeout(() => setIsAdded(false), 800);
+  };
+
+  // Add directly when there's nothing to choose; otherwise open the detail sheet
+  // so the buyer picks their options (size/colour) first.
+  const handleCardAdd = useCallback(() => {
+    if (outOfStock) return;
+    if (hasVariants) { setShowDetails(true); return; }
+    onAddToCart(product);
+    flashAdded();
+  }, [outOfStock, hasVariants, onAddToCart, product]);
+
+  const handleModalAdd = () => {
+    if (outOfStock) return;
+    if (hasVariants && !allChosen) return;
+    onAddToCart(product, hasVariants ? { variant: variantString } : undefined);
+    setShowDetails(false);
+    flashAdded();
+  };
+
+  const openDetails = () => setShowDetails(true);
+
+  const cleanTitle = product.title.replace(/#[\w]+/g, '').trim();
+
   return (
     <article className="product-card" style={outOfStock ? { opacity: 0.75 } : undefined}>
-      <div className="product-card__image-wrapper">
+      {/* Clicking the image opens details — it never adds to the cart. */}
+      <div
+        className="product-card__image-wrapper"
+        onClick={openDetails}
+        style={{ cursor: 'pointer' }}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetails(); } }}
+        aria-label={`View details for ${cleanTitle}`}
+      >
         {outOfStock && (
           <span style={{ position: 'absolute', top: 8, right: 8, zIndex: 2, background: '#4b5563', color: '#fff', fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', padding: '3px 8px', borderRadius: '6px' }}>
             Out of stock
@@ -41,7 +76,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
         )}
         {isPrebook && (
           <span style={{ position: 'absolute', top: 8, left: 8, zIndex: 2, background: '#7C3AED', color: '#fff', fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', padding: '3px 8px', borderRadius: '6px' }}>
-            Pre-book
+            📅 Pre-book
           </span>
         )}
         {showImage ? (
@@ -55,15 +90,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
           />
         ) : (
           <div className="product-card__fallback">
-            <svg
-              className="product-card__fallback-icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
+            <svg className="product-card__fallback-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2" />
               <circle cx="8.5" cy="8.5" r="1.5" />
               <path d="m21 15-5-5L5 21" />
@@ -73,17 +100,22 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
       </div>
 
       <div className="product-card__body">
-        <h3 className="product-card__title">{product.title.replace(/#[\w]+/g, '').trim()}</h3>
+        <h3 className="product-card__title" onClick={openDetails} style={{ cursor: 'pointer' }}>{cleanTitle}</h3>
         {product.description && (
           <p className="product-card__description">{product.description}</p>
+        )}
+        {isPrebook && (
+          <p style={{ fontSize: '0.75rem', color: '#7C3AED', fontWeight: 600, margin: '0 0 4px' }}>
+            Reserve now, collect at the shop
+          </p>
         )}
         {hasDetails && (
           <button
             type="button"
-            onClick={() => setShowDetails(true)}
+            onClick={openDetails}
             style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, marginBottom: 4, color: 'var(--accent)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
           >
-            View details →
+            {hasVariants ? 'Choose options →' : 'View details →'}
           </button>
         )}
         <p className="product-card__price">
@@ -96,7 +128,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
         </p>
         <button
           className={`product-card__add-btn ${isAdded ? 'product-card__add-btn--added' : ''}`}
-          onClick={handleAdd}
+          onClick={handleCardAdd}
           disabled={outOfStock}
           style={outOfStock ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
           aria-label={outOfStock ? `${product.title} is out of stock` : `Add ${product.title} to cart`}
@@ -110,6 +142,8 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
               </svg>
               Added
             </>
+          ) : hasVariants ? (
+            isPrebook ? 'Pre-book' : 'Choose options'
           ) : (
             <>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -126,7 +160,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
         <div
           role="dialog"
           aria-modal="true"
-          aria-label={`${product.title} details`}
+          aria-label={`${cleanTitle} details`}
           onClick={() => setShowDetails(false)}
           style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
         >
@@ -146,18 +180,54 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
                   {product.category && (
                     <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#6b7280' }}>{product.category}</span>
                   )}
-                  <h3 style={{ fontSize: '1.35rem', fontWeight: 800, margin: '2px 0' }}>{product.title.replace(/#[\w]+/g, '').trim()}</h3>
+                  <h3 style={{ fontSize: '1.35rem', fontWeight: 800, margin: '2px 0' }}>{cleanTitle}</h3>
                 </div>
                 <button onClick={() => setShowDetails(false)} aria-label="Close" style={{ background: 'none', border: 'none', fontSize: '1.5rem', lineHeight: 1, cursor: 'pointer', color: '#9ca3af' }}>×</button>
               </div>
-              <p style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--accent)', margin: '0.25rem 0 1rem' }}>
+              <p style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--accent)', margin: '0.25rem 0 0.75rem' }}>
                 {formatPrice(product.price, product.currency)}
               </p>
-              {product.description && (
-                <p style={{ color: '#374151', lineHeight: 1.6, marginBottom: specs.length ? '1.25rem' : '1.5rem' }}>{product.description}</p>
+
+              {isPrebook && (
+                <div style={{ background: '#f5f3ff', color: '#6d28d9', fontSize: '0.85rem', fontWeight: 600, padding: '0.6rem 0.85rem', borderRadius: 10, marginBottom: '1rem' }}>
+                  📅 Pre-book item — reserve now and collect it at the shop.
+                </div>
               )}
+
+              {product.description && (
+                <p style={{ color: '#374151', lineHeight: 1.6, marginBottom: '1.25rem' }}>{product.description}</p>
+              )}
+
+              {/* Variant pickers (Size, Colour, …) */}
+              {variants.map((v) => (
+                <div key={v.name} style={{ marginBottom: '1rem' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: 6 }}>
+                    {v.name}{chosen[v.name] ? <span style={{ color: '#6b7280', fontWeight: 500 }}>: {chosen[v.name]}</span> : ''}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {v.values.map((val) => {
+                      const active = chosen[v.name] === val;
+                      return (
+                        <button
+                          key={val}
+                          onClick={() => setChosen((c) => ({ ...c, [v.name]: val }))}
+                          style={{
+                            padding: '0.45rem 0.9rem', borderRadius: 999, fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
+                            border: active ? '2px solid var(--accent)' : '1px solid #d1d5db',
+                            background: active ? 'var(--accent)' : '#fff',
+                            color: active ? '#fff' : '#374151',
+                          }}
+                        >
+                          {val}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+
               {specs.length > 0 && (
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1.5rem' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', margin: '0.5rem 0 1.5rem' }}>
                   <tbody>
                     {specs.map((s, i) => (
                       <tr key={i} style={{ borderBottom: '1px solid #f0f0f0' }}>
@@ -168,11 +238,16 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
                   </tbody>
                 </table>
               )}
+
+              {hasVariants && !allChosen && (
+                <p style={{ fontSize: '0.8rem', color: '#d97706', marginBottom: 8 }}>Please choose {variants.filter((v) => !chosen[v.name]).map((v) => v.name).join(' & ')}.</p>
+              )}
+
               <button
                 className="product-card__add-btn"
-                onClick={() => { if (!outOfStock) { handleAdd(); setShowDetails(false); } }}
-                disabled={outOfStock}
-                style={outOfStock ? { opacity: 0.5, cursor: 'not-allowed', width: '100%' } : { width: '100%' }}
+                onClick={handleModalAdd}
+                disabled={outOfStock || (hasVariants && !allChosen)}
+                style={(outOfStock || (hasVariants && !allChosen)) ? { opacity: 0.5, cursor: 'not-allowed', width: '100%' } : { width: '100%' }}
               >
                 {outOfStock ? 'Out of Stock' : isPrebook ? 'Pre-book' : 'Add to Cart'}
               </button>

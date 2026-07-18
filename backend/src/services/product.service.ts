@@ -13,7 +13,12 @@ export async function createProduct(
   price: number,
   originalUrl: string,
   processedUrl: string,
-  extra: { description?: string; category?: string | null; specifications?: { label: string; value: string }[] } = {}
+  extra: {
+    description?: string;
+    category?: string | null;
+    specifications?: { label: string; value: string }[];
+    variants?: { name: string; values: string[] }[];
+  } = {}
 ): Promise<Product> {
   const row: Record<string, any> = {
     merchant_id: merchantId,
@@ -26,12 +31,13 @@ export async function createProduct(
   if (extra.description !== undefined) row.description = extra.description;
   if (extra.category !== undefined) row.category = extra.category;
   if (extra.specifications !== undefined) row.specifications = extra.specifications;
+  if (extra.variants !== undefined) row.variants = extra.variants;
 
   let { data, error } = await supabase.from('products').insert(row).select().single();
 
-  // category/specifications may not exist yet (migration 17) — retry with base.
-  if (error && /category|specifications|schema cache|42703|PGRST204/i.test(error.message || '')) {
-    const { category, specifications, ...base } = row;
+  // category/specifications/variants may not exist yet (migration 17/18) — retry.
+  if (error && /category|specifications|variants|schema cache|42703|PGRST204/i.test(error.message || '')) {
+    const { category, specifications, variants, ...base } = row;
     ({ data, error } = await supabase.from('products').insert(base).select().single());
   }
 

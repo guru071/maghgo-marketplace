@@ -17,6 +17,7 @@ export const ORDER_STATUSES: OrderStatus[] = ['sent', 'confirmed', 'processing',
 export interface OrderItemInput {
   product_id: string;
   quantity: number;
+  variant?: string; // buyer-selected options, e.g. "Size: M · Colour: Red"
 }
 
 export interface OrderLineItem {
@@ -26,6 +27,7 @@ export interface OrderLineItem {
   quantity: number;
   subtotal: number;
   image_url?: string | null;
+  variant?: string;
 }
 
 export type PaymentStatus = 'unpaid' | 'paid';
@@ -76,14 +78,21 @@ export async function createOrder(
   }
 
   // Collapse duplicate lines and clamp quantities before touching the database.
-  const wanted = new Map<string, number>();
+  // Keyed by product + chosen variant, so the same shirt in two sizes stays two
+  // distinct order lines.
+  interface Wanted { productId: string; variant?: string; qty: number }
+  const wanted = new Map<string, Wanted>();
   for (const item of items) {
     if (!item || typeof item.product_id !== 'string') continue;
     const qty = Math.floor(Number(item.quantity));
     if (!Number.isFinite(qty) || qty < 1) continue;
-    wanted.set(item.product_id, Math.min((wanted.get(item.product_id) ?? 0) + qty, MAX_QTY_PER_ITEM));
+    const variant = item.variant ? String(item.variant).trim().slice(0, 160) || undefined : undefined;
+    const key = `${item.product_id}|${variant ?? ''}`;
+    const prev = wanted.get(key);
+    wanted.set(key, { productId: item.product_id, variant, qty: Math.min((prev?.qty ?? 0) + qty, MAX_QTY_PER_ITEM) });
   }
   if (wanted.size === 0) throw new Error('No valid items in this order.');
+  const productIds = [...new Set([...wanted.values()].map((w) => w.productId))];
 
   const { data: merchant, error: merchantError } = await supabase
     .from('merchants')
@@ -109,7 +118,7 @@ export async function createOrder(
       .select(`${baseCols}, stock`)
       .eq('merchant_id', merchant.id)
       .eq('is_available', true)
-      .in('id', [...wanted.keys()]);
+      .in('id', productIds);
 
     if (error && /stock|schema cache|42703/i.test(error.message || '')) {
       stockTracked = false;
@@ -118,26 +127,30 @@ export async function createOrder(
         .select(baseCols)
         .eq('merchant_id', merchant.id)
         .eq('is_available', true)
-        .in('id', [...wanted.keys()]));
+        .in('id', productIds));
     }
     if (error) throw new Error(`Failed to price order: ${error.message}`);
     products = data;
   }
   if (!products || products.length === 0) return null;
 
+  const byId = new Map(products.map((p) => [p.id, p]));
   const lineItems: OrderLineItem[] = [];
-  for (const p of products) {
-    let quantity = wanted.get(p.id)!;
+  for (const w of wanted.values()) {
+    const p = byId.get(w.productId);
+    if (!p) continue; // product from another store / unavailable / not found
+    let quantity = w.qty;
     // Never sell more than is in stock. A tracked product at 0 is dropped from
-    // the order entirely rather than overselling.
+    // the order entirely rather than overselling. (Stock is per product; it is
+    // shared across a product's variants.)
     if (stockTracked && p.stock != null) {
       const available = Math.max(0, Number(p.stock));
       if (available === 0) continue;
       quantity = Math.min(quantity, available);
     }
     const price = Number(p.price);
-    // Snapshot the image with the order so the owner sees the product later even
-    // if it's edited or removed from the catalogue.
+    // Snapshot title/image/variant with the order so the owner sees exactly what
+    // was ordered even if the product is later edited or removed.
     lineItems.push({
       product_id: p.id,
       title: p.title,
@@ -145,6 +158,7 @@ export async function createOrder(
       quantity,
       subtotal: price * quantity,
       image_url: p.processed_image_url || p.original_image_url || null,
+      ...(w.variant ? { variant: w.variant } : {}),
     });
   }
 

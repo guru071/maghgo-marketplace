@@ -56,7 +56,7 @@ export default function CheckoutButton({ phone, storeName, storeSlug, items, ins
       headers: { 'Content-Type': 'application/json' },
       keepalive: true,
       body: JSON.stringify({
-        items: items.map((i) => ({ product_id: i.id, quantity: i.quantity })),
+        items: items.map((i) => ({ product_id: i.productId || i.id, quantity: i.quantity, variant: i.variant })),
         coupon_code: couponCode || undefined,
       }),
     })

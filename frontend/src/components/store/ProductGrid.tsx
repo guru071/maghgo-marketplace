@@ -7,7 +7,7 @@ import { groupByCategory, type Category } from '@/lib/categorize';
 
 interface ProductGridProps {
   products: Product[];
-  onAddToCart: (product: Product) => void;
+  onAddToCart: (product: Product, opts?: { variant?: string }) => void;
 }
 
 const ALL: Category = { key: 'all', label: 'All', icon: '🛍️' };

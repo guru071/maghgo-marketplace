@@ -37,7 +37,7 @@ export default function CartDrawer({ phone, storeName, currency = 'INR', instagr
       const res = await fetch(`${apiUrl}/api/store/${encodeURIComponent(storeSlug)}/coupon`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, items: items.map((i) => ({ product_id: i.id, quantity: i.quantity })) }),
+        body: JSON.stringify({ code, items: items.map((i) => ({ product_id: i.productId || i.id, quantity: i.quantity })) }),
       });
       const data = await res.json();
       if (!res.ok) {

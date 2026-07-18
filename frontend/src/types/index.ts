@@ -40,6 +40,8 @@ export interface Product {
   // Product details (migration 17). Optional for pre-migration compatibility.
   category?: string | null;
   specifications?: ProductSpec[];
+  // Buyer-selectable options, e.g. Size / Colour (migration 18).
+  variants?: ProductVariant[];
 }
 
 export interface ProductSpec {
@@ -47,12 +49,23 @@ export interface ProductSpec {
   value: string;
 }
 
+export interface ProductVariant {
+  name: string;      // e.g. "Size"
+  values: string[];  // e.g. ["S", "M", "L"]
+}
+
 export interface CartItem {
+  // Unique per cart line. For a product with a chosen variant this is
+  // `${productId}::${variant}` so the same product in two sizes is two lines.
   id: string;
+  // The real product id (for ordering); falls back to `id` when no variant.
+  productId?: string;
   title: string;
   price: number;
   currency: string;
   image_url: string | null;
   quantity: number;
   fulfillment_type?: 'buy' | 'prebook';
+  // Human-readable selected options, e.g. "Size: M · Colour: Red".
+  variant?: string;
 }

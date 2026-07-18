@@ -7,6 +7,27 @@ import { getOrders, updateOrderStatus, getAnalytics } from '../services/order.se
 import { createPaymentLink } from '../services/payment.service';
 import { listCoupons, createCoupon, deleteCoupon } from '../services/coupon.service';
 import { encryptSecret } from '../utils/crypto';
+
+// Normalise buyer-selectable options: [{name, values:[...]}], trimmed & capped.
+function sanitizeVariants(raw: any): { name: string; values: string[] }[] | undefined {
+  if (raw == null) return undefined;
+  let arr = raw;
+  if (typeof raw === 'string') {
+    try { arr = JSON.parse(raw); } catch { return undefined; }
+  }
+  if (!Array.isArray(arr)) return undefined;
+  return arr
+    .filter((v: any) => v && String(v.name).trim() && Array.isArray(v.values))
+    .slice(0, 6)
+    .map((v: any) => ({
+      name: String(v.name).trim().slice(0, 40),
+      values: v.values
+        .map((x: any) => String(x).trim().slice(0, 40))
+        .filter((x: string) => x)
+        .slice(0, 20),
+    }))
+    .filter((v: { values: string[] }) => v.values.length > 0);
+}
 import { triggerRevalidation } from '../services/revalidate.service';
 import { hasAccess } from '../utils/plans';
 import multer from 'multer';
@@ -210,6 +231,7 @@ router.post('/products', upload.single('image'), async (req: AuthRequest, res) =
       description: description !== undefined ? String(description).slice(0, 2000) : undefined,
       category: category ? String(category).trim().slice(0, 60) : undefined,
       specifications,
+      variants: sanitizeVariants(req.body.variants),
     });
 
     if (merchant) {
@@ -239,6 +261,10 @@ router.put('/products/:id', async (req: AuthRequest, res) => {
         .slice(0, 30)
         .map((s: any) => ({ label: String(s.label).trim().slice(0, 60), value: String(s.value).trim().slice(0, 200) }));
     }
+    if (req.body.variants !== undefined) {
+      const v = sanitizeVariants(req.body.variants);
+      if (v !== undefined) updates.variants = v;
+    }
     if (stock !== undefined) {
       // '' / null / 'off' clears tracking; a number sets the count.
       updates.stock =
@@ -253,9 +279,9 @@ router.put('/products/:id', async (req: AuthRequest, res) => {
       .eq('id', req.params.id)
       .eq('merchant_id', req.merchantId);
 
-    // Retry without columns migration 16/17 may not have added yet.
-    if (error && /stock|category|specifications|schema cache|42703|PGRST204/i.test(error.message || '')) {
-      const { stock: _s, category: _c, specifications: _sp, ...base } = updates;
+    // Retry without columns migration 16/17/18 may not have added yet.
+    if (error && /stock|category|specifications|variants|schema cache|42703|PGRST204/i.test(error.message || '')) {
+      const { stock: _s, category: _c, specifications: _sp, variants: _v, ...base } = updates;
       ({ error } = await supabase
         .from('products')
         .update(base)

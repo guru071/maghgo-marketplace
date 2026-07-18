@@ -24,6 +24,26 @@ export async function getPlanFromAmount(amount: number): Promise<string> {
   return data.slug;
 }
 
+export interface PlanRow {
+  slug: string;
+  name: string;
+  monthly_price: number;
+  yearly_price: number;
+  product_limit: number;
+  description: string | null;
+  is_custom: boolean;
+}
+
+/** All plans, cheapest first — used to show the full upgrade menu in the bot. */
+export async function getAllPlans(): Promise<PlanRow[]> {
+  const { data, error } = await supabase
+    .from('plans')
+    .select('slug, name, monthly_price, yearly_price, product_limit, description, is_custom')
+    .order('monthly_price', { ascending: true });
+  if (error || !data) return [];
+  return data as PlanRow[];
+}
+
 export async function getAmountFromPlan(plan: string, isYearly = false): Promise<number> {
   const { data, error } = await supabase
     .from('plans')

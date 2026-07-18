@@ -97,5 +97,11 @@ export interface Product {
   description?: string;
   category?: string | null;
   specifications?: ProductSpec[];
+  variants?: ProductVariant[];
   created_at: string;
+}
+
+export interface ProductVariant {
+  name: string;
+  values: string[];
 }

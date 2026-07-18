@@ -1,11 +1,11 @@
-import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, toggleStoreStatus, updateMerchantSocial, Channel } from './merchant.service';
+import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, toggleStoreStatus, updateMerchantSocial, listThemes, applyThemeById, Channel } from './merchant.service';
 import { parseCaption } from './parser.service';
 import { removeBackground } from './media.service';
 import { uploadImage } from './storage.service';
 import { createProduct, getProducts, deleteProduct, getProductCount, updateProductPrice, deleteAllProducts, setProductFulfillment, setProductStock } from './product.service';
 import { getOrders, getAnalytics } from './order.service';
 import { triggerRevalidation } from './revalidate.service';
-import { createPaymentLink, getAmountFromPlan, getPlanFromAmount } from './payment.service';
+import { createPaymentLink, getAmountFromPlan, getPlanFromAmount, getAllPlans } from './payment.service';
 import { env } from '../config/env';
 import { buildStoreSlug } from '../utils/slug';
 import { canUseChannel, minPlanForChannel, channelLabel, hasAccess } from '../utils/plans';
@@ -83,7 +83,8 @@ async function sendMainMenu(msg: BotMessage, storeName?: string): Promise<void> 
       { id: 'HELP', title: '➕ Add a product', description: 'How to add with a photo' },
       { id: 'ORDERS', title: '🧾 Recent orders', description: 'Your latest orders' },
       { id: 'SALES', title: '📊 Sales snapshot', description: 'Revenue & best seller' },
-      { id: 'UPGRADE', title: '🚀 Upgrade plan', description: 'Unlock higher limits' },
+      { id: 'THEMES', title: '🎨 Change theme', description: 'Restyle your storefront' },
+      { id: 'UPGRADE', title: '🚀 Upgrade plan', description: 'See all plans' },
       { id: 'LOGIN', title: '🔐 Web dashboard', description: 'Manage on the web' },
       { id: 'PAUSE', title: '⏸️ Pause store', description: 'Temporarily go offline' },
     ],
@@ -157,6 +158,30 @@ async function sendPaymentOptions(
       `${headline}\n\n⚠️ We couldn't generate your payment link right now. Please try again in a few minutes — reply *UPGRADE* to retry.`
     );
   }
+}
+
+/**
+ * Show every available plan as a tappable menu (GUI) or a numbered list
+ * (fallback), instead of silently defaulting to Basic. Each row sends
+ * "UPGRADE <slug>", which flows back into the existing payment-link handler.
+ */
+async function sendPlanMenu(msg: BotMessage, headline: string): Promise<void> {
+  const plans = await getAllPlans();
+  if (plans.length === 0) {
+    await msg.sendReply(`${headline}\n\nReply *UPGRADE <plan>* (e.g. UPGRADE PRO) to continue.`);
+    return;
+  }
+
+  const rows = plans.slice(0, 10).map((p) => ({
+    id: `UPGRADE ${p.slug}`,
+    // WhatsApp list rows: title <= 24 chars, description <= 72.
+    title: p.is_custom ? `${p.name} — Let's talk`.slice(0, 24) : `${p.name} · ₹${p.monthly_price}/mo`.slice(0, 24),
+    description: (p.is_custom
+      ? 'Tailored to your needs'
+      : `Up to ${p.product_limit.toLocaleString('en-IN')} products`).slice(0, 72),
+  }));
+
+  await replyMenu(msg, headline, '💳 Choose a plan', rows, 'Maghgo Plans');
 }
 
 export async function processBotMessage(msg: BotMessage): Promise<void> {
@@ -412,9 +437,18 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
 
   if (command.startsWith('UPGRADE') || command.includes('I WANT TO BUY')) {
     const priceMatch = command.match(/₹(\d+)/);
+    const planToken = command.split(' ')[1];
+
+    // Just "UPGRADE" with no plan → show ALL plans to choose from, rather than
+    // silently assuming Basic.
+    if (!priceMatch && !planToken) {
+      await sendPlanMenu(msg, '🚀 *Choose your Maghgo plan* — tap one to get a payment link:');
+      return;
+    }
+
     let plan = 'BASIC';
     let amount = 99;
-    
+
     if (priceMatch && priceMatch[1]) {
       amount = parseInt(priceMatch[1], 10);
       const matchedPlan = await getPlanFromAmount(amount);
@@ -422,8 +456,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
         plan = matchedPlan;
       }
     } else {
-      plan = command.split(' ')[1] || 'BASIC';
-      plan = plan.toLowerCase(); // Ensure plan is lowercased for getAmountFromPlan
+      plan = planToken.toLowerCase(); // lowercased for getAmountFromPlan
       amount = await getAmountFromPlan(plan as any);
     }
     
@@ -678,6 +711,40 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     return;
   }
 
+  // Apply a theme by id (from the THEMES menu).
+  if (command.startsWith('THEME ')) {
+    const themeId = text.trim().substring(6).trim();
+    try {
+      const name = await applyThemeById(merchant.id, themeId);
+      if (!name) {
+        await sendReply('❌ That theme could not be found. Reply *THEMES* to see the list.');
+        return;
+      }
+      await replyCta(msg, `🎨 Applied *${name}*! Your storefront is refreshing now.`, '🛍️ View store', `${env.FRONTEND_URL}/${merchant.store_slug}`);
+      await triggerRevalidation(merchant.store_slug);
+    } catch (err: any) {
+      await sendReply(`❌ ${err.message || 'Could not apply that theme.'}`);
+    }
+    return;
+  }
+
+  // List themes to pick from.
+  if (command === 'THEMES' || command === 'THEME') {
+    const themes = await listThemes(10);
+    const themesUrl = `${env.FRONTEND_URL}/dashboard/themes`;
+    if (themes.length === 0) {
+      await replyCta(msg, '🎨 No themes are available right now.', '🎨 Open themes', themesUrl);
+      return;
+    }
+    const rows = themes.map((t) => ({
+      id: `THEME ${t.id}`,
+      title: t.name.slice(0, 24),
+      description: `Requires ${t.plan_required} plan`.slice(0, 72),
+    }));
+    await replyMenu(msg, '🎨 *Pick a theme* — tap to apply it instantly:', '🎨 Themes', rows, 'Store Themes');
+    return;
+  }
+
   // Recent orders, straight in chat.
   if (command === 'ORDERS' || command === 'ORDER') {
     const orders = await getOrders(merchant.id, 5);
@@ -718,7 +785,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   if (command === 'HELP') {
     await replyButtons(
       msg,
-      `➕ *Add a product*\n\nSend a *photo* of your product with a caption:\n\n_Product name  Price_\nExample: *Red Cotton T-Shirt ₹499*\n\n(Include ₹, Rs, INR or MRP before the price.)\n\nOther things you can type:\n✏️ EDIT name - ₹price\n🗑️ DELETE name\n📦 STOCK name qty\n🧾 ORDERS  ·  📊 SALES\n📅 PREBOOK name  ·  🛒 SELL name\n📝 DESCRIBE your store text`,
+      `➕ *Add a product*\n\nSend a *photo* of your product with a caption:\n\n_Product name  Price_\nExample: *Red Cotton T-Shirt ₹499*\n\n(Include ₹, Rs, INR or MRP before the price.)\n\nOther things you can type:\n✏️ EDIT name - ₹price\n🗑️ DELETE name\n📦 STOCK name qty\n🧾 ORDERS  ·  📊 SALES\n🎨 THEMES  ·  🚀 UPGRADE\n📅 PREBOOK name  ·  🛒 SELL name\n📝 DESCRIBE your store text`,
       [
         { id: 'MENU', title: '📋 Main menu' },
         { id: 'LIST', title: '📦 My products' },

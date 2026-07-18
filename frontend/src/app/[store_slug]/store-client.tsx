@@ -64,14 +64,19 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  const handleAddToCart = (product: Product) => {
+  const handleAddToCart = (product: Product, opts?: { variant?: string }) => {
+    const variant = opts?.variant;
     addItem(merchant.store_slug, {
-      id: product.id,
-      title: product.title,
+      // A chosen variant makes a distinct cart line, so the same shirt in two
+      // sizes doesn't merge. The real product id is kept for ordering.
+      id: variant ? `${product.id}::${variant}` : product.id,
+      productId: product.id,
+      title: variant ? `${product.title} (${variant})` : product.title,
       price: product.price,
       currency: product.currency,
       image_url: product.processed_image_url || product.original_image_url,
       fulfillment_type: product.fulfillment_type,
+      variant,
     });
   };
 

@@ -263,3 +263,44 @@ export async function updateMerchantSocial(merchantId: string, platform: 'instag
   }
 }
 
+// ─── Themes (for the bot's theme picker) ─────────────────────────────────────
+
+export interface ThemeSummary {
+  id: string;
+  name: string;
+  plan_required: string;
+}
+
+/** Active themes, for listing in the bot. */
+export async function listThemes(limit = 10): Promise<ThemeSummary[]> {
+  const { data, error } = await supabase
+    .from('themes')
+    .select('id, name, plan_required')
+    .eq('is_active', true)
+    .order('name')
+    .limit(limit);
+  if (error || !data) return [];
+  return data as ThemeSummary[];
+}
+
+/**
+ * Apply a theme to a merchant's store by copying the theme's config onto the
+ * merchant. Returns the theme name on success, or null if not found.
+ */
+export async function applyThemeById(merchantId: string, themeId: string): Promise<string | null> {
+  const { data: theme, error } = await supabase
+    .from('themes')
+    .select('name, config')
+    .eq('id', themeId)
+    .eq('is_active', true)
+    .single();
+  if (error || !theme) return null;
+
+  const { error: upErr } = await supabase
+    .from('merchants')
+    .update({ theme_config: theme.config, theme_id: themeId })
+    .eq('id', merchantId);
+  if (upErr) throw new Error(`Failed to apply theme: ${upErr.message}`);
+  return theme.name as string;
+}
+

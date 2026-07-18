@@ -12,7 +12,7 @@ import { Product } from '@/types';
  */
 export const StoreContext = createContext<{
   products: Product[];
-  onAddToCart: (product: Product) => void;
+  onAddToCart: (product: Product, opts?: { variant?: string }) => void;
   storeName?: string;
   storeDescription?: string;
 } | null>(null);

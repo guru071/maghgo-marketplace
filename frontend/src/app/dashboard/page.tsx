@@ -17,8 +17,27 @@ export default function DashboardInventory() {
   const [newDescription, setNewDescription] = useState('');
   const [newCategory, setNewCategory] = useState('');
   const [newSpecs, setNewSpecs] = useState<{ label: string; value: string }[]>([]);
+  const [newVariants, setNewVariants] = useState<{ name: string; values: string }[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+
+  // "Pre-built information": suggest sensible spec labels + option groups based on
+  // what kind of product this is, so a shirt prompts for Size/Colour, a phone for
+  // Storage, etc. Only fills blanks — never overwrites what the owner has typed.
+  const suggestForCategory = () => {
+    const c = newCategory.toLowerCase();
+    const templates: { match: RegExp; specs: string[]; variants: { name: string; values: string }[] }[] = [
+      { match: /shirt|t-?shirt|top|kurta|cloth|apparel|dress|jean|trouser|wear/, specs: ['Material', 'Fit', 'Care'], variants: [{ name: 'Size', values: 'S, M, L, XL' }, { name: 'Colour', values: '' }] },
+      { match: /shoe|footwear|sneaker|sandal|slipper|boot/, specs: ['Material', 'Sole'], variants: [{ name: 'Size (UK)', values: '6, 7, 8, 9, 10' }, { name: 'Colour', values: '' }] },
+      { match: /phone|mobile|laptop|tablet|electronic|gadget|device/, specs: ['Warranty', 'In the box'], variants: [{ name: 'Storage', values: '64GB, 128GB, 256GB' }, { name: 'Colour', values: '' }] },
+      { match: /watch|bag|wallet|belt|accessor|jewel/, specs: ['Material', 'Warranty'], variants: [{ name: 'Colour', values: '' }] },
+    ];
+    const t = templates.find((x) => x.match.test(c));
+    if (!t) return;
+    if (newSpecs.length === 0) setNewSpecs(t.specs.map((label) => ({ label, value: '' })));
+    if (newVariants.length === 0) setNewVariants(t.variants);
+  };
+  const categoryHasTemplate = /shirt|t-?shirt|top|kurta|cloth|apparel|dress|jean|trouser|wear|shoe|footwear|sneaker|sandal|slipper|boot|phone|mobile|laptop|tablet|electronic|gadget|device|watch|bag|wallet|belt|accessor|jewel/.test(newCategory.toLowerCase());
 
   const fetchDashboardData = async () => {
     const token = localStorage.getItem('maghgo_merchant_token');
@@ -65,6 +84,11 @@ export default function DashboardInventory() {
     formData.append('description', newDescription);
     formData.append('category', newCategory);
     formData.append('specifications', JSON.stringify(newSpecs.filter((s) => s.label.trim() && s.value.trim())));
+    formData.append('variants', JSON.stringify(
+      newVariants
+        .map((v) => ({ name: v.name.trim(), values: v.values.split(',').map((s) => s.trim()).filter(Boolean) }))
+        .filter((v) => v.name && v.values.length > 0)
+    ));
 
     try {
       const res = await fetch(`${apiUrl}/api/dashboard/products`, {
@@ -80,6 +104,7 @@ export default function DashboardInventory() {
         setNewDescription('');
         setNewCategory('');
         setNewSpecs([]);
+        setNewVariants([]);
         setSelectedFile(null);
         fetchDashboardData();
       } else {
@@ -291,8 +316,13 @@ export default function DashboardInventory() {
                   value={newCategory}
                   onChange={(e) => setNewCategory(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-accent focus:border-accent"
-                  placeholder="e.g. Footwear"
+                  placeholder="e.g. T-Shirt, Footwear, Mobile"
                 />
+                {categoryHasTemplate && (
+                  <button type="button" onClick={suggestForCategory} className="mt-2 text-sm font-medium text-accent hover:underline">
+                    ✨ Auto-fill fields for &ldquo;{newCategory}&rdquo;
+                  </button>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Description <span className="text-gray-400">(optional)</span></label>
@@ -328,6 +358,34 @@ export default function DashboardInventory() {
                   ))}
                   <button type="button" onClick={() => setNewSpecs((sp) => [...sp, { label: '', value: '' }])}
                     className="text-sm font-medium text-accent hover:underline">+ Add specification</button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Options / Variants <span className="text-gray-400">(optional)</span></label>
+                <p className="text-xs text-gray-400 mb-2">e.g. Size → S, M, L · Colour → Red, Blue. Customers pick one of each before adding to cart.</p>
+                <div className="space-y-2">
+                  {newVariants.map((v, i) => (
+                    <div key={i} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={v.name}
+                        onChange={(e) => setNewVariants((vs) => vs.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
+                        className="w-1/3 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-accent focus:border-accent"
+                        placeholder="Option (e.g. Size)"
+                      />
+                      <input
+                        type="text"
+                        value={v.values}
+                        onChange={(e) => setNewVariants((vs) => vs.map((x, j) => (j === i ? { ...x, values: e.target.value } : x)))}
+                        className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-accent focus:border-accent"
+                        placeholder="Values, comma-separated (e.g. S, M, L)"
+                      />
+                      <button type="button" onClick={() => setNewVariants((vs) => vs.filter((_, j) => j !== i))}
+                        className="text-red-500 hover:text-red-700 px-2" aria-label="Remove option">✕</button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => setNewVariants((vs) => [...vs, { name: '', values: '' }])}
+                    className="text-sm font-medium text-accent hover:underline">+ Add option</button>
                 </div>
               </div>
               <div>
