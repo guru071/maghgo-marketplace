@@ -40,6 +40,44 @@ export async function sendMetaReply(
 }
 
 /**
+ * Send text with tappable quick-reply chips (Instagram / Messenger GUI).
+ * A tapped chip returns its `payload` as message.quick_reply.payload, which the
+ * controller feeds to the bot as a command — the same pattern as WhatsApp.
+ * Max 13 quick replies; titles <= 20 chars.
+ */
+export async function sendMetaQuickReplies(
+  recipientId: string,
+  text: string,
+  replies: { id: string; title: string }[]
+): Promise<void> {
+  const accessToken = env.META_PAGE_ACCESS_TOKEN || env.WHATSAPP_TOKEN;
+  if (!accessToken) {
+    console.log(`[MOCK META QUICK REPLIES to ${recipientId}]: ${text} | ${replies.map((r) => r.title).join(', ')}`);
+    return;
+  }
+  try {
+    await axios.post(
+      'https://graph.facebook.com/v21.0/me/messages',
+      {
+        recipient: { id: recipientId },
+        message: {
+          text,
+          quick_replies: replies.slice(0, 13).map((r) => ({
+            content_type: 'text',
+            title: r.title.slice(0, 20),
+            payload: r.id,
+          })),
+        },
+      },
+      { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
+    );
+  } catch (error: any) {
+    console.error('Error sending Meta quick replies:', error?.response?.data || error.message);
+    throw new Error('Failed to send Meta quick replies');
+  }
+}
+
+/**
  * Downloads media from a public or Graph API authenticated URL provided by Meta Webhook.
  * Usually, Instagram attachments from `payload.url` are public CDNs that expire, so we can just GET them.
  */

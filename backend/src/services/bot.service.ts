@@ -22,7 +22,61 @@ export interface BotMessage {
     mime_type: string;
   };
   sendReply: (text: string) => Promise<void>;
+  // Optional richer senders — implemented for WhatsApp, absent elsewhere. The
+  // bot always calls them through replyButtons/replyMenu, which fall back to a
+  // plain-text list of the options when a channel can't render a GUI.
+  sendButtons?: (body: string, buttons: { id: string; title: string }[]) => Promise<void>;
+  sendMenu?: (
+    body: string,
+    buttonLabel: string,
+    rows: { id: string; title: string; description?: string }[],
+    header?: string
+  ) => Promise<void>;
 }
+
+// Tappable buttons where supported, otherwise a bulleted text fallback so the
+// same call works on every channel.
+async function replyButtons(
+  msg: BotMessage,
+  body: string,
+  buttons: { id: string; title: string }[]
+): Promise<void> {
+  if (msg.sendButtons) return msg.sendButtons(body, buttons);
+  await msg.sendReply(`${body}\n\n${buttons.map((b) => `• ${b.title}`).join('\n')}`);
+}
+
+async function replyMenu(
+  msg: BotMessage,
+  body: string,
+  buttonLabel: string,
+  rows: { id: string; title: string; description?: string }[],
+  header?: string
+): Promise<void> {
+  if (msg.sendMenu) return msg.sendMenu(body, buttonLabel, rows, header);
+  await msg.sendReply(
+    `${header ? `*${header}*\n` : ''}${body}\n\n${rows.map((r) => `• ${r.title}${r.description ? ` — ${r.description}` : ''}`).join('\n')}`
+  );
+}
+
+// The main GUI menu — a tappable list mapping to existing commands.
+async function sendMainMenu(msg: BotMessage, storeName?: string): Promise<void> {
+  await replyMenu(
+    msg,
+    storeName ? `What would you like to do for *${storeName}*?` : 'What would you like to do?',
+    '📋 Open menu',
+    [
+      { id: 'LIST', title: '📦 My products', description: 'See everything in your store' },
+      { id: 'HELP', title: '➕ Add a product', description: 'How to add with a photo' },
+      { id: 'STATUS', title: '📊 Store status', description: 'Link & product count' },
+      { id: 'UPGRADE', title: '🚀 Upgrade plan', description: 'Unlock higher limits' },
+      { id: 'LOGIN', title: '🔐 Web dashboard', description: 'Manage on the web' },
+      { id: 'PAUSE', title: '⏸️ Pause store', description: 'Temporarily go offline' },
+    ],
+    'Maghgo Menu'
+  );
+}
+
+const GREETINGS = new Set(['HI', 'HELLO', 'HEY', 'MENU', 'START', 'MAGHGO', 'HII', 'HELLO!', 'HÍ']);
 
 // In-memory state for conversational flows (e.g. Instagram/FB missing captions).
 // Entries carry a timestamp so stale pending images are pruned and the map can
@@ -193,7 +247,15 @@ async function handleImageMessage(msg: BotMessage): Promise<void> {
   const product = await createProduct(merchant.id, parsed.title, parsed.price, originalUrl, processedUrl);
   const storeUrl = `${env.FRONTEND_URL}/${merchant.store_slug}`;
 
-  await sendReply(`✅ *Product added successfully!*\n\n📦 *${product.title}*\n💰 ₹${product.price.toLocaleString('en-IN')}\n\n🔗 View your store: ${storeUrl}`);
+  await replyButtons(
+    msg,
+    `✅ *Product added successfully!*\n\n📦 *${product.title}*\n💰 ₹${product.price.toLocaleString('en-IN')}\n\n🔗 View your store: ${storeUrl}`,
+    [
+      { id: 'LIST', title: '📦 My products' },
+      { id: 'STATUS', title: '📊 Status' },
+      { id: 'MENU', title: '📋 Menu' },
+    ]
+  );
   await triggerRevalidation(merchant.store_slug);
 }
 
@@ -286,7 +348,17 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
 
   const merchant = await getMerchantByChannel(channel, senderId);
   if (!merchant) {
-    await sendReply('❌ You\'re not registered yet on Maghgo.\n\nTo create your store instantly, reply with:\n\n*REGISTER Your Store Name*\n\nIf you already have a store and want to link this account to it, reply with your link code (e.g. *LINK A9F3K2*).');
+    await replyButtons(
+      msg,
+      '👋 Welcome to *Maghgo* — turn your chats into a web store.\n\nTo create your store instantly, reply:\n\n*REGISTER Your Store Name*\n\nAlready have a store? Reply with your link code (e.g. LINK A9F3K2).',
+      [{ id: 'REGISTER Your Store Name', title: '🚀 Create my store' }]
+    );
+    return;
+  }
+
+  // A greeting (or the Menu button) opens the tappable main menu.
+  if (GREETINGS.has(command)) {
+    await sendMainMenu(msg, merchant.store_name);
     return;
   }
 
@@ -368,11 +440,18 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   if (command === 'LIST') {
     const products = await getProducts(merchant.id);
     if (products.length === 0) {
-      await sendReply('📭 Your store has no products yet.\n\nSend a product image with caption to add one!');
+      await replyButtons(msg, '📭 Your store has no products yet.\n\nSend a product photo with a caption to add one!', [
+        { id: 'HELP', title: '➕ How to add' },
+        { id: 'MENU', title: '📋 Menu' },
+      ]);
       return;
     }
     const productList = products.map((p, i) => `${i + 1}. *${p.title}* — ₹${p.price.toLocaleString('en-IN')}`).join('\n');
-    await sendReply(`📦 *Your Products (${products.length}):*\n\n${productList}`);
+    await replyButtons(msg, `📦 *Your Products (${products.length}):*\n\n${productList}`, [
+      { id: 'HELP', title: '➕ Add another' },
+      { id: 'STATUS', title: '📊 Status' },
+      { id: 'MENU', title: '📋 Menu' },
+    ]);
     return;
   }
 
@@ -499,14 +578,30 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   if (command === 'STATUS') {
     const count = await getProductCount(merchant.id);
     const storeUrl = `${env.FRONTEND_URL}/${merchant.store_slug}`;
-    await sendReply(`📊 *Store Status*\n\n🏪 *${merchant.store_name}*\n📦 Products: ${count}\n🔗 ${storeUrl}`);
+    await replyButtons(
+      msg,
+      `📊 *Store Status*\n\n🏪 *${merchant.store_name}*\n📦 Products: ${count}\n🔗 ${storeUrl}`,
+      [
+        { id: 'LIST', title: '📦 My products' },
+        { id: 'HELP', title: '➕ Add product' },
+        { id: 'MENU', title: '📋 Menu' },
+      ]
+    );
     return;
   }
 
   if (command === 'HELP') {
-    await sendReply(`📖 *Maghgo Commands*\n\n📸 *Add Product:* Send an image with caption\n   Format: Product Name Price\n   Example: Red Cotton T-Shirt ₹499\n\n✏️ *EDIT product name - ₹price* — Change price\n📋 *LIST* — View all your products\n🗑️ *DELETE product name* — Remove a product\n🧨 *CLEAR CATALOG* — Delete all products\n\n📅 *PREBOOK product name* — Customers reserve & collect at shop\n🛒 *SELL product name* — Back to normal delivery\n\n📝 *DESCRIBE your text* — Set store description\n⏸️ *PAUSE / RESUME* — Turn store offline/online\n📊 *STATUS* — Store URL & product count\n🚀 *UPGRADE* — Unlock higher product limits\n❓ *HELP* — Show this message`);
+    await replyButtons(
+      msg,
+      `➕ *Add a product*\n\nSend a *photo* of your product with a caption:\n\n_Product name  Price_\nExample: *Red Cotton T-Shirt ₹499*\n\n(Include ₹, Rs, INR or MRP before the price.)\n\nOther things you can type:\n✏️ EDIT name - ₹price\n🗑️ DELETE name\n📅 PREBOOK name  ·  🛒 SELL name\n📝 DESCRIBE your store text`,
+      [
+        { id: 'MENU', title: '📋 Main menu' },
+        { id: 'LIST', title: '📦 My products' },
+      ]
+    );
     return;
   }
 
-  await sendReply('🤔 I didn\'t understand that.\n\nType *HELP* to see available commands.');
+  // Unknown input: open the GUI menu instead of a dead end.
+  await sendMainMenu(msg, merchant.store_name);
 }

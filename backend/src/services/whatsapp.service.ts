@@ -80,3 +80,83 @@ export async function sendReply(
     }
   );
 }
+
+// ─── Interactive (GUI) messages ──────────────────────────────────────────────
+
+async function postMessage(payload: any): Promise<void> {
+  await axios.post(`${GRAPH_API}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`, payload, {
+    headers: { Authorization: `Bearer ${env.WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
+  });
+}
+
+export interface ReplyButton {
+  id: string;   // returned to us as the "command" when tapped
+  title: string; // <= 20 chars (WhatsApp limit)
+}
+
+/**
+ * Up to THREE tappable reply buttons under a message. When a button is tapped
+ * WhatsApp sends its `id` back as interactive.button_reply.id, which the
+ * controller feeds to the bot exactly like a typed command.
+ */
+export async function sendButtons(to: string, body: string, buttons: ReplyButton[]): Promise<void> {
+  await postMessage({
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      body: { text: body.slice(0, 1024) },
+      action: {
+        buttons: buttons.slice(0, 3).map((b) => ({
+          type: 'reply',
+          reply: { id: b.id, title: b.title.slice(0, 20) },
+        })),
+      },
+    },
+  });
+}
+
+export interface ListRow {
+  id: string;
+  title: string;        // <= 24 chars
+  description?: string; // <= 72 chars
+}
+
+/**
+ * A "menu" button that opens a scrollable list — the closest thing WhatsApp has
+ * to a full GUI menu. Up to 10 rows across sections.
+ */
+export async function sendList(
+  to: string,
+  body: string,
+  buttonLabel: string,
+  rows: ListRow[],
+  header?: string
+): Promise<void> {
+  await postMessage({
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive: {
+      type: 'list',
+      ...(header ? { header: { type: 'text', text: header.slice(0, 60) } } : {}),
+      body: { text: body.slice(0, 1024) },
+      action: {
+        button: buttonLabel.slice(0, 20),
+        sections: [
+          {
+            title: 'Actions',
+            rows: rows.slice(0, 10).map((r) => ({
+              id: r.id,
+              title: r.title.slice(0, 24),
+              ...(r.description ? { description: r.description.slice(0, 72) } : {}),
+            })),
+          },
+        ],
+      },
+    },
+  });
+}

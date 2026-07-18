@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
 import { WhatsAppWebhookPayload } from '../types/whatsapp';
 import { processBotMessage, BotMessage } from '../services/bot.service';
-import { getMediaUrl, downloadMedia, sendReply as sendWhatsappReply } from '../services/whatsapp.service';
-import { sendMetaReply, downloadMetaMedia } from '../services/meta.service';
+import { getMediaUrl, downloadMedia, sendReply as sendWhatsappReply, sendButtons as sendWhatsappButtons, sendList as sendWhatsappList } from '../services/whatsapp.service';
+import { sendMetaReply, sendMetaQuickReplies, downloadMetaMedia } from '../services/meta.service';
 
 export function handleIncomingMessage(req: Request, res: Response): void {
   console.log('📬 Webhook received:', JSON.stringify(req.body, null, 2));
@@ -28,15 +28,27 @@ function handleWhatsapp(body: WhatsAppWebhookPayload) {
       for (const message of messages) {
         setImmediate(async () => {
           try {
+            // A tapped button/list row arrives as an interactive reply; its id
+            // is the command we set (e.g. "LIST"), so feed it in as the text.
+            const interactiveId =
+              (message as any).interactive?.button_reply?.id ||
+              (message as any).interactive?.list_reply?.id;
+
             const botMsg: BotMessage = {
               channel: 'whatsapp',
               senderId: message.from,
               messageId: message.id,
               type: message.type === 'image' ? 'image' : 'text',
-              text: message.text?.body,
+              text: interactiveId || message.text?.body,
               sendReply: async (text: string) => {
                 await sendWhatsappReply(message.from, message.id, text);
-              }
+              },
+              sendButtons: async (body, buttons) => {
+                await sendWhatsappButtons(message.from, body, buttons);
+              },
+              sendMenu: async (body, buttonLabel, rows, header) => {
+                await sendWhatsappList(message.from, body, buttonLabel, rows, header);
+              },
             };
 
             if (message.type === 'image' && message.image) {
@@ -74,16 +86,23 @@ function handleInstagram(body: any) {
           const senderId = messaging.sender.id;
           const message = messaging.message;
           const isImage = message.attachments && message.attachments[0]?.type === 'image';
+          const qr = message.quick_reply?.payload;
 
           const botMsg: BotMessage = {
             channel: 'instagram',
             senderId,
             messageId: message.mid,
             type: isImage ? 'image' : 'text',
-            text: message.text,
+            text: qr || message.text,
             sendReply: async (text: string) => {
               await sendMetaReply(senderId, text);
-            }
+            },
+            sendButtons: async (body, buttons) => {
+              await sendMetaQuickReplies(senderId, body, buttons);
+            },
+            sendMenu: async (body, _label, rows) => {
+              await sendMetaQuickReplies(senderId, body, rows.map((r) => ({ id: r.id, title: r.title })));
+            },
           };
 
           if (isImage) {
@@ -120,16 +139,23 @@ function handleMessenger(body: any) {
           const senderId = messaging.sender.id;
           const message = messaging.message;
           const isImage = message.attachments && message.attachments[0]?.type === 'image';
+          const qr = message.quick_reply?.payload;
 
           const botMsg: BotMessage = {
             channel: 'messenger',
             senderId,
             messageId: message.mid,
             type: isImage ? 'image' : 'text',
-            text: message.text,
+            text: qr || message.text,
             sendReply: async (text: string) => {
               await sendMetaReply(senderId, text);
-            }
+            },
+            sendButtons: async (body, buttons) => {
+              await sendMetaQuickReplies(senderId, body, buttons);
+            },
+            sendMenu: async (body, _label, rows) => {
+              await sendMetaQuickReplies(senderId, body, rows.map((r) => ({ id: r.id, title: r.title })));
+            },
           };
 
           if (isImage) {
