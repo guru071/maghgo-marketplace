@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { whatsappLink, instagramLink, messengerLink } from '@/lib/site-config';
 
 const apiUrl = () => process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 const authHeaders = () => ({
@@ -131,15 +133,71 @@ export default function MetaCatalogPage() {
         {msg && <p className={`text-sm mt-4 ${msg.ok ? 'text-green-600' : 'text-red-600'}`}>{msg.text}</p>}
       </div>
 
-      {/* Help */}
-      <div className="bg-blue-50 border border-blue-100 rounded-2xl p-6 text-sm text-blue-900">
-        <h3 className="font-semibold mb-2">Where do I find these?</h3>
+      {/* Where to find the catalog values */}
+      <div className="bg-blue-50 border border-blue-100 rounded-2xl p-6 text-sm text-blue-900 mb-8">
+        <h3 className="font-semibold mb-2">Where do I find the Catalog ID &amp; token?</h3>
         <ol className="list-decimal list-inside space-y-1 text-blue-800">
           <li>Open <strong>Meta Commerce Manager</strong> → your catalogue. The <strong>Catalog ID</strong> is in its settings / URL.</li>
           <li>In <strong>Meta Business Settings → Users → System Users</strong>, generate a token with access to that catalogue (the <code>catalog_management</code> permission).</li>
           <li>Paste both above and connect, then tap <strong>Import products</strong>.</li>
         </ol>
         <p className="mt-3 text-blue-700">This reads <em>your own</em> catalogue with <em>your own</em> token — no Meta app review needed. Re-import any time to pull in new products (existing ones aren&apos;t duplicated).</p>
+      </div>
+
+      {/* Full tutorial */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-8">
+        <h2 className="text-xl font-bold text-gray-900">📖 How Maghgo works — full guide</h2>
+
+        {/* Two-bot model */}
+        <section>
+          <h3 className="font-semibold text-gray-900 mb-2">1. The two bots</h3>
+          <p className="text-sm text-gray-600 mb-3">Maghgo sits in the middle. There are really two conversations:</p>
+          <div className="bg-gray-50 rounded-xl p-4 text-sm font-mono text-gray-700 overflow-x-auto whitespace-pre">
+{`  You (shop owner)  ⇄  Maghgo bot     →  add products, prices, themes, orders
+  Your customer     ⇄  your shop bot  →  browse your products, buy & pay`}
+          </div>
+          <p className="text-sm text-gray-500 mt-3">Same bot number — it knows you&apos;re the owner, and treats your customers as shoppers of <em>your</em> store.</p>
+        </section>
+
+        {/* Connect channels */}
+        <section>
+          <h3 className="font-semibold text-gray-900 mb-2">2. Connect your Instagram / Facebook / WhatsApp to Maghgo</h3>
+          <ol className="list-decimal list-inside space-y-2 text-sm text-gray-600">
+            <li><strong>WhatsApp</strong> — message the Maghgo bot and send <code className="bg-gray-100 px-1 rounded">REGISTER Your Store Name</code>. That creates your store.</li>
+            <li><strong>Add Instagram / Messenger to the same store</strong> — on WhatsApp send <code className="bg-gray-100 px-1 rounded">LINK</code> to get a code, then message the Maghgo bot on that app with <code className="bg-gray-100 px-1 rounded">LINK &lt;code&gt;</code>. Now all channels manage one store.</li>
+            <li><strong>Show your socials on your storefront</strong> — send <code className="bg-gray-100 px-1 rounded">SET INSTAGRAM yourhandle</code>, <code className="bg-gray-100 px-1 rounded">SET FACEBOOK your-page-url</code>, or <code className="bg-gray-100 px-1 rounded">SET WHATSAPP number</code>.</li>
+          </ol>
+          <div className="flex flex-wrap gap-2 mt-4">
+            {whatsappLink('LINK') && <a href={whatsappLink('LINK')!} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-2 rounded-full bg-[#25D366] text-white">Open Maghgo on WhatsApp</a>}
+            {instagramLink() && <a href={instagramLink()!} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white">Open on Instagram</a>}
+            {messengerLink() && <a href={messengerLink()!} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-2 rounded-full bg-[#0084FF] text-white">Open on Messenger</a>}
+          </div>
+        </section>
+
+        {/* Meta import */}
+        <section>
+          <h3 className="font-semibold text-gray-900 mb-2">3. Bring your Meta Shop products in</h3>
+          <p className="text-sm text-gray-600">Connect your catalogue above and tap <strong>Import products</strong>. Your Facebook/Instagram Shop products become Maghgo products, so they instantly show on your storefront <em>and</em> in your shop bot for customers.</p>
+        </section>
+
+        {/* Buying & contact */}
+        <section>
+          <h3 className="font-semibold text-gray-900 mb-2">4. How customers buy &amp; contact you</h3>
+          <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
+            <li>They open your store link, <strong>tap a product to see its details &amp; specifications</strong>, choose options (size/colour), and add to cart.</li>
+            <li>At checkout they can <strong>Pay Online</strong> or reach you on <strong>WhatsApp / Call / Instagram</strong> — those buttons come from the socials you set above.</li>
+            <li>In chat, a customer can also send <code className="bg-gray-100 px-1 rounded">SHOP your-store</code> to browse and order right inside the bot.</li>
+          </ul>
+        </section>
+
+        {/* Razorpay */}
+        <section>
+          <h3 className="font-semibold text-gray-900 mb-2">5. Where is the Razorpay payment?</h3>
+          <p className="text-sm text-gray-600">
+            Go to <Link href="/dashboard/settings" className="text-accent font-medium hover:underline">Settings → Accept Online Payments</Link> and connect <strong>your own</strong> Razorpay account.
+            Once connected, a <strong>&ldquo;Pay Online Now&rdquo;</strong> button appears at checkout on your storefront and in the bot — and the money goes straight to <em>your</em> bank, not to Maghgo.
+          </p>
+        </section>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import React from "react";
 import type { Config } from "@puckeditor/core";
 import { DropZone } from "@puckeditor/core";
 import { StoreContext } from "@/components/store/StoreContext";
+import ProductDetails from "@/components/store/ProductDetails";
 
 // Header block. Falls back to the merchant's real store name / description when
 // the props are still the "My Store" placeholders, so a seller who hasn't (or
@@ -264,6 +265,7 @@ function ProductCardMini({ title, priceLabel, imageUrl, cardBg, accent, onClick,
 
 const ProductGridComponent = ({ columns, showPrices, cardBg, gap, cardStyle, animation, accent: accentProp }: any) => {
   const storeCtx = React.useContext(StoreContext);
+  const [detail, setDetail] = React.useState<any>(null);
   const hasLiveProducts = storeCtx && storeCtx.products.length > 0;
   // Accent comes from the theme so the CTA matches the palette rather than
   // every theme sharing one orange.
@@ -291,7 +293,7 @@ const ProductGridComponent = ({ columns, showPrices, cardBg, gap, cardStyle, ani
                 cardBg={bg}
                 accent={accent}
                 isPrebook={p.fulfillment_type === 'prebook'}
-                onClick={() => storeCtx.onAddToCart(p)}
+                onClick={() => setDetail(p)}
               />
             ))
           : [1, 2, 3, 4, 5].map((i) => (
@@ -302,6 +304,13 @@ const ProductGridComponent = ({ columns, showPrices, cardBg, gap, cardStyle, ani
         <p style={{ textAlign: 'center', color: '#9CA3AF', margin: '1.5rem 0 0', fontStyle: 'italic', fontSize: '0.85rem' }}>
           Your live products will automatically fill this grid.
         </p>
+      )}
+      {detail && storeCtx && (
+        <ProductDetails
+          product={detail}
+          onAdd={(pr, opts) => storeCtx.onAddToCart(pr, opts)}
+          onClose={() => setDetail(null)}
+        />
       )}
     </div>
   );
