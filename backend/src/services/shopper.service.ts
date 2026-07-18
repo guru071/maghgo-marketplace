@@ -183,14 +183,18 @@ async function checkout(msg: BotMessage, s: Session): Promise<void> {
     const total = rupee(Number(order.total));
     const discountNote = Number(order.discount) > 0 ? ` _(incl. ${rupee(Number(order.discount))} discount)_` : '';
 
-    // Offer online payment. The link is best-effort: if Razorpay is unreachable
-    // the order still stands and the shopper can settle it manually with the shop.
+    // Offer online payment via the SHOP's own Razorpay account (money goes to
+    // them, not us). Best-effort: no connected account or an API hiccup just
+    // means the shopper settles manually with the shop.
+    const shop = await getMerchantBySlug(s.storeSlug);
     const payLink = await createOrderPaymentLink({
       orderId: order.id,
       merchantId: order.merchant_id,
       storeName: s.storeName,
       amount: Number(order.total),
       customerPhone,
+      razorpayKeyId: shop?.razorpay_key_id,
+      razorpayKeySecret: shop?.razorpay_key_secret,
     });
 
     if (payLink) {

@@ -13,6 +13,10 @@ interface ProductCardProps {
 export default function ProductCard({ product, onAddToCart }: ProductCardProps) {
   const [isAdded, setIsAdded] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+
+  const specs = Array.isArray(product.specifications) ? product.specifications.filter((s) => s?.label && s?.value) : [];
+  const hasDetails = specs.length > 0 || Boolean(product.description);
 
   const imageUrl = product.processed_image_url || product.original_image_url;
   const showImage = imageUrl && !imgError;
@@ -73,6 +77,15 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
         {product.description && (
           <p className="product-card__description">{product.description}</p>
         )}
+        {hasDetails && (
+          <button
+            type="button"
+            onClick={() => setShowDetails(true)}
+            style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, marginBottom: 4, color: 'var(--accent)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
+          >
+            View details →
+          </button>
+        )}
         <p className="product-card__price">
           {formatPrice(product.price, product.currency)}
           {lowStock && (
@@ -108,6 +121,65 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
           )}
         </button>
       </div>
+
+      {showDetails && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${product.title} details`}
+          onClick={() => setShowDetails(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#fff', color: '#111', borderRadius: 16, maxWidth: 520, width: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+          >
+            {showImage && (
+              <div style={{ position: 'relative', width: '100%', aspectRatio: '1', background: '#f3f4f6', borderTopLeftRadius: 16, borderTopRightRadius: 16, overflow: 'hidden' }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={imageUrl} alt={product.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+            )}
+            <div style={{ padding: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                <div>
+                  {product.category && (
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#6b7280' }}>{product.category}</span>
+                  )}
+                  <h3 style={{ fontSize: '1.35rem', fontWeight: 800, margin: '2px 0' }}>{product.title.replace(/#[\w]+/g, '').trim()}</h3>
+                </div>
+                <button onClick={() => setShowDetails(false)} aria-label="Close" style={{ background: 'none', border: 'none', fontSize: '1.5rem', lineHeight: 1, cursor: 'pointer', color: '#9ca3af' }}>×</button>
+              </div>
+              <p style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--accent)', margin: '0.25rem 0 1rem' }}>
+                {formatPrice(product.price, product.currency)}
+              </p>
+              {product.description && (
+                <p style={{ color: '#374151', lineHeight: 1.6, marginBottom: specs.length ? '1.25rem' : '1.5rem' }}>{product.description}</p>
+              )}
+              {specs.length > 0 && (
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1.5rem' }}>
+                  <tbody>
+                    {specs.map((s, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                        <td style={{ padding: '0.55rem 0', color: '#6b7280', fontSize: '0.85rem', width: '40%' }}>{s.label}</td>
+                        <td style={{ padding: '0.55rem 0', color: '#111', fontSize: '0.9rem', fontWeight: 600 }}>{s.value}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <button
+                className="product-card__add-btn"
+                onClick={() => { if (!outOfStock) { handleAdd(); setShowDetails(false); } }}
+                disabled={outOfStock}
+                style={outOfStock ? { opacity: 0.5, cursor: 'not-allowed', width: '100%' } : { width: '100%' }}
+              >
+                {outOfStock ? 'Out of Stock' : isPrebook ? 'Pre-book' : 'Add to Cart'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </article>
   );
 }

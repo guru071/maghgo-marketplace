@@ -2,8 +2,6 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { env } from '../config/env';
 import { getPlanFromAmount, getAmountFromPlan } from '../services/payment.service';
-import { markOrderPaidByLink } from '../services/order.service';
-import { sendTextMessage } from '../services/whatsapp.service';
 import { normalizePhone } from '../utils/phone';
 import { supabase } from '../db/supabase';
 import axios from 'axios';
@@ -51,37 +49,11 @@ router.post('/razorpay', async (req: Request, res: Response) => {
     if (payload.event === 'payment_link.paid') {
       const paymentLink = payload.payload.payment_link.entity;
 
-      // A shopper paying for their *order* (not a merchant subscription). These
-      // links carry `type: 'order'` in their notes, so we settle the order and
-      // stop here rather than running the subscription-reactivation logic.
+      // Order payments are settled per-shop via a signed callback
+      // (/api/store/pay/verify), not this platform webhook — so ignore any
+      // order-tagged link that somehow reaches here rather than misprocessing it
+      // as a subscription.
       if (paymentLink.notes?.type === 'order') {
-        const result = await markOrderPaidByLink(String(paymentLink.id));
-        if (result && !result.alreadyPaid) {
-          const { order } = result;
-          const symbol = order.currency === 'INR' ? '₹' : `${order.currency} `;
-          const totalStr = `${symbol}${Number(order.total).toLocaleString('en-IN')}`;
-
-          // Receipt to the shopper (if they paid from a phone-based channel).
-          if (order.customer_phone && /^[1-9]\d{9,14}$/.test(order.customer_phone)) {
-            await sendTextMessage(
-              order.customer_phone,
-              `✅ *Payment received — ${totalStr}!*\n\nThank you. Your order is confirmed and the shop has been notified. 🙏`
-            ).catch((e) => console.error('Failed to send order receipt:', e?.message || e));
-          }
-
-          // Tell the merchant the order is now paid.
-          const { data: merchant } = await supabase
-            .from('merchants')
-            .select('phone_number, store_name')
-            .eq('id', order.merchant_id)
-            .maybeSingle();
-          if (merchant?.phone_number) {
-            await sendTextMessage(
-              merchant.phone_number,
-              `💰 *Order PAID — ${totalStr}!*\n\nA customer just paid online for their order at *${merchant.store_name}*. See it in your dashboard: ${env.FRONTEND_URL}/dashboard/orders`
-            ).catch((e) => console.error('Failed to notify merchant of paid order:', e?.message || e));
-          }
-        }
         res.sendStatus(200);
         return;
       }

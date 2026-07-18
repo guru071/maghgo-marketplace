@@ -14,6 +14,9 @@ export default function DashboardInventory() {
   // New product form state
   const [newTitle, setNewTitle] = useState('');
   const [newPrice, setNewPrice] = useState('');
+  const [newDescription, setNewDescription] = useState('');
+  const [newCategory, setNewCategory] = useState('');
+  const [newSpecs, setNewSpecs] = useState<{ label: string; value: string }[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
 
@@ -59,6 +62,9 @@ export default function DashboardInventory() {
     formData.append('image', selectedFile);
     formData.append('title', newTitle);
     formData.append('price', newPrice);
+    formData.append('description', newDescription);
+    formData.append('category', newCategory);
+    formData.append('specifications', JSON.stringify(newSpecs.filter((s) => s.label.trim() && s.value.trim())));
 
     try {
       const res = await fetch(`${apiUrl}/api/dashboard/products`, {
@@ -71,6 +77,9 @@ export default function DashboardInventory() {
         setShowAddModal(false);
         setNewTitle('');
         setNewPrice('');
+        setNewDescription('');
+        setNewCategory('');
+        setNewSpecs([]);
         setSelectedFile(null);
         fetchDashboardData();
       } else {
@@ -276,9 +285,55 @@ export default function DashboardInventory() {
                 />
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category <span className="text-gray-400">(optional)</span></label>
+                <input
+                  type="text"
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-accent focus:border-accent"
+                  placeholder="e.g. Footwear"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description <span className="text-gray-400">(optional)</span></label>
+                <textarea
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 h-20 focus:ring-accent focus:border-accent"
+                  placeholder="Tell customers about this product…"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Specifications <span className="text-gray-400">(optional)</span></label>
+                <div className="space-y-2">
+                  {newSpecs.map((s, i) => (
+                    <div key={i} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={s.label}
+                        onChange={(e) => setNewSpecs((sp) => sp.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))}
+                        className="w-1/3 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-accent focus:border-accent"
+                        placeholder="Label (e.g. Size)"
+                      />
+                      <input
+                        type="text"
+                        value={s.value}
+                        onChange={(e) => setNewSpecs((sp) => sp.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}
+                        className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-accent focus:border-accent"
+                        placeholder="Value (e.g. M, L, XL)"
+                      />
+                      <button type="button" onClick={() => setNewSpecs((sp) => sp.filter((_, j) => j !== i))}
+                        className="text-red-500 hover:text-red-700 px-2" aria-label="Remove specification">✕</button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => setNewSpecs((sp) => [...sp, { label: '', value: '' }])}
+                    className="text-sm font-medium text-accent hover:underline">+ Add specification</button>
+                </div>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Product Image</label>
-                <input 
-                  type="file" 
+                <input
+                  type="file"
                   accept="image/*"
                   onChange={e => setSelectedFile(e.target.files?.[0] || null)}
                   className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-gray-50 file:text-accent hover:file:bg-gray-100"

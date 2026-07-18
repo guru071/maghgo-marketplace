@@ -1,9 +1,12 @@
 import { Router, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
-import { createOrder, priceCart, attachOrderPaymentLink } from '../services/order.service';
+import { createOrder, priceCart, attachOrderPaymentLink, getOrderByPaymentLink, markOrderPaidByLink } from '../services/order.service';
 import { validateCoupon } from '../services/coupon.service';
-import { createOrderPaymentLink } from '../services/payment.service';
+import { createOrderPaymentLink, verifyOrderPaymentSignature } from '../services/payment.service';
 import { getMerchantBySlug } from '../services/merchant.service';
+import { sendTextMessage } from '../services/whatsapp.service';
+import { supabase } from '../db/supabase';
+import { env } from '../config/env';
 
 // ─── Public Storefront Routes ────────────────────────────────────────────────
 // These are called by shoppers, who are never authenticated. Everything here
@@ -57,6 +60,8 @@ router.post('/:slug/orders', orderLimiter, async (req: Request, res: Response) =
         storeName: merchant?.store_name || 'the store',
         amount: Number(order.total),
         customerPhone: customer_phone,
+        razorpayKeyId: merchant?.razorpay_key_id,
+        razorpayKeySecret: merchant?.razorpay_key_secret,
       });
       if (payLink) {
         payment_url = payLink.url;
@@ -106,6 +111,79 @@ router.post('/:slug/coupon', couponLimiter, async (req: Request, res: Response) 
   } catch (err: any) {
     // validateCoupon throws a shopper-friendly message for expired/used codes.
     res.status(400).json({ error: err?.message ?? 'That coupon could not be applied.' });
+  }
+});
+
+/**
+ * POST /api/store/pay/verify
+ * Confirm an order payment from the Razorpay payment-link callback.
+ *
+ * The shop's own secret verifies the redirect signature (their money, their
+ * keys). On success the order is marked paid (idempotently) and both parties
+ * are notified. This is intentionally NOT under /:slug — the order is found by
+ * its payment-link id, which uniquely identifies the shop.
+ */
+const verifyLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 60 });
+router.post('/pay/verify', verifyLimiter, async (req: Request, res: Response) => {
+  try {
+    const {
+      razorpay_payment_link_id,
+      razorpay_payment_link_reference_id,
+      razorpay_payment_link_status,
+      razorpay_payment_id,
+      razorpay_signature,
+    } = req.body ?? {};
+
+    if (!razorpay_payment_link_id || !razorpay_signature) {
+      return res.status(400).json({ error: 'Missing payment parameters.' });
+    }
+
+    const order = await getOrderByPaymentLink(String(razorpay_payment_link_id));
+    if (!order) return res.status(404).json({ error: 'Order not found.' });
+
+    // The shop's secret is read only here (backend/service_role) and never leaves.
+    const { data: merchant } = await supabase
+      .from('merchants')
+      .select('razorpay_key_secret, phone_number, store_name, store_slug')
+      .eq('id', order.merchant_id)
+      .maybeSingle();
+
+    if (!merchant?.razorpay_key_secret) {
+      return res.status(400).json({ error: 'This store is not set up for online payments.' });
+    }
+
+    const valid = verifyOrderPaymentSignature(merchant.razorpay_key_secret, {
+      razorpay_payment_link_id: String(razorpay_payment_link_id),
+      razorpay_payment_link_reference_id: String(razorpay_payment_link_reference_id ?? ''),
+      razorpay_payment_link_status: String(razorpay_payment_link_status ?? ''),
+      razorpay_payment_id: String(razorpay_payment_id ?? ''),
+      razorpay_signature: String(razorpay_signature),
+    });
+
+    if (!valid || razorpay_payment_link_status !== 'paid') {
+      return res.status(400).json({ error: 'Payment could not be verified.' });
+    }
+
+    const result = await markOrderPaidByLink(String(razorpay_payment_link_id));
+    if (result && !result.alreadyPaid) {
+      const paid = result.order;
+      const symbol = paid.currency === 'INR' ? '₹' : `${paid.currency} `;
+      const totalStr = `${symbol}${Number(paid.total).toLocaleString('en-IN')}`;
+
+      if (paid.customer_phone && /^[1-9]\d{9,14}$/.test(paid.customer_phone)) {
+        sendTextMessage(paid.customer_phone, `✅ *Payment received — ${totalStr}!*\n\nThank you. Your order at *${merchant.store_name}* is confirmed. 🙏`)
+          .catch((e) => console.error('order receipt failed:', e?.message || e));
+      }
+      if (merchant.phone_number) {
+        sendTextMessage(merchant.phone_number, `💰 *Order PAID — ${totalStr}!*\n\nA customer paid online for their order at *${merchant.store_name}*. See it: ${env.FRONTEND_URL}/dashboard/orders`)
+          .catch((e) => console.error('merchant paid notice failed:', e?.message || e));
+      }
+    }
+
+    res.json({ ok: true, store_slug: merchant.store_slug });
+  } catch (err: any) {
+    console.error('❌ Payment verify failed:', err?.message ?? err);
+    res.status(500).json({ error: 'Could not verify payment.' });
   }
 });
 

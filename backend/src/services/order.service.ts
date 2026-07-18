@@ -231,6 +231,17 @@ async function decrementStock(merchantId: string, lineItems: OrderLineItem[]): P
   }
 }
 
+/** Find an order by its Razorpay payment-link id (used by the pay callback). */
+export async function getOrderByPaymentLink(paymentLinkId: string): Promise<Order | null> {
+  const { data, error } = await supabase
+    .from('order_logs')
+    .select('*')
+    .eq('payment_link_id', paymentLinkId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as Order;
+}
+
 /** Persist the Razorpay payment link generated for an order. Best-effort. */
 export async function attachOrderPaymentLink(orderId: string, url: string, id: string): Promise<void> {
   const { error } = await supabase

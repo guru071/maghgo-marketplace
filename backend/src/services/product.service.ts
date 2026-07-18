@@ -12,20 +12,28 @@ export async function createProduct(
   title: string,
   price: number,
   originalUrl: string,
-  processedUrl: string
+  processedUrl: string,
+  extra: { description?: string; category?: string | null; specifications?: { label: string; value: string }[] } = {}
 ): Promise<Product> {
-  const { data, error } = await supabase
-    .from('products')
-    .insert({
-      merchant_id: merchantId,
-      title,
-      price,
-      original_image_url: originalUrl,
-      processed_image_url: processedUrl,
-      is_available: true,
-    })
-    .select()
-    .single();
+  const row: Record<string, any> = {
+    merchant_id: merchantId,
+    title,
+    price,
+    original_image_url: originalUrl,
+    processed_image_url: processedUrl,
+    is_available: true,
+  };
+  if (extra.description !== undefined) row.description = extra.description;
+  if (extra.category !== undefined) row.category = extra.category;
+  if (extra.specifications !== undefined) row.specifications = extra.specifications;
+
+  let { data, error } = await supabase.from('products').insert(row).select().single();
+
+  // category/specifications may not exist yet (migration 17) — retry with base.
+  if (error && /category|specifications|schema cache|42703|PGRST204/i.test(error.message || '')) {
+    const { category, specifications, ...base } = row;
+    ({ data, error } = await supabase.from('products').insert(base).select().single());
+  }
 
   if (error) {
     throw new Error(`Failed to create product: ${error.message}`);

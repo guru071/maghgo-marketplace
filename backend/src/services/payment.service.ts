@@ -1,4 +1,5 @@
 import Razorpay from 'razorpay';
+import crypto from 'crypto';
 import { env } from '../config/env';
 import { supabase } from '../db/supabase';
 
@@ -88,17 +89,25 @@ export async function createPaymentLink(senderId: string, amount: number): Promi
 }
 
 /**
- * Create a Razorpay payment link so a *shopper* can pay for their order online,
- * instead of only arranging payment manually in chat.
+ * Create a Razorpay payment link so a *shopper* can pay for their order online.
  *
- * This is distinct from createPaymentLink (which sells merchant subscriptions):
- * the notes carry `type: 'order'` and the order id, so the shared webhook can
- * tell the two apart and mark the right thing paid. The amount is passed in
- * rupees and is whatever the *server* computed for the order — never a
+ * CRITICAL: this uses the SHOP OWNER's own Razorpay credentials, so the money
+ * settles into the shop's account — not the platform's. (Subscription payments
+ * to Maghgo use the platform keys via createPaymentLink instead.) If the shop
+ * hasn't connected Razorpay yet, we return null and the shopper falls back to
+ * arranging payment in chat — we never silently route their money to us.
+ *
+ * Settlement is confirmed by a signed callback (see /api/store/pay/verify): the
+ * shop's own webhook secret isn't available to us, so we verify the redirect
+ * signature with the shop's key_secret instead. `reference_id` carries the order
+ * id so the callback can find the order.
+ *
+ * The amount is whatever the *server* computed for the order — never a
  * client-supplied figure.
  *
- * @returns the link's short URL and id, or null if Razorpay is unavailable
- *          (the order is already recorded, so a failed link must not throw).
+ * @returns the link's short URL and id, or null if the shop hasn't connected
+ *          Razorpay or the API call failed (the order is already recorded, so a
+ *          failed link must not throw).
  */
 export async function createOrderPaymentLink(params: {
   orderId: string;
@@ -106,21 +115,32 @@ export async function createOrderPaymentLink(params: {
   storeName: string;
   amount: number; // rupees
   customerPhone?: string | null;
+  razorpayKeyId?: string | null;
+  razorpayKeySecret?: string | null;
 }): Promise<{ url: string; id: string } | null> {
+  // No connected account → no online payment. Never fall back to platform keys:
+  // that would take the customer's money into the wrong account.
+  if (!params.razorpayKeyId || !params.razorpayKeySecret) return null;
+  if (!params.amount || params.amount < 1) return null;
+
   try {
-    if (!params.amount || params.amount < 1) return null;
+    const shopRazorpay = new Razorpay({
+      key_id: params.razorpayKeyId,
+      key_secret: params.razorpayKeySecret,
+    });
 
     const payload: any = {
       amount: Math.round(params.amount * 100), // paise
       currency: 'INR',
       accept_partial: false,
+      reference_id: params.orderId,
       description: `Order at ${params.storeName}`.slice(0, 250),
       reminder_enable: true,
-      notes: {
-        type: 'order',
-        order_id: params.orderId,
-        merchant_id: params.merchantId,
-      },
+      // On payment, Razorpay redirects the shopper's browser here with a signed
+      // set of params; the frontend forwards them to the backend to verify.
+      callback_url: `${env.FRONTEND_URL}/pay/success`,
+      callback_method: 'get',
+      notes: { type: 'order', order_id: params.orderId, merchant_id: params.merchantId },
     };
 
     const phone = (params.customerPhone || '').replace(/\D/g, '');
@@ -131,10 +151,37 @@ export async function createOrderPaymentLink(params: {
       payload.notify = { sms: false, email: false };
     }
 
-    const response = await razorpay.paymentLink.create(payload);
+    const response = await shopRazorpay.paymentLink.create(payload);
     return { url: response.short_url, id: String(response.id) };
   } catch (error) {
     console.error('❌ Failed to create order payment link:', error);
     return null; // order stands; shopper can still pay manually
+  }
+}
+
+/**
+ * Verify a Razorpay Payment-Link callback signature using the SHOP's secret.
+ * The signature is HMAC-SHA256 of
+ *   payment_link_id | payment_link_reference_id | payment_link_status | payment_id
+ * (Razorpay's documented formula for payment-link callbacks).
+ */
+export function verifyOrderPaymentSignature(
+  keySecret: string,
+  params: {
+    razorpay_payment_link_id: string;
+    razorpay_payment_link_reference_id: string;
+    razorpay_payment_link_status: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+  }
+): boolean {
+  try {
+    const body = `${params.razorpay_payment_link_id}|${params.razorpay_payment_link_reference_id}|${params.razorpay_payment_link_status}|${params.razorpay_payment_id}`;
+    const expected = crypto.createHmac('sha256', keySecret).update(body).digest('hex');
+    const a = Buffer.from(expected, 'utf8');
+    const b = Buffer.from(params.razorpay_signature || '', 'utf8');
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
   }
 }

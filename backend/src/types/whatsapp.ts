@@ -73,6 +73,15 @@ export interface Merchant {
   subscription_plan: string;
   subscription_ends_at: string;
   created_at: string;
+  // The shop's own Razorpay credentials (migration 17). Optional; when present,
+  // order payments settle into the shop's account. Never sent to the browser.
+  razorpay_key_id?: string | null;
+  razorpay_key_secret?: string | null;
+}
+
+export interface ProductSpec {
+  label: string;
+  value: string;
 }
 
 export interface Product {
@@ -85,5 +94,8 @@ export interface Product {
   is_available: boolean;
   fulfillment_type?: 'buy' | 'prebook';
   stock?: number | null; // null/undefined = not tracked; 0 = out of stock
+  description?: string;
+  category?: string | null;
+  specifications?: ProductSpec[];
   created_at: string;
 }

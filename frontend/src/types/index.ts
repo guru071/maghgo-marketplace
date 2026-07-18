@@ -37,6 +37,14 @@ export interface Product {
   // null/undefined = stock not tracked (sell freely); 0 = out of stock.
   // Optional so the type is valid before migration 16 adds the column.
   stock?: number | null;
+  // Product details (migration 17). Optional for pre-migration compatibility.
+  category?: string | null;
+  specifications?: ProductSpec[];
+}
+
+export interface ProductSpec {
+  label: string;
+  value: string;
 }
 
 export interface CartItem {

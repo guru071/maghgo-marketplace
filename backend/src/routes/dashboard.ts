@@ -48,7 +48,66 @@ router.get('/store', async (req: AuthRequest, res) => {
     }
 
     if (error) throw error;
-    res.json(data);
+
+    // Whether the shop has connected its own Razorpay (never expose the secret).
+    let razorpay_connected = false;
+    try {
+      const { data: rk } = await supabase
+        .from('merchants')
+        .select('razorpay_key_id')
+        .eq('id', req.merchantId)
+        .maybeSingle();
+      razorpay_connected = !!rk?.razorpay_key_id;
+    } catch {
+      /* column may not exist pre-migration 17 → not connected */
+    }
+
+    res.json({ ...(data as Record<string, any>), razorpay_connected });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Connect / disconnect the shop's own Razorpay account. Order payments settle
+// into this account. The secret is write-only from the browser's perspective:
+// it is stored and used server-side but never read back.
+router.put('/payment-keys', async (req: AuthRequest, res) => {
+  try {
+    const keyId = (req.body?.razorpay_key_id ?? '').toString().trim();
+    const keySecret = (req.body?.razorpay_key_secret ?? '').toString().trim();
+
+    // Both empty → disconnect.
+    if (!keyId && !keySecret) {
+      const { error } = await supabase
+        .from('merchants')
+        .update({ razorpay_key_id: null, razorpay_key_secret: null })
+        .eq('id', req.merchantId);
+      if (error && /razorpay|schema cache|42703|PGRST204/i.test(error.message || '')) {
+        return res.status(400).json({ error: 'Payments need one setup step (migration 17) first.' });
+      }
+      if (error) throw error;
+      return res.json({ success: true, razorpay_connected: false });
+    }
+
+    if (!/^rzp_(live|test)_[A-Za-z0-9]+$/.test(keyId)) {
+      return res.status(400).json({ error: 'Key ID should look like rzp_live_XXXXXXXX (from your Razorpay dashboard).' });
+    }
+    if (keySecret.length < 10) {
+      return res.status(400).json({ error: 'Please paste your Razorpay Key Secret.' });
+    }
+
+    const { error } = await supabase
+      .from('merchants')
+      .update({ razorpay_key_id: keyId, razorpay_key_secret: keySecret })
+      .eq('id', req.merchantId);
+
+    if (error) {
+      if (/razorpay|schema cache|42703|PGRST204/i.test(error.message || '')) {
+        return res.status(400).json({ error: 'Payments need one setup step (migration 17) first.' });
+      }
+      throw error;
+    }
+    res.json({ success: true, razorpay_connected: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -98,8 +157,22 @@ router.get('/products', async (req: AuthRequest, res) => {
 router.post('/products', upload.single('image'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Image is required' });
-    const { title, price } = req.body;
+    const { title, price, description, category } = req.body;
     if (!title || !price) return res.status(400).json({ error: 'Title and price are required' });
+
+    // specifications arrives as a JSON string from the multipart form.
+    let specifications: { label: string; value: string }[] | undefined;
+    if (req.body.specifications) {
+      try {
+        const parsed = JSON.parse(req.body.specifications);
+        if (Array.isArray(parsed)) {
+          specifications = parsed
+            .filter((s: any) => s && String(s.label).trim() && String(s.value).trim())
+            .slice(0, 30)
+            .map((s: any) => ({ label: String(s.label).trim().slice(0, 60), value: String(s.value).trim().slice(0, 200) }));
+        }
+      } catch { /* ignore malformed specs */ }
+    }
 
     const merchantId = req.merchantId!;
 
@@ -132,7 +205,11 @@ router.post('/products', upload.single('image'), async (req: AuthRequest, res) =
       uploadImage(merchantId, productId, processedBuffer, 'image/png', '-processed'),
     ]);
 
-    const product = await createProduct(merchantId, title, Number(price), originalUrl, processedUrl);
+    const product = await createProduct(merchantId, title, Number(price), originalUrl, processedUrl, {
+      description: description !== undefined ? String(description).slice(0, 2000) : undefined,
+      category: category ? String(category).trim().slice(0, 60) : undefined,
+      specifications,
+    });
 
     if (merchant) {
       await triggerRevalidation(merchant.store_slug);
@@ -148,11 +225,19 @@ router.post('/products', upload.single('image'), async (req: AuthRequest, res) =
 // gracefully if migration 16 hasn't added the column yet.
 router.put('/products/:id', async (req: AuthRequest, res) => {
   try {
-    const { title, price, stock } = req.body;
+    const { title, price, stock, description, category, specifications } = req.body;
 
     const updates: Record<string, any> = {};
     if (title !== undefined) updates.title = title;
     if (price !== undefined) updates.price = price;
+    if (description !== undefined) updates.description = String(description).slice(0, 2000);
+    if (category !== undefined) updates.category = category ? String(category).trim().slice(0, 60) : null;
+    if (specifications !== undefined && Array.isArray(specifications)) {
+      updates.specifications = specifications
+        .filter((s: any) => s && String(s.label).trim() && String(s.value).trim())
+        .slice(0, 30)
+        .map((s: any) => ({ label: String(s.label).trim().slice(0, 60), value: String(s.value).trim().slice(0, 200) }));
+    }
     if (stock !== undefined) {
       // '' / null / 'off' clears tracking; a number sets the count.
       updates.stock =
@@ -167,9 +252,9 @@ router.put('/products/:id', async (req: AuthRequest, res) => {
       .eq('id', req.params.id)
       .eq('merchant_id', req.merchantId);
 
-    // Retry without stock if that column doesn't exist yet.
-    if (error && 'stock' in updates && /stock|schema cache|42703/i.test(error.message || '')) {
-      const { stock: _dropped, ...base } = updates;
+    // Retry without columns migration 16/17 may not have added yet.
+    if (error && /stock|category|specifications|schema cache|42703|PGRST204/i.test(error.message || '')) {
+      const { stock: _s, category: _c, specifications: _sp, ...base } = updates;
       ({ error } = await supabase
         .from('products')
         .update(base)
