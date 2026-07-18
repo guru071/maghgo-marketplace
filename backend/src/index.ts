@@ -13,6 +13,7 @@ import demoRouter from './routes/demo';
 import { dashboardRouter } from './routes/dashboard';
 import { authRouter } from './routes/auth';
 import { storeRouter } from './routes/store';
+import { apiV1Router } from './routes/api-v1';
 import { errorHandler } from './middleware/error-handler';
 
 // ─── Process Error Handling ──────────────────────────────────────────────────
@@ -100,6 +101,7 @@ app.use('/health', healthRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/store', storeRouter);
+app.use('/api/v1', apiV1Router);
 
 // ─── Error Handler ───────────────────────────────────────────────────────────
 
