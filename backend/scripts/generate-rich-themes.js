@@ -43,6 +43,15 @@ const PALETTES = [
   { key: 'Mono Brutal', plan: 'pro',        bg: '#FFFFFF', surface: '#F4F4F4', text: '#000000', accent: '#FF3B30', heading: "'Arial Black', Helvetica, sans-serif", body: "'Helvetica', sans-serif", radius: '0px', dark: false, hero: 'photo-1441984904996-e0b6ba687e04', cardStyle: 'frame', animation: 'slide' },
   { key: 'Vintage Press', plan: 'business', bg: '#F4ECD8', surface: '#FBF6E9', text: '#3B2F2F', accent: '#8C4A2F', heading: "'Georgia', serif",                  body: "'Georgia', serif", radius: '4px', dark: false, hero: 'photo-1472851294608-062f824d29cc', cardStyle: 'split', animation: 'fade' },
   { key: 'Slate Minimal', plan: 'starter',  bg: '#FFFFFF', surface: '#F8FAFC', text: '#0F172A', accent: '#334155', heading: "'Inter', sans-serif",               body: "'Inter', sans-serif", radius: '6px', dark: false, hero: 'photo-1441984904996-e0b6ba687e04', cardStyle: 'minimal', animation: 'rise' },
+
+  // ── New style families ───────────────────────────────────────────────────
+  // Glass, gradient, luxury and clean-professional looks the store asked for.
+  { key: 'Aurora Glass', plan: 'business',  bg: '#0B1020', surface: 'rgba(255,255,255,0.08)', text: '#EAF0FF', accent: '#7C5CFF', heading: "'Inter', sans-serif",     body: "'Inter', sans-serif", radius: '14px', dark: true, hero: 'photo-1497436072909-60f360e1d4b1', cardStyle: 'glass', animation: 'fade' },
+  { key: 'Frost Glass',  plan: 'business',  bg: '#12263A', surface: 'rgba(255,255,255,0.10)', text: '#EAF6FF', accent: '#38BDF8', heading: "'Inter', sans-serif",     body: "'Inter', sans-serif", radius: '14px', dark: true, hero: 'photo-1519681393784-d120267933ba', cardStyle: 'glass', animation: 'zoom' },
+  { key: 'Sunset Gradient', plan: 'starter', bg: '#1A0E1E', surface: '#2A1420', text: '#FFF0F5', accent: '#FF6B6B', heading: "'Poppins', sans-serif",                body: "'Inter', sans-serif", radius: '14px', dark: true, hero: 'photo-1502790671504-542ad42d5189', cardStyle: 'gradient', animation: 'rise' },
+  { key: 'Ocean Gradient', plan: 'pro',     bg: '#06131F', surface: '#0C2233', text: '#EAF7FF', accent: '#22D3EE', heading: "'Inter', sans-serif",                  body: "'Inter', sans-serif", radius: '14px', dark: true, hero: 'photo-1505118380757-91f5f5632de0', cardStyle: 'gradient', animation: 'zoom' },
+  { key: 'Platinum Luxe', plan: 'enterprise', bg: '#0B0B0C', surface: '#17181A', text: '#F3F1EC', accent: '#D9C89E', heading: "'Playfair Display', serif",          body: "'Georgia', serif", radius: '2px', dark: true, hero: 'photo-1611652022419-a9419f74343d', cardStyle: 'glass', animation: 'fade' },
+  { key: 'Studio Clean', plan: 'basic',     bg: '#FFFFFF', surface: '#FFFFFF', text: '#111827', accent: '#2563EB', heading: "'Inter', sans-serif",                   body: "'Inter', sans-serif", radius: '10px', dark: false, hero: 'photo-1441984904996-e0b6ba687e04', cardStyle: 'classic', animation: 'fade' },
 ];
 
 const img = (id, w = 1400) => `https://images.unsplash.com/${id}?w=${w}&q=80&auto=format&fit=crop`;
@@ -132,18 +141,26 @@ const divider = (p, margin, _w) => ({ type: 'Divider', props: { color: p.accent,
 
 // The grid carries the theme's card design, entrance animation and accent — so
 // a theme changes how the store is built and how it moves, not just its colours.
-const grid = (p, columns) => ({
-  type: 'ProductGrid',
-  props: {
-    columns,
-    gap: columns >= 4 ? '16px' : '24px',
-    cardBg: p.surface,
-    accent: p.accent,
-    cardStyle: p.cardStyle || 'classic',
-    animation: p.animation || 'rise',
-    showPrices: true,
-  },
-});
+const grid = (p, columns) => {
+  const style = p.cardStyle || 'classic';
+  // Glass and gradient cards render their own translucent/gradient background,
+  // so the card colour they receive is only used to decide text contrast —
+  // that must be the (dark) page colour, not the translucent surface, or the
+  // text-colour maths sees "white" and prints unreadable dark text.
+  const cardBg = style === 'glass' || style === 'gradient' ? p.bg : p.surface;
+  return {
+    type: 'ProductGrid',
+    props: {
+      columns,
+      gap: columns >= 4 ? '16px' : '24px',
+      cardBg,
+      accent: p.accent,
+      cardStyle: style,
+      animation: p.animation || 'rise',
+      showPrices: true,
+    },
+  };
+};
 function features(p) {
   return { type: 'FeatureGrid', props: { features: [
     { title: 'Fast Delivery', description: 'Ships within 24 hours', icon: '🚚' },

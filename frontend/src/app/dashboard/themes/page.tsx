@@ -35,6 +35,28 @@ const badge = (t: Theme) => {
   return g ? `${g.props?.cardStyle ?? 'classic'} · ${g.props?.animation ?? 'rise'}` : 'colour theme';
 };
 
+/**
+ * Put the owner's own hero image into a theme's header/banner so the store
+ * shows their photo, not the theme's stock one. Deep-cloned so switching themes
+ * never mutates the source config. An empty url leaves the theme's own image.
+ */
+function withCover(config: any, url: string) {
+  const clone = JSON.parse(JSON.stringify(config));
+  if (!url || !Array.isArray(clone.content)) return clone;
+  for (const block of clone.content) {
+    if (block.type === 'StoreHeader') block.props = { ...block.props, bgImage: url };
+    if (block.type === 'Banner') block.props = { ...block.props, imageUrl: url };
+  }
+  return clone;
+}
+
+/** Read the current hero image out of an applied theme, to prefill the input. */
+function currentCover(config: any): string {
+  const h = config?.content?.find((b: any) => b.type === 'StoreHeader');
+  const banner = config?.content?.find((b: any) => b.type === 'Banner');
+  return h?.props?.bgImage || banner?.props?.imageUrl || '';
+}
+
 export default function ThemesPage() {
   const [themes, setThemes] = useState<Theme[]>([]);
   const [plan, setPlan] = useState('');
@@ -44,6 +66,7 @@ export default function ThemesPage() {
   const [active, setActive] = useState<string>('');
   const [onlyPremium, setOnlyPremium] = useState(true);
   const [query, setQuery] = useState('');
+  const [cover, setCover] = useState('');
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
@@ -59,7 +82,10 @@ export default function ThemesPage() {
       .then(([t, s]) => {
         setThemes(t.themes ?? []);
         setPlan(t.plan ?? '');
-        if (s) setStoreSlug(s.store_slug || '');
+        if (s) {
+          setStoreSlug(s.store_slug || '');
+          setCover(currentCover(s.theme_config)); // prefill from the live store
+        }
       })
       .finally(() => setLoading(false));
   }, [apiUrl]);
@@ -71,7 +97,7 @@ export default function ThemesPage() {
 
   const preview = (t: Theme) => {
     setActive(t.id);
-    iframeRef.current?.contentWindow?.postMessage({ type: 'MAGHGO_PREVIEW_THEME', theme: toPuck(t.config) }, '*');
+    iframeRef.current?.contentWindow?.postMessage({ type: 'MAGHGO_PREVIEW_THEME', theme: withCover(toPuck(t.config), cover) }, '*');
   };
 
   const apply = async (t: Theme) => {
@@ -82,7 +108,7 @@ export default function ThemesPage() {
       const res = await fetch(`${apiUrl}/api/dashboard/theme`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ theme_config: toPuck(t.config) }),
+        body: JSON.stringify({ theme_config: withCover(toPuck(t.config), cover) }),
       });
       if (!res.ok) throw new Error((await res.json()).error || 'Failed');
       alert(`"${t.name}" applied. Your storefront is updated.`);
@@ -105,6 +131,22 @@ export default function ThemesPage() {
           <p className="text-gray-600 text-sm">
             {premiumCount} premium designs and {themes.length - premiumCount} colour themes. Tap to preview, then apply.
           </p>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-xl p-3">
+          <label className="block text-xs font-bold text-gray-700 mb-1">🖼️ Your cover image (optional)</label>
+          <p className="text-[11px] text-gray-500 mb-2">Paste an image URL to use your own hero photo. Preview updates instantly; it&apos;s saved when you apply a theme. Leave blank for the theme&apos;s default.</p>
+          <div className="flex gap-2">
+            <input
+              value={cover}
+              onChange={(e) => setCover(e.target.value)}
+              placeholder="https://…/your-photo.jpg"
+              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            {cover && (
+              <button onClick={() => setCover('')} className="text-xs font-medium text-gray-500 hover:text-red-600 px-2">Clear</button>
+            )}
+          </div>
         </div>
 
         <div className="flex gap-2 items-center sticky top-0 bg-gray-50 py-2 z-10">

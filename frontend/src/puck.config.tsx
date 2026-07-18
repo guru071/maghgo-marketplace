@@ -20,6 +20,9 @@ const StoreHeaderComponent = ({ title, subtitle, logoUrl, bgImage, bgColor, text
     ? (storeCtx?.storeDescription || subtitle || '')
     : subtitle;
 
+  // White over an image (there's a scrim), otherwise the theme's header text colour.
+  const headText = bgImage ? '#fff' : (textColor || '#111');
+
   return (
     <div style={{
       position: 'relative',
@@ -42,8 +45,11 @@ const StoreHeaderComponent = ({ title, subtitle, logoUrl, bgImage, bgColor, text
       )}
       <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
         {logoUrl && <img src={logoUrl} alt={displayTitle} style={{ height: '80px', width: 'auto', marginBottom: '1.5rem', borderRadius: '8px' }} />}
-        <h1 style={{ fontSize: '3rem', fontWeight: 'bold', margin: '0 0 1rem 0', textShadow: bgImage ? '0 2px 12px rgba(0,0,0,0.4)' : 'none' }}>{displayTitle}</h1>
-        {displaySubtitle && <p style={{ fontSize: '1.2rem', margin: 0, opacity: 0.95, textShadow: bgImage ? '0 1px 8px rgba(0,0,0,0.4)' : 'none' }}>{displaySubtitle}</p>}
+        {/* Explicit colour: a global `h1 { color: var(--text-primary) }` rule
+            overrides inherited colour, so without this the header title rendered
+            dark navy even on a dark image/background. */}
+        <h1 style={{ fontSize: '3rem', fontWeight: 'bold', margin: '0 0 1rem 0', color: headText, textShadow: bgImage ? '0 2px 12px rgba(0,0,0,0.4)' : 'none' }}>{displayTitle}</h1>
+        {displaySubtitle && <p style={{ fontSize: '1.2rem', margin: 0, color: headText, opacity: 0.95, textShadow: bgImage ? '0 1px 8px rgba(0,0,0,0.4)' : 'none' }}>{displaySubtitle}</p>}
       </div>
     </div>
   );
@@ -82,12 +88,17 @@ const MAGHGO_THEME_CSS = `
 @keyframes mg-fade { from { opacity:0 } to { opacity:1 } }
 @keyframes mg-zoom { from { opacity:0; transform:scale(.92) } to { opacity:1; transform:none } }
 @keyframes mg-slide { from { opacity:0; transform:translateX(-22px) } to { opacity:1; transform:none } }
+@keyframes mg-shine { 0% { background-position:-160% 0 } 100% { background-position:260% 0 } }
 .mg-card { animation-duration:.55s; animation-fill-mode:both; animation-timing-function:cubic-bezier(.22,1,.36,1); }
 .mg-anim-rise .mg-card { animation-name: mg-rise }
 .mg-anim-fade .mg-card { animation-name: mg-fade }
 .mg-anim-zoom .mg-card { animation-name: mg-zoom }
 .mg-anim-slide .mg-card { animation-name: mg-slide }
 .mg-anim-none .mg-card { animation: none }
+/* glossy sweep that runs across the image on hover (glass / luxury themes) */
+.mg-shine { position:relative; overflow:hidden }
+.mg-shine::after { content:''; position:absolute; inset:0; background:linear-gradient(115deg, transparent 30%, rgba(255,255,255,.35) 48%, transparent 66%); background-size:250% 100%; background-position:-160% 0; pointer-events:none }
+.mg-shine:hover::after { animation: mg-shine 1.1s ease }
 .mg-card__img { transition: transform .5s cubic-bezier(.22,1,.36,1) }
 .mg-card:hover .mg-card__img { transform: scale(1.07) }
 .mg-hover-lift { transition: transform .25s ease, box-shadow .25s ease }
@@ -132,6 +143,41 @@ function ProductCardMini({ title, priceLabel, imageUrl, cardBg, accent, onClick,
 
   const clickable = { cursor: disabled ? 'default' : 'pointer' } as const;
   const onCardClick = disabled ? undefined : onClick;
+
+  if (cardStyle === 'glass') {
+    // Glassmorphism: a translucent, blurred panel with a glossy hover sweep.
+    return (
+      <div className="mg-card mg-hover-lift" style={{ ...delay, ...clickable, position: 'relative', borderRadius: '14px', overflow: 'hidden', background: 'rgba(255,255,255,0.10)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', border: '1px solid rgba(255,255,255,0.22)', boxShadow: '0 8px 32px rgba(0,0,0,0.18)', display: 'flex', flexDirection: 'column' }} onClick={onCardClick}>
+        <Badge />
+        <div className="mg-shine" style={{ overflow: 'hidden' }}>
+          <div className="mg-card__img" style={{ width: '100%', aspectRatio: '1', background: img }} />
+        </div>
+        <div style={{ padding: '11px 13px 13px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <h3 style={{ margin: 0, fontSize: '.9rem', fontWeight: 600, color: c.title, textShadow: c.isDark ? '0 1px 4px rgba(0,0,0,.4)' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</h3>
+          {priceLabel && <span style={{ fontWeight: 800, color: accent, fontSize: '1rem' }}>{priceLabel}</span>}
+          <button disabled={disabled} style={{ marginTop: 2, background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(6px)', color: c.title, border: '1px solid rgba(255,255,255,0.35)', padding: '8px', borderRadius: '8px', fontWeight: 700, fontSize: '.8rem', width: '100%', cursor: disabled ? 'not-allowed' : 'pointer' }}>{cta}</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (cardStyle === 'gradient') {
+    // Colour flows from the palette's accent into its secondary across the card.
+    const grad = `linear-gradient(150deg, ${accent} 0%, ${cardBg} 78%)`;
+    return (
+      <div className="mg-card mg-hover-lift" style={{ ...delay, ...clickable, position: 'relative', borderRadius: '14px', overflow: 'hidden', background: grad, border: `1px solid ${c.border}`, display: 'flex', flexDirection: 'column', boxShadow: '0 6px 20px rgba(0,0,0,0.12)' }} onClick={onCardClick}>
+        <Badge />
+        <div className="mg-shine" style={{ overflow: 'hidden', margin: '10px 10px 0', borderRadius: '10px' }}>
+          <div className="mg-card__img" style={{ width: '100%', aspectRatio: '1', background: img }} />
+        </div>
+        <div style={{ padding: '10px 13px 13px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+          <h3 style={{ margin: 0, fontSize: '.9rem', fontWeight: 700, color: '#fff', textShadow: '0 1px 6px rgba(0,0,0,.35)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</h3>
+          {priceLabel && <span style={{ fontWeight: 800, color: '#fff', fontSize: '1rem' }}>{priceLabel}</span>}
+          <button disabled={disabled} style={{ marginTop: 2, background: '#fff', color: accent, border: 'none', padding: '8px', borderRadius: '8px', fontWeight: 800, fontSize: '.8rem', width: '100%', cursor: disabled ? 'not-allowed' : 'pointer' }}>{cta}</button>
+        </div>
+      </div>
+    );
+  }
 
   if (cardStyle === 'overlay') {
     return (
@@ -283,7 +329,7 @@ export type Props = {
   ProductGrid: {
     columns: number; showPrices: boolean; cardBg: string; gap: string;
     accent: string;
-    cardStyle: "classic" | "overlay" | "minimal" | "frame" | "split";
+    cardStyle: "classic" | "overlay" | "minimal" | "frame" | "split" | "glass" | "gradient";
     animation: "rise" | "fade" | "zoom" | "slide" | "none";
   };
   Banner: { imageUrl: string; text: string; linkUrl: string; textColor: string; height: string };
@@ -627,6 +673,8 @@ export const config: Config<Props> = {
             { label: "Minimal", value: "minimal" },
             { label: "Frame", value: "frame" },
             { label: "Split", value: "split" },
+            { label: "Glass", value: "glass" },
+            { label: "Gradient", value: "gradient" },
           ],
         },
         animation: {
