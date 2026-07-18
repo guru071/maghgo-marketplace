@@ -9,7 +9,7 @@ import { triggerRevalidation } from '../services/revalidate.service';
 import { hasAccess } from '../utils/plans';
 import multer from 'multer';
 import { removeBackground } from '../services/media.service';
-import { uploadImage } from '../services/storage.service';
+import { uploadImage, deleteImagesByUrl } from '../services/storage.service';
 import crypto from 'crypto';
 
 const router = Router();
@@ -167,16 +167,28 @@ router.put('/products/:id', async (req: AuthRequest, res) => {
   }
 });
 
-// Delete Product
+// Delete Product — permanently removes the row and its images.
 router.delete('/products/:id', async (req: AuthRequest, res) => {
   try {
+    // Fetch images first so we can clean storage after the row is gone.
+    const { data: product } = await supabase
+      .from('products')
+      .select('original_image_url, processed_image_url')
+      .eq('id', req.params.id)
+      .eq('merchant_id', req.merchantId)
+      .maybeSingle();
+
     const { error } = await supabase
       .from('products')
-      .update({ is_available: false })
+      .delete()
       .eq('id', req.params.id)
       .eq('merchant_id', req.merchantId);
 
     if (error) throw error;
+
+    if (product) {
+      await deleteImagesByUrl([product.original_image_url, product.processed_image_url]).catch(() => {});
+    }
 
     const { data: merchant } = await supabase.from('merchants').select('store_slug').eq('id', req.merchantId).single();
     if (merchant) await triggerRevalidation(merchant.store_slug);

@@ -1,4 +1,5 @@
 import { supabase } from '../db/supabase';
+import { deleteImagesByUrl, deleteMerchantImageFolder } from './storage.service';
 import { Product } from '../types/whatsapp';
 
 // ─── Product CRUD Service ────────────────────────────────────────────────────
@@ -52,10 +53,11 @@ export async function getProducts(merchantId: string): Promise<Product[]> {
 }
 
 /**
- * Soft-delete a product by setting is_available to false.
- * Uses ILIKE for case-insensitive title matching.
+ * Permanently delete a product by title (case-insensitive), and remove its
+ * images from storage. Order history is unaffected — order_logs stores a
+ * snapshot of each item (title, price, image), not a foreign key.
  *
- * @returns The number of rows updated.
+ * @returns The number of rows deleted.
  */
 export async function deleteProduct(
   merchantId: string,
@@ -64,17 +66,29 @@ export async function deleteProduct(
   // Escape ILIKE wildcards to prevent injection
   const escapedTitle = title.replace(/[%_\\]/g, '\\$&');
 
+  // Grab the images first so we can clean them from storage after the row is gone.
+  const { data: matched } = await supabase
+    .from('products')
+    .select('id, original_image_url, processed_image_url')
+    .eq('merchant_id', merchantId)
+    .ilike('title', `%${escapedTitle}%`);
+
+  const ids = (matched ?? []).map((p) => p.id);
+  if (ids.length === 0) return 0;
+
   const { data, error } = await supabase
     .from('products')
-    .update({ is_available: false })
+    .delete()
     .eq('merchant_id', merchantId)
-    .ilike('title', `%${escapedTitle}%`)
-    .eq('is_available', true)
-    .select();
+    .in('id', ids)
+    .select('id');
 
   if (error) {
     throw new Error(`Failed to delete product: ${error.message}`);
   }
+
+  const urls = (matched ?? []).flatMap((p) => [p.original_image_url, p.processed_image_url]);
+  await deleteImagesByUrl(urls).catch(() => {});
 
   return data?.length ?? 0;
 }
@@ -191,19 +205,23 @@ export async function setProductFulfillmentById(
 }
 
 /**
- * Soft-delete all products for a merchant (Clear Catalog)
+ * Permanently delete all of a merchant's products (Clear Catalog) and their
+ * images. Also drops the whole merchant image folder in one call to catch any
+ * stragglers.
  */
 export async function deleteAllProducts(merchantId: string): Promise<number> {
   const { data, error } = await supabase
     .from('products')
-    .update({ is_available: false })
+    .delete()
     .eq('merchant_id', merchantId)
-    .eq('is_available', true)
-    .select();
+    .select('id');
 
   if (error) {
     throw new Error(`Failed to clear catalog: ${error.message}`);
   }
+
+  // Remove the merchant's entire product-images folder.
+  await deleteMerchantImageFolder(merchantId).catch(() => {});
 
   return data?.length ?? 0;
 }
