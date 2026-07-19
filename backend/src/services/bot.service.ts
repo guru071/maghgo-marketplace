@@ -138,9 +138,10 @@ const GREETINGS = new Set(['HI', 'HELLO', 'HEY', 'MENU', 'START', 'MAGHGO', 'HII
 interface RegisterFlow { kind: 'register'; step: 'name' | 'plan'; storeName?: string }
 interface ProductFlow {
   kind: 'product';
-  step: 'photo' | 'name' | 'price';
+  step: 'photo' | 'name' | 'price' | 'bg';
   image?: { buffer: Buffer; mime_type: string };
   title?: string;
+  price?: number;
 }
 // Connect the shop's own Razorpay from chat: key id → key secret → saved
 // (secret encrypted at rest, exactly like the dashboard path).
@@ -371,25 +372,47 @@ function detectProductKind(title: string): ProductKind | null {
   return null;
 }
 
-/** The shared tail of every add-product path: AI clean-up, upload, create. */
+/**
+ * Every add-product path funnels here before creation: ask whether to clean the
+ * background (each AI clean-up costs a credit, and many shop photos look great
+ * as-is — the owner decides per product).
+ */
+async function askBgChoice(msg: BotMessage, flowKey: string, data: { image: { buffer: Buffer; mime_type: string }; title: string; price: number }): Promise<void> {
+  flows.set(flowKey, { kind: 'product', step: 'bg', image: data.image, title: data.title, price: data.price, ts: Date.now() });
+  await replyButtons(
+    msg,
+    `🖼 *${data.title}* — ₹${data.price.toLocaleString('en-IN')}\n\nLast thing: want me to *remove the photo background* with AI? Makes it look studio-shot.`,
+    [
+      { id: 'BG YES', title: '✨ Yes, clean it' },
+      { id: 'BG NO', title: '📷 Keep original' },
+    ]
+  );
+}
+
+/** The shared tail of every add-product path: optional AI clean-up, upload, create. */
 async function finishProductCreation(
   msg: BotMessage,
   merchant: any,
   title: string,
   price: number,
-  image: { buffer: Buffer; mime_type: string }
+  image: { buffer: Buffer; mime_type: string },
+  removeBg = true
 ): Promise<void> {
   // Instant acknowledgement so the merchant isn't left staring at silence while
   // the AI background-removal + uploads run (a few seconds). Fire-and-forget:
   // its own latency must not delay the real work.
-  msg.sendReply(`🎨 Got it! Adding *${title}* — one moment…`).catch(() => {});
+  msg.sendReply(removeBg ? `🎨 Got it! Adding *${title}* — one moment…` : `📦 Adding *${title}* — one moment…`).catch(() => {});
 
   let processedBuffer: Buffer;
-  try {
-    processedBuffer = await removeBackground(image.buffer);
-  } catch (err) {
-    console.warn('⚠️ Background removal failed, using original image:', err instanceof Error ? err.message : err);
+  if (!removeBg) {
     processedBuffer = image.buffer;
+  } else {
+    try {
+      processedBuffer = await removeBackground(image.buffer);
+    } catch (err) {
+      console.warn('⚠️ Background removal failed, using original image:', err instanceof Error ? err.message : err);
+      processedBuffer = image.buffer;
+    }
   }
 
   const crypto = require('crypto');
@@ -446,7 +469,11 @@ async function handleImageMessage(msg: BotMessage): Promise<void> {
     return;
   }
 
-  await finishProductCreation(msg, merchant, parsed.title, parsed.price, { buffer: image!.buffer, mime_type: image!.mime_type });
+  await askBgChoice(msg, `${msg.channel}:${msg.senderId}`, {
+    image: { buffer: image!.buffer, mime_type: image!.mime_type },
+    title: parsed.title,
+    price: parsed.price,
+  });
 }
 
 /**
@@ -542,12 +569,12 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
   if (flow.kind === 'product') {
     if (flow.step === 'photo') {
       if (msg.type === 'image' && msg.image) {
-        // Caption with name+price short-circuits the rest of the form.
+        // Caption with name+price short-circuits to the background question.
         const parsed = msg.image.caption ? parseCaption(msg.image.caption) : null;
         if (parsed) {
-          flows.delete(flowKey);
           const merchant = await ensureCanAddProduct(msg);
-          if (merchant) await finishProductCreation(msg, merchant, parsed.title, parsed.price, { buffer: msg.image.buffer, mime_type: msg.image.mime_type });
+          if (!merchant) { flows.delete(flowKey); return true; }
+          await askBgChoice(msg, flowKey, { image: { buffer: msg.image.buffer, mime_type: msg.image.mime_type }, title: parsed.title, price: parsed.price });
           return true;
         }
         flow.image = { buffer: msg.image.buffer, mime_type: msg.image.mime_type };
@@ -567,9 +594,9 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
       // "Red Shirt ₹499" in one go: accept name and price together.
       const parsed = parseCaption(text);
       if (parsed) {
-        flows.delete(flowKey);
         const merchant = await ensureCanAddProduct(msg);
-        if (merchant) await finishProductCreation(msg, merchant, parsed.title, parsed.price, flow.image!);
+        if (!merchant) { flows.delete(flowKey); return true; }
+        await askBgChoice(msg, flowKey, { image: flow.image!, title: parsed.title, price: parsed.price });
         return true;
       }
       flow.title = text.slice(0, 200);
@@ -585,9 +612,26 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
         await msg.sendReply('⚠️ Please send just the price as a number, e.g. *499* (or CANCEL).');
         return true;
       }
+      const merchant = await ensureCanAddProduct(msg);
+      if (!merchant) { flows.delete(flowKey); return true; }
+      await askBgChoice(msg, flowKey, { image: flow.image!, title: flow.title!, price });
+      return true;
+    }
+
+    // Final step: the owner decides whether this photo gets the AI clean-up.
+    if (flow.step === 'bg') {
+      const yes = upper === 'BG YES' || upper === 'YES' || upper === 'Y';
+      const no = upper === 'BG NO' || upper === 'NO' || upper === 'N';
+      if (!yes && !no) {
+        await replyButtons(msg, '🖼 Remove the photo background?', [
+          { id: 'BG YES', title: '✨ Yes, clean it' },
+          { id: 'BG NO', title: '📷 Keep original' },
+        ]);
+        return true;
+      }
       flows.delete(flowKey);
       const merchant = await ensureCanAddProduct(msg);
-      if (merchant) await finishProductCreation(msg, merchant, flow.title!, price, flow.image!);
+      if (merchant) await finishProductCreation(msg, merchant, flow.title!, flow.price!, flow.image!, yes);
       return true;
     }
   }

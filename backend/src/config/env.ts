@@ -60,6 +60,11 @@ const envSchema = z.object({
   // templates, category Utility.
   WHATSAPP_TEMPLATE_ORDER_UPDATE: z.string().optional(),
   WHATSAPP_TEMPLATE_LANG: z.string().optional(),
+
+  // Background removal provider: 'removebg' (paid API, default) or 'local'
+  // (free on-server AI — needs `npm i @imgly/background-removal-node` and
+  // ~2GB RAM; silently falls back to remove.bg if unavailable).
+  BG_REMOVAL_PROVIDER: z.enum(['removebg', 'local']).optional(),
 });
 
 // ─── Parse & Validate ─────────────────────────────────────────────────────────
