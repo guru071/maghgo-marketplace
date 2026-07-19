@@ -57,23 +57,45 @@ export interface BotCard {
 
 // Tappable buttons where supported, otherwise a bulleted text fallback so the
 // same call works on every channel.
+// Per-channel plain-text limits (Meta rejects anything longer, and the user
+// sees NOTHING): WhatsApp 4096, Messenger ~2000, Instagram ~1000.
+const TEXT_LIMIT: Record<string, number> = { whatsapp: 3900, messenger: 1800, instagram: 900, sms: 1500 };
+
+/** Send text of any length: splits on paragraph boundaries per channel limit. */
+async function sendChunkedReply(msg: BotMessage, text: string): Promise<void> {
+  const limit = TEXT_LIMIT[msg.channel] ?? 900;
+  if (text.length <= limit) return msg.sendReply(text);
+  const paras = text.split('\n\n');
+  let chunk = '';
+  for (const p of paras) {
+    const next = chunk ? `${chunk}\n\n${p}` : p;
+    if (next.length > limit && chunk) {
+      await msg.sendReply(chunk);
+      chunk = p;
+    } else {
+      chunk = next;
+    }
+  }
+  if (chunk) await msg.sendReply(chunk);
+}
+
 async function replyButtons(
   msg: BotMessage,
   body: string,
   buttons: { id: string; title: string }[]
 ): Promise<void> {
+  // Interactive-message bodies are even tighter than plain text (WhatsApp
+  // buttons: 1024; Instagram quick replies ride the ~1000 text cap). Long
+  // content goes as chunked plain text, then a short button prompt.
+  const btnLimit = msg.channel === 'whatsapp' ? 1000 : 850;
   if (msg.sendButtons) {
-    // WhatsApp interactive-button bodies are capped at 1024 characters — a
-    // longer body makes Meta reject the whole message, so the user sees
-    // NOTHING (this is how the long HELP silently vanished). Send long content
-    // as plain text (4096 cap) followed by a short button prompt.
-    if (body.length > 1000) {
-      await msg.sendReply(body);
+    if (body.length > btnLimit) {
+      await sendChunkedReply(msg, body);
       return msg.sendButtons('👇 Quick actions:', buttons);
     }
     return msg.sendButtons(body, buttons);
   }
-  await msg.sendReply(`${body}\n\n${buttons.map((b) => `• ${b.title}`).join('\n')}`);
+  await sendChunkedReply(msg, `${body}\n\n${buttons.map((b) => `• ${b.title}`).join('\n')}`);
 }
 
 async function replyMenu(
@@ -83,8 +105,16 @@ async function replyMenu(
   rows: { id: string; title: string; description?: string }[],
   header?: string
 ): Promise<void> {
-  if (msg.sendMenu) return msg.sendMenu(body, buttonLabel, rows, header);
-  await msg.sendReply(
+  const bodyLimit = msg.channel === 'whatsapp' ? 1000 : 850;
+  if (msg.sendMenu) {
+    if (body.length > bodyLimit) {
+      await sendChunkedReply(msg, body);
+      return msg.sendMenu('👇 Choose:', buttonLabel, rows, header);
+    }
+    return msg.sendMenu(body, buttonLabel, rows, header);
+  }
+  await sendChunkedReply(
+    msg,
     `${header ? `*${header}*\n` : ''}${body}\n\n${rows.map((r) => `• ${r.title}${r.description ? ` — ${r.description}` : ''}`).join('\n')}`
   );
 }
