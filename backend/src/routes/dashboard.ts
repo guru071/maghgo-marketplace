@@ -32,6 +32,7 @@ function sanitizeVariants(raw: any): { name: string; values: string[] }[] | unde
 import { triggerRevalidation } from '../services/revalidate.service';
 import { hasAccess, canUseFeature, minPlanForFeature, featureLockedMessage, GatedFeature } from '../utils/plans';
 import multer from 'multer';
+import bcrypt from 'bcryptjs';
 import { removeBackground } from '../services/media.service';
 import { uploadImage, deleteImagesByUrl } from '../services/storage.service';
 import crypto from 'crypto';
@@ -223,6 +224,43 @@ router.post('/meta-catalog/import', async (req: AuthRequest, res) => {
 router.delete('/meta-catalog', async (req: AuthRequest, res) => {
   try {
     await disconnectMetaCatalog(req.merchantId!);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Change the account password. If the account already has a password, the
+// current one must be supplied; bot-registered merchants (no password yet) can
+// set one directly — they're already authenticated by the LOGIN-link JWT.
+router.post('/change-password', async (req: AuthRequest, res) => {
+  try {
+    const current = (req.body?.current_password ?? '').toString();
+    const next = (req.body?.new_password ?? '').toString();
+    if (next.length < 8) {
+      return res.status(400).json({ error: 'New password must be at least 8 characters.' });
+    }
+
+    const { data: merchant, error } = await supabase
+      .from('merchants')
+      .select('password_hash')
+      .eq('id', req.merchantId)
+      .single();
+    if (error || !merchant) return res.status(404).json({ error: 'Account not found.' });
+
+    if (merchant.password_hash) {
+      const ok = await bcrypt.compare(current, merchant.password_hash);
+      if (!ok) return res.status(401).json({ error: 'Current password is incorrect.' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const password_hash = await bcrypt.hash(next, salt);
+    const { error: upErr } = await supabase
+      .from('merchants')
+      .update({ password_hash })
+      .eq('id', req.merchantId);
+    if (upErr) throw upErr;
+
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

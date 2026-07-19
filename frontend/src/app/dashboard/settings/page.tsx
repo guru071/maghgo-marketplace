@@ -23,6 +23,33 @@ export default function DashboardSettings() {
 
   const apiBase = () => process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
+  // Change password
+  const [pwCurrent, setPwCurrent] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const changePassword = async () => {
+    setPwSaving(true);
+    setPwMsg(null);
+    try {
+      const token = localStorage.getItem('maghgo_merchant_token');
+      const res = await fetch(`${apiBase()}/api/dashboard/change-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ current_password: pwCurrent, new_password: pwNew }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Could not update password');
+      setPwCurrent(''); setPwNew('');
+      setPwMsg({ ok: true, text: 'Password updated ✔' });
+    } catch (e: any) {
+      setPwMsg({ ok: false, text: e.message });
+    } finally {
+      setPwSaving(false);
+    }
+  };
+
   const savePaymentKeys = async (disconnect = false) => {
     setRzpSaving(true);
     setRzpMsg(null);
@@ -248,6 +275,38 @@ export default function DashboardSettings() {
         {rzpMsg && (
           <p className={`text-sm mt-4 ${rzpMsg.ok ? 'text-green-600' : 'text-red-600'}`}>{rzpMsg.text}</p>
         )}
+      </div>
+
+      {/* Change password */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 mt-8">
+        <h2 className="text-xl font-bold text-gray-900 mb-2">Change Password</h2>
+        <p className="text-sm text-gray-500 mb-5">Used to sign in to this dashboard on the web. If you registered through the bot and never set one, leave the current-password field empty.</p>
+        <div className="space-y-4 max-w-sm">
+          <input
+            type="password"
+            value={pwCurrent}
+            onChange={(e) => setPwCurrent(e.target.value)}
+            placeholder="Current password"
+            autoComplete="current-password"
+            className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-accent focus:border-accent"
+          />
+          <input
+            type="password"
+            value={pwNew}
+            onChange={(e) => setPwNew(e.target.value)}
+            placeholder="New password (min 8 characters)"
+            autoComplete="new-password"
+            className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-accent focus:border-accent"
+          />
+          <button
+            onClick={changePassword}
+            disabled={pwSaving || pwNew.length < 8}
+            className="bg-accent text-white px-8 py-3 rounded-full font-medium hover:bg-black disabled:opacity-50 transition-colors"
+          >
+            {pwSaving ? 'Updating…' : 'Update password'}
+          </button>
+          {pwMsg && <p className={`text-sm ${pwMsg.ok ? 'text-green-600' : 'text-red-600'}`}>{pwMsg.text}</p>}
+        </div>
       </div>
     </div>
   );

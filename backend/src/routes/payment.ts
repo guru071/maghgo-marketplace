@@ -3,8 +3,8 @@ import crypto from 'crypto';
 import { env } from '../config/env';
 import { getPlanFromAmount, getAmountFromPlan } from '../services/payment.service';
 import { normalizePhone } from '../utils/phone';
+import { sendNotification } from '../services/whatsapp.service';
 import { supabase } from '../db/supabase';
-import axios from 'axios';
 
 const router = Router();
 
@@ -132,26 +132,13 @@ router.post('/razorpay', async (req: Request, res: Response) => {
             })
             .eq('id', merchant.id);
             
-          // 4. Send success message via WhatsApp (if they have a phone number)
+          // 4. Confirm over WhatsApp (with the 24h-window template fallback —
+          // a merchant may pay from a link days after last messaging the bot).
           if (merchant.phone_number) {
-            await axios.post(
-              `https://graph.facebook.com/v21.0/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
-              {
-                messaging_product: 'whatsapp',
-                recipient_type: 'individual',
-                to: merchant.phone_number,
-                type: 'text',
-                text: {
-                  body: `🎉 *Payment Successful!*\n\nThank you for subscribing to the Maghgo *${plan.toUpperCase()}* plan. Your store has been reactivated for the next ${isYearly ? '365' : '30'} days. You can now continue adding products!`,
-                },
-              },
-              {
-                headers: {
-                  Authorization: `Bearer ${env.WHATSAPP_TOKEN}`,
-                  'Content-Type': 'application/json',
-                },
-              }
-            ).catch((e: any) => console.error('Failed to send WhatsApp payment confirmation:', e));
+            await sendNotification(
+              merchant.phone_number,
+              `🎉 *Payment Successful!*\n\nThank you for subscribing to the Maghgo *${plan.toUpperCase()}* plan. Your store has been reactivated for the next ${isYearly ? '365' : '30'} days. You can now continue adding products!`
+            ).catch((e: any) => console.error('Failed to send WhatsApp payment confirmation:', e?.message || e));
           }
         } else {
            console.error(`⚠️ Could not find merchant for senderId: ${senderId}`);

@@ -62,6 +62,67 @@ export async function sendTextMessage(
 }
 
 /**
+ * Send an approved template message. Templates are the only way WhatsApp lets a
+ * business message someone more than 24 hours after their last message — they
+ * must be created and approved in WhatsApp Manager first.
+ */
+export async function sendTemplateMessage(
+  to: string,
+  templateName: string,
+  languageCode: string,
+  bodyParams: string[]
+): Promise<void> {
+  await axios.post(
+    `${GRAPH_API}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+    {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'template',
+      template: {
+        name: templateName,
+        language: { code: languageCode },
+        components: bodyParams.length
+          ? [{ type: 'body', parameters: bodyParams.map((p) => ({ type: 'text', text: p })) }]
+          : undefined,
+      },
+    },
+    {
+      headers: { Authorization: `Bearer ${env.WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
+      timeout: HTTP_TIMEOUT_MS,
+    }
+  );
+}
+
+/**
+ * Notification sender with the 24-hour-window fallback.
+ *
+ * Free-form texts only deliver within 24h of the recipient's last message; past
+ * that, Meta rejects them (error 131047). When that happens — and an approved
+ * utility template is configured via WHATSAPP_TEMPLATE_ORDER_UPDATE (a template
+ * whose body is a single {{1}} placeholder) — we resend the same content as a
+ * template message, which does deliver (billed by Meta, ~₹0.12 in India).
+ *
+ * With no template configured, behaviour is unchanged: in-window messages
+ * deliver, out-of-window ones fail exactly as before.
+ */
+export async function sendNotification(to: string, text: string): Promise<void> {
+  try {
+    await sendTextMessage(to, text);
+  } catch (err: any) {
+    const code = err?.response?.data?.error?.code;
+    const template = env.WHATSAPP_TEMPLATE_ORDER_UPDATE;
+    const windowClosed = code === 131047 || code === 131026;
+    if (!template || !windowClosed) throw err;
+
+    // Template body parameters may not contain newlines/tabs — flatten to one
+    // line and respect the 1024-char parameter cap.
+    const flat = text.replace(/\s+/g, ' ').trim().slice(0, 1024);
+    await sendTemplateMessage(to, template, env.WHATSAPP_TEMPLATE_LANG || 'en', [flat]);
+  }
+}
+
+/**
  * Send a reply (threaded) to a specific incoming message.
  */
 export async function sendReply(

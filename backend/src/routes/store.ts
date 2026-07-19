@@ -4,7 +4,7 @@ import { createOrder, priceCart, attachOrderPaymentLink, getOrderByPaymentLink, 
 import { validateCoupon } from '../services/coupon.service';
 import { createOrderPaymentLink, verifyOrderPaymentSignature } from '../services/payment.service';
 import { getMerchantBySlug } from '../services/merchant.service';
-import { sendTextMessage } from '../services/whatsapp.service';
+import { sendNotification } from '../services/whatsapp.service';
 import { decryptSecret } from '../utils/crypto';
 import { supabase } from '../db/supabase';
 import { env } from '../config/env';
@@ -175,11 +175,11 @@ router.post('/pay/verify', verifyLimiter, async (req: Request, res: Response) =>
       const totalStr = `${symbol}${Number(paid.total).toLocaleString('en-IN')}`;
 
       if (paid.customer_phone && /^[1-9]\d{9,14}$/.test(paid.customer_phone)) {
-        sendTextMessage(paid.customer_phone, `✅ *Payment received — ${totalStr}!*\n\nThank you. Your order at *${merchant.store_name}* is confirmed. 🙏`)
+        sendNotification(paid.customer_phone, `✅ *Payment received — ${totalStr}!*\n\nThank you. Your order at *${merchant.store_name}* is confirmed. 🙏`)
           .catch((e) => console.error('order receipt failed:', e?.message || e));
       }
       if (merchant.phone_number) {
-        sendTextMessage(merchant.phone_number, `💰 *Order PAID — ${totalStr}!*\n\nA customer paid online for their order at *${merchant.store_name}*. See it: ${env.FRONTEND_URL}/dashboard/orders`)
+        sendNotification(merchant.phone_number, `💰 *Order PAID — ${totalStr}!*\n\nA customer paid online for their order at *${merchant.store_name}*. See it: ${env.FRONTEND_URL}/dashboard/orders`)
           .catch((e) => console.error('merchant paid notice failed:', e?.message || e));
       }
     }

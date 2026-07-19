@@ -1,7 +1,7 @@
 import { supabase } from '../db/supabase';
 import { normalizePhone } from '../utils/phone';
 import { validateCoupon, redeemCoupon } from './coupon.service';
-import { sendTextMessage } from './whatsapp.service';
+import { sendNotification } from './whatsapp.service';
 import { env } from '../config/env';
 
 // ─── Order Service ───────────────────────────────────────────────────────────
@@ -414,7 +414,7 @@ async function notifyCustomerOfStatus(
   const store = merchant?.store_name || 'the store';
   const symbol = currency === 'INR' ? '₹' : `${currency} `;
   const totalStr = `${symbol}${Number(total).toLocaleString('en-IN')}`;
-  await sendTextMessage(phone, build(store, totalStr));
+  await sendNotification(phone, build(store, totalStr));
 }
 
 export interface Analytics {

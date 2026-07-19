@@ -4,7 +4,7 @@ import { createOrder, attachOrderPaymentLink } from './order.service';
 import { createOrderPaymentLink } from './payment.service';
 import { validateCoupon } from './coupon.service';
 import { decryptSecret } from '../utils/crypto';
-import { sendTextMessage } from './whatsapp.service';
+import { sendNotification } from './whatsapp.service';
 import { env } from '../config/env';
 import type { BotMessage, BotCard } from './bot.service';
 
@@ -263,7 +263,7 @@ async function checkout(msg: BotMessage, s: Session): Promise<void> {
     // Best-effort: ping the merchant on WhatsApp so they see it immediately.
     if (s.merchantPhone) {
       const items = order.items.map((i: any) => `• ${i.quantity} × ${i.title}${i.variant ? ` (${i.variant})` : ''} — ${rupee(Number(i.subtotal))}`).join('\n');
-      await sendTextMessage(
+      await sendNotification(
         s.merchantPhone,
         `🔔 *New order on Maghgo!*\n\n${items}\n\n*Total: ${total}*${discountNote}\n\nSee it in your dashboard: ${env.FRONTEND_URL}/dashboard/orders`
       ).catch((e) => console.error('Failed to notify merchant of order:', e?.message || e));

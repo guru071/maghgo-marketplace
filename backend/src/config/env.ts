@@ -52,6 +52,14 @@ const envSchema = z.object({
   // secrets at rest. If unset, a key is derived from JWT_SECRET. Generate one
   // with: openssl rand -hex 32
   PAYMENTS_ENCRYPTION_KEY: z.string().optional(),
+
+  // Optional: name of an APPROVED WhatsApp utility template whose body is a
+  // single {{1}} placeholder. When set, notifications that fall outside the
+  // free 24-hour reply window are re-sent as this template (billed by Meta)
+  // instead of silently failing. Create it in WhatsApp Manager → Message
+  // templates, category Utility.
+  WHATSAPP_TEMPLATE_ORDER_UPDATE: z.string().optional(),
+  WHATSAPP_TEMPLATE_LANG: z.string().optional(),
 });
 
 // ─── Parse & Validate ─────────────────────────────────────────────────────────
