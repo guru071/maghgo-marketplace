@@ -21,6 +21,7 @@ interface Order {
   discount?: number;
   status: string;
   payment_status?: 'paid' | 'unpaid';
+  delivery_address?: string | null;
   created_at: string;
 }
 
@@ -145,6 +146,9 @@ export default function OrdersPage() {
                       {o.customer_name && ` · ${o.customer_name}`}
                       {o.customer_phone && ` · ${o.customer_phone}`}
                     </div>
+                    {o.delivery_address && (
+                      <div className="text-sm text-emerald-700 mt-1">📍 {o.delivery_address}</div>
+                    )}
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-2xl font-black text-gray-900">{inr(o.total)}</div>

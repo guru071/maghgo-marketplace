@@ -30,6 +30,7 @@ process.on('uncaughtException', (error) => {
 // ─── Express Application ────────────────────────────────────────────────────
 
 import { startCleanupJob } from './jobs/cleanup.job';
+import { startDigestJob } from './jobs/digest.job';
 
 const app = express();
 
@@ -54,6 +55,7 @@ if (env.SENTRY_DSN) {
 
 // Initialize the daily cleanup cron job
 startCleanupJob();
+startDigestJob();
 
 // ─── Middleware ──────────────────────────────────────────────────────────────
 

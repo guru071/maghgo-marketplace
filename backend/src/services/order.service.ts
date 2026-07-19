@@ -42,6 +42,7 @@ export interface Order {
   currency: string;
   status: OrderStatus;
   notes: string | null;
+  delivery_address?: string | null;
   created_at: string;
   // Added in migration 16 — optional so the type is valid pre-migration.
   discount?: number;
@@ -68,7 +69,7 @@ const MAX_QTY_PER_ITEM = 99;
 export async function createOrder(
   storeSlug: string,
   items: OrderItemInput[],
-  customer: { name?: string; phone?: string; notes?: string; couponCode?: string } = {}
+  customer: { name?: string; phone?: string; notes?: string; couponCode?: string; deliveryAddress?: string } = {}
 ): Promise<Order | null> {
   if (!Array.isArray(items) || items.length === 0) {
     throw new Error('An order must contain at least one item.');
@@ -196,6 +197,7 @@ export async function createOrder(
     currency: products[0].currency || 'INR',
     status: 'sent',
     notes: customer.notes?.trim().slice(0, 500) || null,
+    delivery_address: customer.deliveryAddress?.trim().slice(0, 400) || null,
     discount,
     coupon_code: couponCode,
   };
@@ -217,8 +219,8 @@ export async function createOrder(
 async function insertOrderRow(row: Record<string, any>): Promise<Order> {
   let { data, error } = await supabase.from('order_logs').insert(row).select().single();
 
-  if (error && /discount|coupon_code|payment_status|schema cache|42703/i.test(error.message || '')) {
-    const { discount, coupon_code, ...base } = row;
+  if (error && /discount|coupon_code|payment_status|delivery_address|schema cache|42703/i.test(error.message || '')) {
+    const { discount, coupon_code, delivery_address, ...base } = row;
     ({ data, error } = await supabase.from('order_logs').insert(base).select().single());
   }
   if (error) throw new Error(`Failed to record order: ${error.message}`);
@@ -232,6 +234,8 @@ async function insertOrderRow(row: Record<string, any>): Promise<Order> {
  * next time the merchant sets it.
  */
 async function decrementStock(merchantId: string, lineItems: OrderLineItem[]): Promise<void> {
+  const LOW_STOCK_AT = 2;
+  const lowNow: string[] = [];
   for (const li of lineItems) {
     const { data } = await supabase
       .from('products')
@@ -240,8 +244,21 @@ async function decrementStock(merchantId: string, lineItems: OrderLineItem[]): P
       .eq('merchant_id', merchantId)
       .maybeSingle();
     if (!data || data.stock == null) continue;
-    const next = Math.max(0, Number(data.stock) - li.quantity);
+    const prev = Number(data.stock);
+    const next = Math.max(0, prev - li.quantity);
     await supabase.from('products').update({ stock: next }).eq('id', li.product_id).eq('merchant_id', merchantId);
+    // Alert exactly when stock CROSSES the threshold, so the owner hears once,
+    // not on every subsequent sale.
+    if (prev > LOW_STOCK_AT && next <= LOW_STOCK_AT) {
+      lowNow.push(`${li.title}: ${next === 0 ? 'OUT OF STOCK' : `only ${next} left`}`);
+    }
+  }
+  if (lowNow.length) {
+    const { data: m } = await supabase.from('merchants').select('phone_number').eq('id', merchantId).maybeSingle();
+    if (m?.phone_number) {
+      sendNotification(m.phone_number, `⚠️ *Low stock alert!*\n\n${lowNow.map((l) => `• ${l}`).join('\n')}\n\nRestock with: *STOCK <product> <qty>*`)
+        .catch((e) => console.error('low-stock alert failed:', e?.message || e));
+    }
   }
 }
 
@@ -371,7 +388,7 @@ export async function updateOrderStatus(
 
   // Keep the customer in the loop over WhatsApp — but never let a notification
   // failure roll back a status the merchant successfully changed.
-  notifyCustomerOfStatus(merchantId, data.customer_phone, status, Number(data.total), data.currency)
+  notifyCustomerOfStatus(merchantId, data.id, data.customer_phone, status, Number(data.total), data.currency)
     .catch((e) => console.error('Order status notification failed:', e?.message || e));
 
   return true;
@@ -386,12 +403,13 @@ export async function updateOrderStatus(
 const STATUS_MESSAGES: Partial<Record<OrderStatus, (store: string, total: string) => string>> = {
   confirmed: (store, total) => `✅ Your order at *${store}* (${total}) is *confirmed*! We'll update you as it progresses. 🙏`,
   processing: (store, total) => `📦 Good news — your order at *${store}* (${total}) is now being *prepared*.`,
-  delivered: (store, total) => `🎉 Your order at *${store}* (${total}) has been *delivered*. Thank you for shopping with us! ⭐`,
+  delivered: (store, total) => `🎉 Your order at *${store}* (${total}) has been *delivered*. Thank you for shopping with us!\n\n⭐ How was it? Reply *RATE 5* (1–5) to rate the shop.`,
   cancelled: (store, total) => `⚠️ Your order at *${store}* (${total}) has been *cancelled*. Please reach out if you have any questions.`,
 };
 
 async function notifyCustomerOfStatus(
   merchantId: string,
+  orderId: string,
   customerPhone: string | null,
   status: OrderStatus,
   total: number,
@@ -414,7 +432,7 @@ async function notifyCustomerOfStatus(
   const store = merchant?.store_name || 'the store';
   const symbol = currency === 'INR' ? '₹' : `${currency} `;
   const totalStr = `${symbol}${Number(total).toLocaleString('en-IN')}`;
-  await sendNotification(phone, build(store, totalStr));
+  await sendNotification(phone, `${build(store, totalStr)}\n\n🔎 Track: ${env.FRONTEND_URL}/o/${orderId}`);
 }
 
 export interface Analytics {

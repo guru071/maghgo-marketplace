@@ -12,6 +12,7 @@ interface CheckoutButtonProps {
   items: CartItemType[];
   instagramHandle?: string;
   couponCode?: string | null;
+  deliveryAddress?: string;
 }
 
 /** WhatsApp SVG icon */
@@ -23,7 +24,7 @@ function WhatsAppIcon() {
   );
 }
 
-export default function CheckoutButton({ phone, storeName, storeSlug, items, instagramHandle, couponCode }: CheckoutButtonProps) {
+export default function CheckoutButton({ phone, storeName, storeSlug, items, instagramHandle, couponCode, deliveryAddress }: CheckoutButtonProps) {
   // One cart = one recorded order, however many times the shopper taps a
   // channel button (they often try WhatsApp, then SMS). The recording promise is
   // memoised so "Pay online" and "WhatsApp" both reuse the same server order.
@@ -32,7 +33,8 @@ export default function CheckoutButton({ phone, storeName, storeSlug, items, ins
 
   if (items.length === 0) return null;
 
-  const message = generateCheckoutMessage(storeName, items);
+  const baseMessage = generateCheckoutMessage(storeName, items);
+  const message = deliveryAddress?.trim() ? `${baseMessage}\n\n📍 Deliver to: ${deliveryAddress.trim()}` : baseMessage;
   const waLink = generateWhatsAppLink(phone, message);
   const smsLink = `sms:${phone}?body=${encodeURIComponent(message)}`;
   const telLink = `tel:${phone}`;
@@ -58,6 +60,7 @@ export default function CheckoutButton({ phone, storeName, storeSlug, items, ins
       body: JSON.stringify({
         items: items.map((i) => ({ product_id: i.productId || i.id, quantity: i.quantity, variant: i.variant })),
         coupon_code: couponCode || undefined,
+        delivery_address: deliveryAddress?.trim() || undefined,
       }),
     })
       .then((r) => (r.ok ? r.json() : null))

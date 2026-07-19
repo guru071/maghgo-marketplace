@@ -5,6 +5,7 @@ import { createOrderPaymentLink } from './payment.service';
 import { validateCoupon } from './coupon.service';
 import { decryptSecret } from '../utils/crypto';
 import { sendNotification } from './whatsapp.service';
+import { sendMetaReply } from './meta.service';
 import { env } from '../config/env';
 import type { BotMessage, BotCard } from './bot.service';
 
@@ -21,7 +22,7 @@ import type { BotMessage, BotCard } from './bot.service';
  * TTL — fine for a single instance; back with Redis to scale horizontally.
  */
 
-interface CartLine { productId: string; title: string; price: number; qty: number; image?: string; variant?: string; }
+interface CartLine { productId: string; title: string; price: number; qty: number; image?: string; variant?: string; prebook?: boolean; }
 
 // A product with options (Size/Colour…) mid-selection: the shopper picks one
 // value per group before the line lands in the cart — same rule as the web.
@@ -30,6 +31,7 @@ interface PendingAdd {
   title: string;
   price: number;
   image?: string;
+  prebook?: boolean;
   variants: { name: string; values: string[] }[];
   chosen: Record<string, string>;
 }
@@ -42,15 +44,81 @@ interface Session {
   cart: CartLine[];
   coupon?: string;
   pendingAdd?: PendingAdd;
+  lang: 'en' | 'ta' | 'hi';
+  awaitingAddress?: boolean;
+  deliveryAddress?: string;
+  addressAsked?: boolean;
+  nudged?: boolean;
   ts: number;
 }
+
+// ─── Shopper-facing translations ─────────────────────────────────────────────
+// The store owner picks the language (LANGUAGE TAMIL/HINDI in the bot) and
+// their customers are served in it. Buttons stay short/emoji (API length
+// limits); message bodies are translated. Fallback is always English.
+const TR: Record<string, Record<'en' | 'ta' | 'hi', (...a: any[]) => string>> = {
+  welcome: {
+    en: (store) => `🛍️ Welcome to *${store}*! Here's what's available:`,
+    ta: (store) => `🛍️ *${store}*-க்கு வரவேற்கிறோம்! இங்கே கிடைப்பவை:`,
+    hi: (store) => `🛍️ *${store}* में आपका स्वागत है! ये उपलब्ध हैं:`,
+  },
+  added: {
+    en: (label, count) => `✅ Added *${label}*. Cart: ${count} item(s).`,
+    ta: (label, count) => `✅ *${label}* கார்ட்டில் சேர்க்கப்பட்டது. மொத்தம்: ${count}.`,
+    hi: (label, count) => `✅ *${label}* कार्ट में जोड़ा गया। कुल: ${count} आइटम।`,
+  },
+  cartEmpty: {
+    en: () => '🛒 Your cart is empty. Tap *Add* on a product to start.',
+    ta: () => '🛒 உங்கள் கார்ட் காலியாக உள்ளது. ஒரு பொருளில் *Add* தட்டுங்கள்.',
+    hi: () => '🛒 आपकी कार्ट खाली है। किसी प्रोडक्ट पर *Add* दबाएँ।',
+  },
+  outOfStock: {
+    en: (t) => `😔 *${t}* is out of stock right now. Reply *SHOP* to see what's available.`,
+    ta: (t) => `😔 *${t}* இப்போது கையிருப்பில் இல்லை. *SHOP* என்று அனுப்புங்கள்.`,
+    hi: (t) => `😔 *${t}* अभी स्टॉक में नहीं है। *SHOP* भेजें।`,
+  },
+  askAddress: {
+    en: () => '📍 *Where should we deliver?*\n\nPlease send your full delivery address (or SKIP to arrange it with the shop).',
+    ta: () => '📍 *எங்கு டெலிவரி செய்ய வேண்டும்?*\n\nஉங்கள் முழு முகவரியை அனுப்புங்கள் (அல்லது SKIP).',
+    hi: () => '📍 *डिलीवरी कहाँ करनी है?*\n\nअपना पूरा पता भेजें (या SKIP)।',
+  },
+  orderPlaced: {
+    en: (store, total) => `✅ *Order placed!*\n\nYour order at *${store}* for *${total}* has been sent to the shop. They'll confirm payment & delivery with you shortly. 🙏`,
+    ta: (store, total) => `✅ *ஆர்டர் வெற்றிகரமாக!*\n\n*${store}*-இல் *${total}*-க்கான உங்கள் ஆர்டர் கடைக்கு அனுப்பப்பட்டது. விரைவில் உறுதிப்படுத்துவார்கள். 🙏`,
+    hi: (store, total) => `✅ *ऑर्डर हो गया!*\n\n*${store}* पर *${total}* का आपका ऑर्डर दुकान को भेज दिया गया है। वे जल्द पुष्टि करेंगे। 🙏`,
+  },
+  bye: {
+    en: () => '👋 Thanks for visiting! Send *SHOP* any time to browse again.',
+    ta: () => '👋 வந்ததற்கு நன்றி! மீண்டும் பார்க்க *SHOP* அனுப்புங்கள்.',
+    hi: () => '👋 आने के लिए धन्यवाद! फिर देखने के लिए *SHOP* भेजें।',
+  },
+};
+
+const tr = (s: Session, key: keyof typeof TR, ...a: any[]) => (TR[key][s.lang] ?? TR[key].en)(...a);
 
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
 const sessions = new Map<string, Session>();
 
+const NUDGE_AFTER_MS = 45 * 60 * 1000; // idle 45min with items → one nudge
+
 function prune() {
   const now = Date.now();
-  for (const [k, s] of sessions) if (now - s.ts > SESSION_TTL_MS) sessions.delete(k);
+  for (const [k, s] of sessions) {
+    // Abandoned cart: idle with items → one friendly reminder (free — it's
+    // within WhatsApp's 24h service window), then normal expiry.
+    if (!s.nudged && s.cart.length > 0 && now - s.ts > NUDGE_AFTER_MS) {
+      s.nudged = true;
+      const [channel, senderId] = [k.slice(0, k.indexOf(':')), k.slice(k.indexOf(':') + 1)];
+      const count = s.cart.reduce((n, c) => n + c.qty, 0);
+      const text = `🛒 You left ${count} item(s) in your cart at *${s.storeName}*!\n\nReply *CART* to finish your order.`;
+      const send = channel === 'instagram' || channel === 'messenger'
+        ? sendMetaReply(senderId, text)
+        : sendNotification(senderId, text);
+      send.catch((e: any) => console.error('cart nudge failed:', e?.message || e));
+      continue; // keep the session alive so CART still works
+    }
+    if (now - s.ts > SESSION_TTL_MS) sessions.delete(k);
+  }
 }
 const key = (msg: BotMessage) => `${msg.channel}:${msg.senderId}`;
 
@@ -157,7 +225,7 @@ async function cartTotals(s: Session): Promise<{ subtotal: number; discount: num
 
 async function showCart(msg: BotMessage, s: Session): Promise<void> {
   if (s.cart.length === 0) {
-    await msg.sendReply('🛒 Your cart is empty. Tap *Add* on a product to start.');
+    await msg.sendReply(tr(s, 'cartEmpty'));
     return;
   }
   const lines = s.cart.map((c) => `• ${c.qty} × ${c.title}${c.variant ? ` (${c.variant})` : ''} — ${rupee(c.price * c.qty)}`).join('\n');
@@ -196,7 +264,7 @@ async function askVariant(msg: BotMessage, s: Session): Promise<void> {
 async function pushCartLine(
   msg: BotMessage,
   s: Session,
-  item: { productId: string; title: string; price: number; image?: string; variant?: string }
+  item: { productId: string; title: string; price: number; image?: string; variant?: string; prebook?: boolean }
 ): Promise<void> {
   const line = s.cart.find((c) => c.productId === item.productId && (c.variant ?? '') === (item.variant ?? ''));
   if (line) line.qty += 1;
@@ -205,7 +273,7 @@ async function pushCartLine(
   const count = s.cart.reduce((n, c) => n + c.qty, 0);
   const label = item.variant ? `${item.title} (${item.variant})` : item.title;
   if (msg.sendButtons) {
-    await msg.sendButtons(`✅ Added *${label}*. Cart: ${count} item(s).`, [
+    await msg.sendButtons(tr(s, 'added', label, count), [
       { id: 'CHECKOUT', title: '✅ Checkout' },
       { id: 'CART', title: '🛒 View cart' },
       { id: 'SHOP', title: '➕ Add more' },
@@ -220,12 +288,24 @@ async function checkout(msg: BotMessage, s: Session): Promise<void> {
     await msg.sendReply('🛒 Your cart is empty — nothing to check out.');
     return;
   }
+
+  // Delivery orders need somewhere to deliver. Ask once (SKIP allowed);
+  // all-prebook carts are collected at the shop, so no address needed.
+  const needsDelivery = s.cart.some((c) => !c.prebook);
+  if (needsDelivery && !s.addressAsked) {
+    s.awaitingAddress = true;
+    s.addressAsked = true;
+    if (msg.sendButtons) await msg.sendButtons(tr(s, 'askAddress'), [{ id: 'SKIP', title: '⏭ Skip' }]);
+    else await msg.sendReply(tr(s, 'askAddress'));
+    return;
+  }
+
   try {
     const customerPhone = msg.channel === 'whatsapp' || msg.channel === 'sms' ? msg.senderId : undefined;
     const order = await createOrder(
       s.storeSlug,
       s.cart.map((c) => ({ product_id: c.productId, quantity: c.qty, variant: c.variant })),
-      { phone: customerPhone, couponCode: s.coupon }
+      { phone: customerPhone, couponCode: s.coupon, deliveryAddress: s.deliveryAddress }
     );
     if (!order) {
       await msg.sendReply('⚠️ Sorry, this store isn\'t taking orders right now — the items may be out of stock. Please try again later.');
@@ -255,9 +335,7 @@ async function checkout(msg: BotMessage, s: Session): Promise<void> {
       if (msg.sendCtaUrl) await msg.sendCtaUrl(body, `Pay ${total} now`, payLink.url);
       else await msg.sendReply(`${body}\n🔗 ${payLink.url}\n\n_Or arrange payment with the shop directly._`);
     } else {
-      await msg.sendReply(
-        `✅ *Order placed!*\n\nYour order at *${s.storeName}* for *${total}*${discountNote} has been sent to the shop. They'll confirm payment & delivery with you shortly. 🙏`
-      );
+      await msg.sendReply(`${tr(s, 'orderPlaced', s.storeName, total)}${discountNote}\n\n🔎 ${env.FRONTEND_URL}/o/${order.id}`);
     }
 
     // Best-effort: ping the merchant on WhatsApp so they see it immediately.
@@ -265,7 +343,7 @@ async function checkout(msg: BotMessage, s: Session): Promise<void> {
       const items = order.items.map((i: any) => `• ${i.quantity} × ${i.title}${i.variant ? ` (${i.variant})` : ''} — ${rupee(Number(i.subtotal))}`).join('\n');
       await sendNotification(
         s.merchantPhone,
-        `🔔 *New order on Maghgo!*\n\n${items}\n\n*Total: ${total}*${discountNote}\n\nSee it in your dashboard: ${env.FRONTEND_URL}/dashboard/orders`
+        `🔔 *New order on Maghgo!*\n\n${items}${s.deliveryAddress ? `\n\n📍 Deliver to: ${s.deliveryAddress}` : ''}\n\n*Total: ${total}*${discountNote}\n\nReply *ORDERS* to manage it.`
       ).catch((e) => console.error('Failed to notify merchant of order:', e?.message || e));
     }
 
@@ -296,6 +374,8 @@ export async function handleShopperMessage(msg: BotMessage, text: string): Promi
       return true;
     }
     const existing = sessions.get(k);
+    const lang = ((merchant as any).bot_language === 'ta' || (merchant as any).bot_language === 'hi')
+      ? (merchant as any).bot_language : 'en';
     sessions.set(k, {
       storeSlug: merchant.store_slug,
       storeName: merchant.store_name,
@@ -303,9 +383,10 @@ export async function handleShopperMessage(msg: BotMessage, text: string): Promi
       merchantPhone: merchant.phone_number || null,
       cart: existing && existing.storeSlug === merchant.store_slug ? existing.cart : [],
       coupon: existing && existing.storeSlug === merchant.store_slug ? existing.coupon : undefined,
+      lang,
       ts: Date.now(),
     });
-    await msg.sendReply(`🛍️ Welcome to *${merchant.store_name}*! Here's what's available:`);
+    await msg.sendReply(tr(sessions.get(k)!, 'welcome', merchant.store_name));
     await sendCatalogue(msg, sessions.get(k)!);
     return true;
   }
@@ -313,6 +394,26 @@ export async function handleShopperMessage(msg: BotMessage, text: string): Promi
   const s = sessions.get(k);
   if (!s) return false; // not shopping → let the merchant flow handle it
   s.ts = Date.now();
+
+  // Mid-checkout, we're waiting for their delivery address.
+  if (s.awaitingAddress) {
+    s.awaitingAddress = false;
+    if (upper === 'CANCEL' || upper === 'EXIT' || upper === 'STOP') {
+      s.addressAsked = false;
+      await msg.sendReply('❎ Okay, checkout cancelled. Reply *CART* to review your items.');
+      return true;
+    }
+    if (upper !== 'SKIP') {
+      if (raw.length < 10) {
+        s.awaitingAddress = true;
+        await msg.sendReply('⚠️ That address looks too short — please send the full address (or SKIP).');
+        return true;
+      }
+      s.deliveryAddress = raw.slice(0, 400);
+    }
+    await checkout(msg, s);
+    return true;
+  }
 
   // "SHOP" alone → re-show the catalogue
   if (upper === 'SHOP' || upper === 'REFRESH' || upper === 'BROWSE') { await sendCatalogue(msg, s); return true; }
@@ -351,7 +452,7 @@ export async function handleShopperMessage(msg: BotMessage, text: string): Promi
   }
   if (upper === 'EXIT' || upper === 'STOP' || upper === 'CANCEL') {
     sessions.delete(k);
-    await msg.sendReply('👋 Thanks for visiting! Send *SHOP* any time to browse again.');
+    await msg.sendReply(tr(s, 'bye'));
     return true;
   }
 
@@ -395,7 +496,7 @@ export async function handleShopperMessage(msg: BotMessage, text: string): Promi
   // Same rules as the web store: no selling what's out of stock, and options
   // (Size/Colour…) must be chosen before the cart.
   if (product.stock != null && Number(product.stock) <= 0) {
-    await msg.sendReply(`😔 *${product.title}* is out of stock right now. Reply *SHOP* to see what's available.`);
+    await msg.sendReply(tr(s, 'outOfStock', product.title));
     return true;
   }
 
@@ -406,6 +507,7 @@ export async function handleShopperMessage(msg: BotMessage, text: string): Promi
     title: product.title,
     price: Number(product.price),
     image: product.processed_image_url || undefined,
+    prebook: product.fulfillment_type === 'prebook',
   };
 
   if (variants.length > 0) {

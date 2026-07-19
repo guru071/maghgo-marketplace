@@ -10,7 +10,7 @@ import { whatsappLink } from '@/lib/site-config';
  * merchant already has (phone, Instagram, Facebook, X). Renders nothing if the
  * store has neither an address nor any contact, so it never shows an empty box.
  */
-export default function StoreContact({ merchant }: { merchant: Merchant }) {
+export default function StoreContact({ merchant, rating }: { merchant: Merchant } & { rating?: { average: number; count: number } | null }) {
   const address = (merchant as any).store_address as string | undefined;
   const phone = merchant.phone_number;
   const ig = merchant.instagram_handle?.replace('@', '');
@@ -32,6 +32,13 @@ export default function StoreContact({ merchant }: { merchant: Merchant }) {
 
   return (
     <section className="max-w-3xl mx-auto px-4 py-10">
+      {rating && (
+        <div style={{ textAlign: 'center', marginBottom: '0.75rem' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fffbeb', color: '#92400e', fontWeight: 700, fontSize: '0.85rem', padding: '6px 14px', borderRadius: 999, border: '1px solid #fde68a' }}>
+            ⭐ {rating.average}/5 · {rating.count} rating{rating.count === 1 ? '' : 's'} from real orders
+          </span>
+        </div>
+      )}
       {botShopLink && (
         <a
           href={botShopLink}

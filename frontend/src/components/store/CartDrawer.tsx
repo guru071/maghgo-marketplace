@@ -23,6 +23,7 @@ export default function CartDrawer({ phone, storeName, currency = 'INR', instagr
   // Coupon state. The discount is only ever computed server-side (from real
   // prices); we just display what the API returns and pass the code to checkout.
   const [couponInput, setCouponInput] = useState('');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
   const [applied, setApplied] = useState<{ code: string; discount: number } | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
@@ -148,6 +149,17 @@ export default function CartDrawer({ phone, storeName, currency = 'INR', instagr
         {/* Footer */}
         {items.length > 0 && (
           <div className="cart-drawer__footer">
+            {/* Delivery address */}
+            <div style={{ marginBottom: '0.9rem' }}>
+              <textarea
+                value={deliveryAddress}
+                onChange={(e) => setDeliveryAddress(e.target.value)}
+                placeholder="📍 Delivery address (name, street, city, PIN)"
+                rows={2}
+                style={{ width: '100%', padding: '0.55rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '0.85rem', resize: 'vertical' }}
+              />
+            </div>
+
             {/* Coupon */}
             <div style={{ marginBottom: '0.9rem' }}>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -191,7 +203,7 @@ export default function CartDrawer({ phone, storeName, currency = 'INR', instagr
                 {formatPrice(Math.max(0, total - (applied?.discount ?? 0)), currency)}
               </span>
             </div>
-            <CheckoutButton phone={phone} storeName={storeName} storeSlug={storeSlug} items={items} instagramHandle={instagramHandle} couponCode={applied?.code ?? null} />
+            <CheckoutButton phone={phone} storeName={storeName} storeSlug={storeSlug} items={items} instagramHandle={instagramHandle} couponCode={applied?.code ?? null} deliveryAddress={deliveryAddress} />
           </div>
         )}
       </aside>

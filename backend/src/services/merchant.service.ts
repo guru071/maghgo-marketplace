@@ -326,6 +326,17 @@ export async function setCustomDomain(merchantId: string, raw: string | null): P
   return domain;
 }
 
+/** Set the shopper-facing bot language ('en' | 'ta' | 'hi'). Graceful pre-migration 23. */
+export async function updateBotLanguage(merchantId: string, lang: 'en' | 'ta' | 'hi'): Promise<void> {
+  const { error } = await supabase
+    .from('merchants')
+    .update({ bot_language: lang })
+    .eq('id', merchantId);
+  if (error && !/bot_language|schema cache|42703|PGRST204/i.test(error.message || '')) {
+    throw new Error(`Failed to set language: ${error.message}`);
+  }
+}
+
 // ─── Shop Razorpay keys (for the bot's PAYMENTS flow) ────────────────────────
 
 /** Whether this shop has connected its own Razorpay (never returns the secret). */

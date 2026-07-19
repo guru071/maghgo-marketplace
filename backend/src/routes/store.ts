@@ -35,7 +35,7 @@ const orderLimiter = rateLimit({
  */
 router.post('/:slug/orders', orderLimiter, async (req: Request, res: Response) => {
   try {
-    const { items, customer_name, customer_phone, notes, coupon_code } = req.body ?? {};
+    const { items, customer_name, customer_phone, notes, coupon_code, delivery_address } = req.body ?? {};
     const slug = String(req.params.slug);
 
     const order = await createOrder(slug, items, {
@@ -43,6 +43,7 @@ router.post('/:slug/orders', orderLimiter, async (req: Request, res: Response) =
       phone: customer_phone,
       notes,
       couponCode: coupon_code,
+      deliveryAddress: typeof delivery_address === 'string' ? delivery_address : undefined,
     });
 
     if (!order) {
@@ -188,6 +189,45 @@ router.post('/pay/verify', verifyLimiter, async (req: Request, res: Response) =>
   } catch (err: any) {
     console.error('❌ Payment verify failed:', err?.message ?? err);
     res.status(500).json({ error: 'Could not verify payment.' });
+  }
+});
+
+/**
+ * GET /api/store/orders/:id/track
+ * Public order tracking. The order id is an unguessable UUID, which is the
+ * access token; only non-sensitive fields are returned (no phone, no address).
+ */
+const trackLimiter = rateLimit({ windowMs: 60 * 1000, max: 30 });
+router.get('/orders/:id/track', trackLimiter, async (req: Request, res: Response) => {
+  try {
+    const { data: order } = await supabase
+      .from('order_logs')
+      .select('id, merchant_id, items, total, currency, status, payment_status, created_at')
+      .eq('id', String(req.params.id))
+      .maybeSingle();
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const { data: m } = await supabase
+      .from('merchants')
+      .select('store_name, store_slug')
+      .eq('id', order.merchant_id)
+      .maybeSingle();
+
+    res.json({
+      id: order.id,
+      status: order.status,
+      payment_status: order.payment_status ?? 'unpaid',
+      total: Number(order.total),
+      currency: order.currency,
+      created_at: order.created_at,
+      items: (order.items ?? []).map((li: any) => ({
+        title: li.title, quantity: li.quantity, variant: li.variant ?? null, image_url: li.image_url ?? null,
+      })),
+      store_name: m?.store_name ?? null,
+      store_slug: m?.store_slug ?? null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Could not load this order.' });
   }
 });
 

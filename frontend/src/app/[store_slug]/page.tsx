@@ -173,5 +173,19 @@ export default async function StorePage({ params }: StorePageProps) {
     throw new Error(`Failed to load products for "${store_slug}": ${productsError.message}`);
   }
 
-  return <StoreClient merchant={merchant} products={products || []} />;
+  // Real store rating (migration 23). Anon SELECT is policy-allowed; any error
+  // (e.g. table not created yet) just means "no rating shown".
+  let rating: { average: number; count: number } | null = null;
+  try {
+    const { data: reviews } = await supabase
+      .from('store_reviews')
+      .select('rating')
+      .eq('merchant_id', merchant.id);
+    if (reviews && reviews.length > 0) {
+      const avg = reviews.reduce((t: number, r: any) => t + r.rating, 0) / reviews.length;
+      rating = { average: Math.round(avg * 10) / 10, count: reviews.length };
+    }
+  } catch { /* no rating */ }
+
+  return <StoreClient merchant={merchant} products={products || []} rating={rating} />;
 }

@@ -1,4 +1,4 @@
-import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, updateStoreAddress, updateStoreCategory, setCustomDomain, toggleStoreStatus, updateMerchantSocial, listThemes, applyThemeById, hasRazorpayKeys, setRazorpayKeys, clearRazorpayKeys, Channel } from './merchant.service';
+import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, updateStoreAddress, updateStoreCategory, updateBotLanguage, setCustomDomain, toggleStoreStatus, updateMerchantSocial, listThemes, applyThemeById, hasRazorpayKeys, setRazorpayKeys, clearRazorpayKeys, Channel } from './merchant.service';
 import { encryptSecret } from '../utils/crypto';
 import { parseCaption } from './parser.service';
 import { removeBackground } from './media.service';
@@ -7,6 +7,9 @@ import { createProduct, getProducts, deleteProduct, getProductCount, updateProdu
 import { getOrders, getAnalytics, updateOrderStatus, OrderStatus } from './order.service';
 import { listCoupons, createCoupon, deleteCoupon } from './coupon.service';
 import { importMetaCatalog, connectMetaCatalog } from './metaCatalog.service';
+import { addReviewByPhone, getStoreRating } from './review.service';
+import { sendTextMessage } from './whatsapp.service';
+import { supabase } from '../db/supabase';
 import { triggerRevalidation } from './revalidate.service';
 import { createPaymentLink, getAmountFromPlan, getPlanFromAmount, getAllPlans } from './payment.service';
 import { env } from '../config/env';
@@ -885,6 +888,28 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   const { channel, senderId, sendReply } = msg;
   const command = text.trim().toUpperCase();
 
+  // "RATE 5" / "RATE 4 great service" — a CUSTOMER rating their latest
+  // delivered order (prompted by the delivered notification). Runs before any
+  // merchant logic: raters usually aren't merchants.
+  {
+    const rm = command.match(/^RATE\s+([1-5])\b/);
+    if (rm && (channel === 'whatsapp' || channel === 'sms')) {
+      const rating = parseInt(rm[1], 10);
+      const comment = text.trim().replace(/^RATE\s+[1-5]\s*/i, '').trim() || undefined;
+      try {
+        const storeName = await addReviewByPhone(senderId, rating, comment);
+        if (storeName) {
+          await sendReply(`${'⭐'.repeat(rating)} Thank you! Your ${rating}-star rating for *${storeName}* has been saved. 🙏`);
+        } else {
+          await sendReply('🙏 Thanks! I couldn\'t find a delivered order for this number to attach the rating to.');
+        }
+      } catch (err: any) {
+        await sendReply('❌ Could not save your rating right now. Please try again later.');
+      }
+      return;
+    }
+  }
+
   // Bare REGISTER starts the guided form: name → category → contact → address
   // → instagram → plan. (REGISTER <name> [- PLAN] below still works one-shot.)
   if (command === 'REGISTER') {
@@ -1326,6 +1351,55 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     return;
   }
 
+  // Shopper-bot language: customers of this store get served in it.
+  if (command.startsWith('LANGUAGE')) {
+    const arg = command.substring(8).trim();
+    const map: Record<string, 'en' | 'ta' | 'hi'> = { ENGLISH: 'en', EN: 'en', TAMIL: 'ta', TA: 'ta', HINDI: 'hi', HI: 'hi' };
+    const lang = map[arg];
+    if (!lang) {
+      await replyButtons(msg, '🗣 *Customer language*\n\nYour customers\' shopping chat can be in:\n• LANGUAGE ENGLISH\n• LANGUAGE TAMIL\n• LANGUAGE HINDI\n\n(Your own merchant chat stays in English for now.)', [
+        { id: 'LANGUAGE TAMIL', title: '🇮🇳 தமிழ்' },
+        { id: 'LANGUAGE HINDI', title: '🇮🇳 हिन्दी' },
+        { id: 'LANGUAGE ENGLISH', title: '🇬🇧 English' },
+      ]);
+      return;
+    }
+    await updateBotLanguage(merchant.id, lang);
+    await sendReply(`🗣 Done! Your customers will now shop in *${arg.charAt(0) + arg.slice(1).toLowerCase()}*.`);
+    return;
+  }
+
+  // Promo broadcast to recent customers — policy-safe: sent as normal messages,
+  // so it DELIVERS only to customers active within WhatsApp's free 24h window.
+  if (command.startsWith('BROADCAST')) {
+    const message = text.trim().substring(9).trim();
+    if (!message) {
+      await sendReply('📣 *Broadcast to your customers*\n\nReply like:\n*BROADCAST 20% off everything this weekend! Use code FEST20*\n\n_Delivers to customers who chatted in the last 24h (WhatsApp rule). Keep it useful — spam gets numbers blocked._');
+      return;
+    }
+    const { data: rows } = await supabase
+      .from('order_logs')
+      .select('customer_phone')
+      .eq('merchant_id', merchant.id)
+      .not('customer_phone', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(200);
+    const phones = [...new Set((rows ?? []).map((r: any) => r.customer_phone).filter(Boolean))].slice(0, 50);
+    if (phones.length === 0) {
+      await sendReply('📣 No customer numbers yet — broadcasts go to people who have ordered from you.');
+      return;
+    }
+    let sent = 0;
+    for (const phone of phones) {
+      try {
+        await sendTextMessage(phone as string, `📣 *${merchant.store_name}*\n\n${message}\n\n🛍️ ${env.FRONTEND_URL}/${merchant.store_slug}`);
+        sent++;
+      } catch { /* outside 24h window or invalid — skip silently */ }
+    }
+    await sendReply(`📣 Broadcast done — delivered to *${sent}* of ${phones.length} recent customer(s).\n\n_Only customers active in the last 24h receive it (WhatsApp policy)._`);
+    return;
+  }
+
   if (command === 'STATUS') {
     const count = await getProductCount(merchant.id);
     const storeUrl = `${env.FRONTEND_URL}/${merchant.store_slug}`;
@@ -1688,7 +1762,8 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
         msg,
         `🧾 *Order #${idx}* · ${when}\n\n${items}${discount}\n\n*Total: ${rupee(Number(o.total))}* · ${o.payment_status === 'paid' ? '💰 PAID online' : '⏳ unpaid'}\n📍 Status: *${o.status}*` +
         (o.customer_phone ? `\n👤 Customer: ${o.customer_phone}` : '') +
-        (o.customer_name ? ` (${o.customer_name})` : ''),
+        (o.customer_name ? ` (${o.customer_name})` : '') +
+        ((o as any).delivery_address ? `\n📍 Deliver to: ${(o as any).delivery_address}` : ''),
         [
           { id: `CONFIRM ${idx}`, title: '✅ Confirm' },
           { id: `DELIVER ${idx}`, title: '🚚 Delivered' },
@@ -1774,9 +1849,11 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
       .join('\n');
 
     const st = a.by_status;
+    const rating = await getStoreRating(merchant.id).catch(() => null);
     await replyButtons(
       msg,
       `📊 *${merchant.store_name} — Sales*\n\n` +
+      (rating ? `⭐ Rating: ${rating.average}/5 (${rating.count} review${rating.count === 1 ? '' : 's'})\n` : '') +
       `💰 Total revenue: *${rupee(a.revenue)}*\n` +
       `📅 This month: ${rupee(a.revenue_this_month)} (${a.orders_this_month} orders)\n` +
       `🧾 Orders: ${a.order_count} · Avg: ${rupee(a.average_order_value)}\n\n` +

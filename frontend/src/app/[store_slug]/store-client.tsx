@@ -14,6 +14,7 @@ import AnimatedBg from '@/components/store/AnimatedBg';
 interface StoreClientProps {
   merchant: Merchant;
   products: Product[];
+  rating?: { average: number; count: number } | null;
 }
 
 import { Render } from "@puckeditor/core";
@@ -22,7 +23,7 @@ import { config } from "@/puck.config";
 import { StoreContext } from '@/components/store/StoreContext';
 import { showsPoweredByFooter } from '@/lib/plans';
 
-export function StoreClient({ merchant, products }: StoreClientProps) {
+export function StoreClient({ merchant, products, rating }: StoreClientProps) {
   const { addItem } = useCartStore();
   const [activeTheme, setActiveTheme] = React.useState<any>(() => {
     const dbTheme = merchant.theme_config as any;
@@ -137,7 +138,7 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
         </>
       )}
       
-      <StoreContact merchant={merchant} />
+      <StoreContact merchant={merchant} rating={rating} />
 
       {/* Gated through the shared helper: this list was previously hardcoded here
           and omitted `business`, so Business merchants paid for white-label and
