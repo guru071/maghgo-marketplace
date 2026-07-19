@@ -284,6 +284,43 @@ export async function updateStoreAddress(merchantId: string, address: string): P
   }
 }
 
+// ─── Shop Razorpay keys (for the bot's PAYMENTS flow) ────────────────────────
+
+/** Whether this shop has connected its own Razorpay (never returns the secret). */
+export async function hasRazorpayKeys(merchantId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('merchants')
+    .select('razorpay_key_id')
+    .eq('id', merchantId)
+    .maybeSingle();
+  if (error) return false; // pre-migration 17 → not connected
+  return !!data?.razorpay_key_id;
+}
+
+/** Save the shop's Razorpay keys (secret must arrive already encrypted). */
+export async function setRazorpayKeys(merchantId: string, keyId: string, encryptedSecret: string): Promise<void> {
+  const { error } = await supabase
+    .from('merchants')
+    .update({ razorpay_key_id: keyId, razorpay_key_secret: encryptedSecret })
+    .eq('id', merchantId);
+  if (error) {
+    if (/razorpay|schema cache|42703|PGRST204/i.test(error.message || '')) {
+      throw new Error('Payments need one setup step (migration 17) first.');
+    }
+    throw new Error(`Failed to save payment keys: ${error.message}`);
+  }
+}
+
+export async function clearRazorpayKeys(merchantId: string): Promise<void> {
+  const { error } = await supabase
+    .from('merchants')
+    .update({ razorpay_key_id: null, razorpay_key_secret: null })
+    .eq('id', merchantId);
+  if (error && !/razorpay|schema cache|42703|PGRST204/i.test(error.message || '')) {
+    throw new Error(`Failed to disconnect payments: ${error.message}`);
+  }
+}
+
 // ─── Themes (for the bot's theme picker) ─────────────────────────────────────
 
 export interface ThemeSummary {
@@ -292,16 +329,16 @@ export interface ThemeSummary {
   plan_required: string;
 }
 
-/** Active themes, for listing in the bot. */
-export async function listThemes(limit = 10): Promise<ThemeSummary[]> {
-  const { data, error } = await supabase
+/** Active themes, for listing in the bot (paged so all 46 are reachable). */
+export async function listThemes(limit = 10, offset = 0): Promise<{ themes: ThemeSummary[]; total: number }> {
+  const { data, error, count } = await supabase
     .from('themes')
-    .select('id, name, plan_required')
+    .select('id, name, plan_required', { count: 'exact' })
     .eq('is_active', true)
     .order('name')
-    .limit(limit);
-  if (error || !data) return [];
-  return data as ThemeSummary[];
+    .range(offset, offset + limit - 1);
+  if (error || !data) return { themes: [], total: 0 };
+  return { themes: data as ThemeSummary[], total: count ?? data.length };
 }
 
 /**

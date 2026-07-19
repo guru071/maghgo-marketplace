@@ -1,4 +1,5 @@
-import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, updateStoreAddress, toggleStoreStatus, updateMerchantSocial, listThemes, applyThemeById, Channel } from './merchant.service';
+import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, updateStoreAddress, toggleStoreStatus, updateMerchantSocial, listThemes, applyThemeById, hasRazorpayKeys, setRazorpayKeys, clearRazorpayKeys, Channel } from './merchant.service';
+import { encryptSecret } from '../utils/crypto';
 import { parseCaption } from './parser.service';
 import { removeBackground } from './media.service';
 import { uploadImage } from './storage.service';
@@ -104,15 +105,15 @@ async function sendMoreMenu(msg: BotMessage): Promise<void> {
     'More store tools:',
     '⚙️ Tools',
     [
+      { id: 'PAYMENTS', title: '💳 Online payments', description: 'Connect YOUR Razorpay in chat' },
+      { id: 'QR', title: '🔳 Store QR code', description: 'Sent as an image, print it' },
       { id: 'IMPORT META', title: '📷 Import Meta Shop', description: 'Pull your FB/Insta catalog in' },
-      { id: 'QR', title: '🔳 Store QR code', description: 'Print it for your counter' },
       { id: 'RESUME', title: '▶️ Resume store', description: 'Go back online' },
       { id: 'LINK', title: '🔗 Link channels', description: 'Manage from Insta/Messenger too' },
       { id: 'HELP ADDRESS', title: '📍 Shop address', description: 'Show "Visit us" + directions' },
       { id: 'HELP SOCIALS', title: '📱 Social links', description: 'Set Instagram/Facebook/WhatsApp' },
-      { id: 'HELP DETAILS', title: '📝 Product details', description: 'Description, category, specs' },
-      { id: 'HELP OPTIONS', title: '📐 Sizes & colours', description: 'Let buyers pick options' },
-      { id: 'HELP STOCK', title: '📦 Stock tracking', description: 'Quantities & out-of-stock' },
+      { id: 'HELP PRODUCT', title: '📝 Product tools', description: 'Details, options, stock, view' },
+      { id: 'HELP COUPON', title: '🏷️ Coupon help', description: 'Create & delete discount codes' },
       { id: 'MENU', title: '⬅️ Back', description: 'Main menu' },
     ],
     'More Tools'
@@ -141,7 +142,10 @@ interface ProductFlow {
   image?: { buffer: Buffer; mime_type: string };
   title?: string;
 }
-type Flow = (RegisterFlow | ProductFlow) & { ts: number };
+// Connect the shop's own Razorpay from chat: key id → key secret → saved
+// (secret encrypted at rest, exactly like the dashboard path).
+interface PaymentsFlow { kind: 'payments'; step: 'keyid' | 'secret'; keyId?: string }
+type Flow = (RegisterFlow | ProductFlow | PaymentsFlow) & { ts: number };
 
 const FLOW_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const flows = new Map<string, Flow>();
@@ -588,6 +592,44 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
     }
   }
 
+  // ── Connect-payments wizard ────────────────────────────────────────────────
+  if (flow.kind === 'payments') {
+    if (msg.type !== 'text' || !text) {
+      await msg.sendReply('✍️ Please reply with text (or CANCEL to stop).');
+      return true;
+    }
+
+    if (flow.step === 'keyid') {
+      const keyId = text.trim();
+      if (!/^rzp_(live|test)_[A-Za-z0-9]+$/.test(keyId)) {
+        await msg.sendReply('⚠️ That doesn\'t look like a Razorpay Key ID.\n\nIt starts with *rzp_live_* (or rzp_test_). Find it in your Razorpay Dashboard → Settings → API Keys.\n\n(or CANCEL)');
+        return true;
+      }
+      flow.keyId = keyId;
+      flow.step = 'secret';
+      await msg.sendReply('🔑 Got it.\n\n*Step 2 of 2 — now paste your Key Secret* (shown next to the Key ID when you generate it).\n\n🔒 It\'s stored encrypted. For extra safety, delete your message after I confirm.');
+      return true;
+    }
+
+    if (flow.step === 'secret') {
+      const secret = text.trim();
+      if (secret.length < 10) {
+        await msg.sendReply('⚠️ That looks too short for a Key Secret. Paste the full secret (or CANCEL).');
+        return true;
+      }
+      flows.delete(flowKey);
+      try {
+        const merchant = await getMerchantByChannel(msg.channel, msg.senderId);
+        if (!merchant) { await msg.sendReply('❌ Please REGISTER first.'); return true; }
+        await setRazorpayKeys(merchant.id, flow.keyId!, encryptSecret(secret));
+        await msg.sendReply('✅ *Online payments connected!*\n\nCustomers now get a *Pay Online* option at checkout, and the money goes straight to *your* bank.\n\n🧹 _Tip: delete your last message (the secret) from this chat._');
+      } catch (err: any) {
+        await msg.sendReply(`❌ ${err.message || 'Could not save your payment keys.'}`);
+      }
+      return true;
+    }
+  }
+
   flows.delete(flowKey);
   return false;
 }
@@ -819,8 +861,10 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
         title: p.title,
         subtitle: `₹${p.price.toLocaleString('en-IN')}${stockNote(p)}`,
         imageUrl: p.processed_image_url || p.original_image_url || undefined,
-        actionId: `DELETE ${p.title}`,
-        actionTitle: '🗑️ Remove',
+        // Tapping a product opens its full info card (delete lives inside it —
+        // a one-tap destructive default was a bad idea).
+        actionId: `VIEW ${p.title}`,
+        actionTitle: '👁 View',
       }));
       await msg.sendCards(cards, storeUrl);
       if (products.length > 10) {
@@ -1022,20 +1066,49 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     return;
   }
 
-  // List themes to pick from.
-  if (command === 'THEMES' || command === 'THEME') {
-    const themes = await listThemes(10);
-    const themesUrl = `${env.FRONTEND_URL}/dashboard/themes`;
+  // List themes to pick from — paged so the whole catalogue is reachable.
+  if (command === 'THEMES' || command === 'THEME' || /^THEMES\s+\d+$/.test(command)) {
+    const pm = command.match(/^THEMES\s+(\d+)$/);
+    const page = pm ? Math.max(1, parseInt(pm[1], 10)) : 1;
+    const PAGE_SIZE = 8;
+    const { themes, total } = await listThemes(PAGE_SIZE, (page - 1) * PAGE_SIZE);
     if (themes.length === 0) {
-      await replyCta(msg, '🎨 No themes are available right now.', '🎨 Open themes', themesUrl);
+      await sendReply(page === 1 ? '🎨 No themes are available right now.' : `🎨 No more themes — you're past the last page. Reply *THEMES* for page 1.`);
       return;
     }
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
     const rows = themes.map((t) => ({
       id: `THEME ${t.id}`,
       title: t.name.slice(0, 24),
       description: `Requires ${t.plan_required} plan`.slice(0, 72),
     }));
-    await replyMenu(msg, '🎨 *Pick a theme* — tap to apply it instantly:', '🎨 Themes', rows, 'Store Themes');
+    if (page < totalPages) rows.push({ id: `THEMES ${page + 1}`, title: `➡️ More (${page + 1}/${totalPages})`, description: 'Next page of themes' });
+    if (page > 1) rows.push({ id: `THEMES ${page - 1}`, title: '⬅️ Previous page', description: `Back to page ${page - 1}` });
+    await replyMenu(msg, `🎨 *Pick a theme* (page ${page}/${totalPages}, ${total} designs) — tap to apply instantly:`, '🎨 Themes', rows.slice(0, 10), 'Store Themes');
+    return;
+  }
+
+  // ── Online payments (shop's own Razorpay) from chat ────────────────────────
+  if (command === 'PAYMENTS' || command === 'PAYMENT') {
+    const connected = await hasRazorpayKeys(merchant.id);
+    if (connected) {
+      await replyButtons(msg, '💳 *Online payments: CONNECTED* ✅\n\nCustomers get a *Pay Online* option at checkout and the money settles straight to your bank.\n\nTo replace your keys, disconnect first.', [
+        { id: 'DISCONNECT PAYMENTS', title: '🔌 Disconnect' },
+        { id: 'MENU', title: '📋 Menu' },
+      ]);
+    } else {
+      flows.set(`${channel}:${senderId}`, { kind: 'payments', step: 'keyid', ts: Date.now() });
+      await sendReply('💳 *Let\'s connect your Razorpay! — Step 1 of 2*\n\nOpen your Razorpay Dashboard → Settings → API Keys → Generate, then paste your *Key ID* here (starts with rzp_live_).\n\n(Reply CANCEL to stop.)');
+    }
+    return;
+  }
+
+  if (command === 'DISCONNECT PAYMENTS') {
+    await clearRazorpayKeys(merchant.id);
+    await replyButtons(msg, '🔌 Online payments disconnected. Customers can still order and pay you directly in chat.\n\nReply *PAYMENTS* any time to reconnect.', [
+      { id: 'PAYMENTS', title: '💳 Reconnect' },
+      { id: 'MENU', title: '📋 Menu' },
+    ]);
     return;
   }
 
@@ -1053,6 +1126,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
       DETAILS: '📝 *Product details*\n\n• DETAILS Red Shirt - Soft premium cotton, made in India\n• CATEGORY Red Shirt - T-Shirt\n\nDetails show when a customer taps the product on your store.',
       OPTIONS: '📐 *Sizes & colours*\n\nLet buyers choose options before adding to cart:\n\n*OPTIONS Red Shirt - Size: S,M,L,XL; Colour: Red,Blue*\n\nEach option becomes tappable chips on the product page.\n\nTo clear: *OPTIONS Red Shirt - off*',
       STOCK: '📦 *Stock tracking*\n\n• STOCK Red Shirt 10 — set quantity\n• STOCK Red Shirt off — stop tracking\n\nAt 0 the product shows "Out of stock" and can\'t be bought. Stock reduces automatically with each order.',
+      PRODUCT: '📝 *Product tools*\n\n👁 VIEW Red Shirt — full info card\n✏️ EDIT Red Shirt - ₹399 — change price\n📝 DETAILS Red Shirt - soft cotton — description\n🗂 CATEGORY Red Shirt - T-Shirt\n📐 OPTIONS Red Shirt - Size: S,M,L — buyer choices\n📦 STOCK Red Shirt 10 — inventory\n📅 PREBOOK / SELL Red Shirt — collect vs deliver\n🗑 DELETE Red Shirt',
       COUPON: '🏷️ *Coupons*\n\nCreate:\n• COUPON CREATE DIWALI20 20%\n• COUPON CREATE FLAT100 ₹100\n• Add a minimum: COUPON CREATE BIG10 10% MIN 999\n\nDelete: COUPON DELETE DIWALI20\nSee all: COUPONS',
     };
     const help = topics[topic];
@@ -1265,22 +1339,62 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     return;
   }
 
-  // ── Store QR code ──────────────────────────────────────────────────────────
+  // ── Store QR code — generated and sent right here in the chat ──────────────
   if (command === 'QR') {
-    const token = jwt.sign({ merchantId: merchant.id }, env.JWT_SECRET, { expiresIn: '24h' });
-    await replyCta(
-      msg,
-      '🔳 *Your store QR code*\n\nDownload or print it for your shop counter — customers scan it to open your store.',
-      '🔳 Open QR code',
-      `${env.FRONTEND_URL}/dashboard/qr?token=${token}`
-    );
+    try {
+      const storeUrl = `${env.FRONTEND_URL}/${merchant.store_slug}`;
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const QRCode = require('qrcode');
+      const png: Buffer = await QRCode.toBuffer(storeUrl, { width: 900, margin: 2, errorCorrectionLevel: 'H' });
+      const url = await uploadImage(merchant.id, `qr-${merchant.store_slug}`, png, 'image/png', '');
+
+      if (msg.sendCards) {
+        await msg.sendCards([{ title: `🔳 ${merchant.store_name}`, subtitle: 'Scan to open your store — print it for your counter!', imageUrl: url }], storeUrl);
+      } else {
+        await msg.sendReply(`🔳 *Your store QR code*\n\nDownload & print it for your counter:\n${url}\n\nIt opens: ${storeUrl}`);
+      }
+    } catch (err: any) {
+      console.error('QR generation failed:', err?.message || err);
+      await msg.sendReply('❌ Could not generate the QR right now. Please try again in a moment.');
+    }
     return;
+  }
+
+  // Full order detail, in chat: ORDER 1 / ORDER 2 …
+  {
+    const om = command.match(/^ORDER\s+(\d+)$/);
+    if (om) {
+      const idx = parseInt(om[1], 10);
+      const orders = await getOrders(merchant.id, 9);
+      const o = orders[idx - 1];
+      if (!o) {
+        await sendReply(`❌ Order #${idx} not found. Reply *ORDERS* for the list.`);
+        return;
+      }
+      const rupee = (n: number) => `₹${Number(n).toLocaleString('en-IN')}`;
+      const items = (o.items || []).map((li: any) =>
+        `• ${li.quantity} × ${li.title}${li.variant ? ` (${li.variant})` : ''} — ${rupee(li.subtotal)}`
+      ).join('\n');
+      const when = new Date(o.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      const discount = Number(o.discount) > 0 ? `\n🎟️ Discount: −${rupee(Number(o.discount))}${o.coupon_code ? ` (${o.coupon_code})` : ''}` : '';
+      await replyButtons(
+        msg,
+        `🧾 *Order #${idx}* · ${when}\n\n${items}${discount}\n\n*Total: ${rupee(Number(o.total))}* · ${o.payment_status === 'paid' ? '💰 PAID online' : '⏳ unpaid'}\n📍 Status: *${o.status}*` +
+        (o.customer_phone ? `\n👤 Customer: ${o.customer_phone}` : '') +
+        (o.customer_name ? ` (${o.customer_name})` : ''),
+        [
+          { id: `CONFIRM ${idx}`, title: '✅ Confirm' },
+          { id: `DELIVER ${idx}`, title: '🚚 Delivered' },
+          { id: `CANCEL ${idx}`, title: '❌ Cancel' },
+        ]
+      );
+      return;
+    }
   }
 
   // Recent orders, straight in chat.
   if (command === 'ORDERS' || command === 'ORDER') {
     const orders = await getOrders(merchant.id, 5);
-    const dashUrl = `${env.FRONTEND_URL}/dashboard/orders`;
     if (orders.length === 0) {
       await replyCta(msg, '🧾 No orders yet.\n\nShare your store link so customers can start ordering!', '🛍️ My store', `${env.FRONTEND_URL}/${merchant.store_slug}`);
       return;
@@ -1291,35 +1405,82 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
       const items = (o.items || []).reduce((n: number, x: any) => n + (x.quantity || 0), 0);
       return `*${i + 1}.* ${when} — ₹${Number(o.total).toLocaleString('en-IN')} · ${items} item(s) · _${o.status}_${paid}`;
     }).join('\n');
-    await replyCta(
+    await replyButtons(
       msg,
-      `🧾 *Your last ${orders.length} order(s):*\n\n${lines}\n\nUpdate one by number: *CONFIRM 1* · *SHIP 1* · *DELIVER 1* · *CANCEL 1*\n(The customer is notified automatically.)`,
-      '📦 Manage orders',
-      dashUrl
+      `🧾 *Your last ${orders.length} order(s):*\n\n${lines}\n\n👁 Reply *ORDER 1* for full details.\nUpdate by number: *CONFIRM 1* · *SHIP 1* · *DELIVER 1* · *CANCEL 1*\n(The customer is notified automatically.)`,
+      [
+        { id: 'ORDER 1', title: '👁 View #1' },
+        { id: 'CONFIRM 1', title: '✅ Confirm #1' },
+        { id: 'DELIVER 1', title: '🚚 Deliver #1' },
+      ]
     );
-    await replyButtons(msg, `Quick actions for order *#1*:`, [
-      { id: 'CONFIRM 1', title: '✅ Confirm #1' },
-      { id: 'DELIVER 1', title: '🚚 Deliver #1' },
-      { id: 'CANCEL 1', title: '❌ Cancel #1' },
+    return;
+  }
+
+  // Full product info card, in chat: VIEW <name>
+  if (command.startsWith('VIEW ')) {
+    const name = text.trim().substring(5).trim();
+    const products = await getProducts(merchant.id);
+    const p = products.find((x) => x.title.toLowerCase() === name.toLowerCase())
+      || products.find((x) => x.title.toLowerCase().includes(name.toLowerCase()));
+    if (!p) {
+      await sendReply(`❌ No product found matching "*${name}*". Reply *LIST* to see your products.`);
+      return;
+    }
+    const rupee = (n: number) => `₹${Number(n).toLocaleString('en-IN')}`;
+    const variants = Array.isArray(p.variants) && p.variants.length
+      ? p.variants.map((v: any) => `${v.name}: ${v.values.join(', ')}`).join(' · ')
+      : null;
+    const info =
+      `📦 *${p.title}*\n\n💰 ${rupee(Number(p.price))}` +
+      `${p.category ? `\n🗂 ${p.category}` : ''}` +
+      `${p.stock != null ? `\n📦 Stock: ${Number(p.stock) === 0 ? 'OUT OF STOCK' : p.stock}` : ''}` +
+      `${p.fulfillment_type === 'prebook' ? '\n📅 Pre-book (collect at shop)' : ''}` +
+      `${variants ? `\n📐 Options: ${variants}` : ''}` +
+      `${p.description ? `\n\n📝 ${String(p.description).slice(0, 300)}` : ''}`;
+
+    if (msg.sendCards) {
+      await msg.sendCards([{ title: p.title, subtitle: rupee(Number(p.price)), imageUrl: p.processed_image_url || p.original_image_url || undefined }], `${env.FRONTEND_URL}/${merchant.store_slug}`);
+    }
+    await replyButtons(msg, info, [
+      { id: `STOCK ${p.title} 10`, title: '📦 Stock = 10' },
+      { id: `DELETE ${p.title}`, title: '🗑 Delete' },
+      { id: 'LIST', title: '⬅️ Back' },
     ]);
     return;
   }
 
-  // A quick sales snapshot from real order data.
-  if (command === 'SALES' || command === 'STATS' || command === 'REVENUE') {
+  // Full analytics, rendered right in the chat — no dashboard needed.
+  if (command === 'SALES' || command === 'STATS' || command === 'REVENUE' || command === 'ANALYTICS') {
     const a = await getAnalytics(merchant.id);
-    const top = a.top_products[0];
     const rupee = (n: number) => `₹${Number(n).toLocaleString('en-IN')}`;
-    await replyCta(
+
+    // Last-7-days revenue as a text sparkline.
+    const days = a.recent_days.slice(-7);
+    const max = Math.max(...days.map((d) => d.revenue), 1);
+    const blocks = ['▁', '▂', '▃', '▄', '▅', '▆', '▇'];
+    const spark = days.map((d) => blocks[Math.min(6, Math.floor((d.revenue / max) * 6))]).join('');
+    const weekRevenue = days.reduce((s, d) => s + d.revenue, 0);
+
+    const tops = a.top_products.slice(0, 3)
+      .map((t, i) => `${['🥇', '🥈', '🥉'][i]} ${t.title} — ${t.quantity} sold · ${rupee(t.revenue)}`)
+      .join('\n');
+
+    const st = a.by_status;
+    await replyButtons(
       msg,
-      `📊 *Your sales*\n\n` +
+      `📊 *${merchant.store_name} — Sales*\n\n` +
       `💰 Total revenue: *${rupee(a.revenue)}*\n` +
       `📅 This month: ${rupee(a.revenue_this_month)} (${a.orders_this_month} orders)\n` +
-      `🧾 Total orders: ${a.order_count}\n` +
-      `📈 Avg order value: ${rupee(a.average_order_value)}` +
-      (top ? `\n🏆 Best seller: ${top.title} (${top.quantity} sold)` : ''),
-      '📊 Full analytics',
-      `${env.FRONTEND_URL}/dashboard/analytics`
+      `🧾 Orders: ${a.order_count} · Avg: ${rupee(a.average_order_value)}\n\n` +
+      `📈 Last 7 days: ${spark}  ${rupee(weekRevenue)}\n\n` +
+      `📦 New ${st.sent} · ✅ ${st.confirmed} · 🚚 ${st.processing} · 🎉 ${st.delivered} · ❌ ${st.cancelled}` +
+      (tops ? `\n\n*Best sellers*\n${tops}` : ''),
+      [
+        { id: 'ORDERS', title: '🧾 Orders' },
+        { id: 'LIST', title: '📦 Products' },
+        { id: 'MENU', title: '📋 Menu' },
+      ]
     );
     return;
   }
@@ -1327,7 +1488,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   if (command === 'HELP') {
     await replyButtons(
       msg,
-      `➕ *Add a product*\n\nSend a *photo* of your product with a caption:\n\n_Product name  Price_\nExample: *Red Cotton T-Shirt ₹499*\n\n(Include ₹, Rs, INR or MRP before the price.)\n\nOther things you can type:\n✏️ EDIT name - ₹price  ·  🗑️ DELETE name\n📦 STOCK name qty  ·  📐 OPTIONS name - Size: S,M,L\n📝 DETAILS name - text  ·  🗂 CATEGORY name - type\n🧾 ORDERS (then CONFIRM 1 / DELIVER 1)\n🏷️ COUPONS  ·  📊 SALES  ·  🎨 THEMES\n📍 ADDRESS your address  ·  📷 IMPORT META\n🔳 QR  ·  🚀 UPGRADE  ·  ⚙️ MORE`,
+      `➕ *Add a product*\n\nSend a *photo* of your product with a caption:\n\n_Product name  Price_\nExample: *Red Cotton T-Shirt ₹499*\n\n(Include ₹, Rs, INR or MRP before the price.)\n\nOther things you can type:\n👁 VIEW name  ·  ✏️ EDIT name - ₹price\n📦 STOCK name qty  ·  📐 OPTIONS name - Size: S,M,L\n🧾 ORDERS → ORDER 1 → CONFIRM 1 / DELIVER 1\n🏷️ COUPONS  ·  📊 SALES  ·  🎨 THEMES\n💳 PAYMENTS  ·  🔳 QR  ·  📷 IMPORT META\n📍 ADDRESS your address  ·  🚀 UPGRADE  ·  ⚙️ MORE`,
       [
         { id: 'MENU', title: '📋 Main menu' },
         { id: 'LIST', title: '📦 My products' },
