@@ -8,6 +8,7 @@ import { getOrders, getAnalytics, updateOrderStatus, OrderStatus } from './order
 import { listCoupons, createCoupon, deleteCoupon } from './coupon.service';
 import { importMetaCatalog, connectMetaCatalog } from './metaCatalog.service';
 import { addReviewByPhone, getStoreRating } from './review.service';
+import { isChannelEnabled } from './platform.service';
 import { sendTextMessage } from './whatsapp.service';
 import { supabase } from '../db/supabase';
 import { normalizePhone } from '../utils/phone';
@@ -317,6 +318,14 @@ export async function processBotMessage(msg: BotMessage): Promise<void> {
   // Drop duplicate webhook deliveries so retries don't double-process a message.
   if (messageId && isDuplicateMessage(`${channel}:${messageId}`)) {
     console.log(`↩️ Skipping duplicate message ${messageId} on ${channel}`);
+    return;
+  }
+
+  // Admin kill-switch: a channel disabled in the admin panel gets one polite
+  // notice and no processing. Cached (60s) and fail-open — see platform.service.
+  if (!(await isChannelEnabled(channel))) {
+    console.log(`⏸️ ${channel} is disabled by admin — ignoring message from ${senderId}`);
+    await sendReply('🛠 We\'re briefly under maintenance on this channel. Please try again a little later — or message us on WhatsApp!').catch(() => {});
     return;
   }
 

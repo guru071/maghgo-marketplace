@@ -73,7 +73,7 @@ export default function SettingsPage() {
       <div className="mb-8 flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Platform Settings</h1>
-          <p className="text-gray-500 mt-2">Manage which channels merchants can use to register and build stores.</p>
+          <p className="text-gray-500 mt-2">Master kill-switches: each toggle disables the BOT on that channel (replies with a maintenance notice) AND hides it from the website. Takes effect within ~1 minute.</p>
         </div>
         <Button onClick={handleSave} disabled={isPending} className="w-32">
           {isPending ? 'Saving...' : (isSaved ? 'Saved!' : 'Save Changes')}
@@ -84,7 +84,7 @@ export default function SettingsPage() {
         <div className="p-6 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">Registration Channels</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Toggle these options to dynamically show or hide them from the pricing modal on the live landing page.
+            OFF = the bot stops processing messages on that channel (one polite maintenance reply, nothing else) and the channel disappears from the landing-page signup modal. ON = back to normal — no redeploy needed.
           </p>
         </div>
         
