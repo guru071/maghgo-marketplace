@@ -1,4 +1,4 @@
-import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, updateStoreAddress, toggleStoreStatus, updateMerchantSocial, listThemes, applyThemeById, hasRazorpayKeys, setRazorpayKeys, clearRazorpayKeys, Channel } from './merchant.service';
+import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, updateStoreAddress, updateStoreCategory, setCustomDomain, toggleStoreStatus, updateMerchantSocial, listThemes, applyThemeById, hasRazorpayKeys, setRazorpayKeys, clearRazorpayKeys, Channel } from './merchant.service';
 import { encryptSecret } from '../utils/crypto';
 import { parseCaption } from './parser.service';
 import { removeBackground } from './media.service';
@@ -6,7 +6,7 @@ import { uploadImage } from './storage.service';
 import { createProduct, getProducts, deleteProduct, getProductCount, updateProductPrice, deleteAllProducts, setProductFulfillment, setProductStock, setProductInfo } from './product.service';
 import { getOrders, getAnalytics, updateOrderStatus, OrderStatus } from './order.service';
 import { listCoupons, createCoupon, deleteCoupon } from './coupon.service';
-import { importMetaCatalog } from './metaCatalog.service';
+import { importMetaCatalog, connectMetaCatalog } from './metaCatalog.service';
 import { triggerRevalidation } from './revalidate.service';
 import { createPaymentLink, getAmountFromPlan, getPlanFromAmount, getAllPlans } from './payment.service';
 import { env } from '../config/env';
@@ -58,7 +58,17 @@ async function replyButtons(
   body: string,
   buttons: { id: string; title: string }[]
 ): Promise<void> {
-  if (msg.sendButtons) return msg.sendButtons(body, buttons);
+  if (msg.sendButtons) {
+    // WhatsApp interactive-button bodies are capped at 1024 characters — a
+    // longer body makes Meta reject the whole message, so the user sees
+    // NOTHING (this is how the long HELP silently vanished). Send long content
+    // as plain text (4096 cap) followed by a short button prompt.
+    if (body.length > 1000) {
+      await msg.sendReply(body);
+      return msg.sendButtons('👇 Quick actions:', buttons);
+    }
+    return msg.sendButtons(body, buttons);
+  }
   await msg.sendReply(`${body}\n\n${buttons.map((b) => `• ${b.title}`).join('\n')}`);
 }
 
@@ -135,10 +145,18 @@ const GREETINGS = new Set(['HI', 'HELLO', 'HEY', 'MENU', 'START', 'MAGHGO', 'HII
 //   product:  photo → name → price → created
 // State lives in-memory with a TTL, keyed per channel+sender. CANCEL exits any
 // flow. (For multi-instance scaling, back this with Redis.)
-interface RegisterFlow { kind: 'register'; step: 'name' | 'plan'; storeName?: string }
+interface RegisterFlow {
+  kind: 'register';
+  step: 'name' | 'category' | 'contact' | 'address' | 'instagram' | 'plan';
+  storeName?: string;
+  category?: string;
+  contact?: string;
+  address?: string;
+  instagram?: string;
+}
 interface ProductFlow {
   kind: 'product';
-  step: 'photo' | 'name' | 'price' | 'bg';
+  step: 'photo' | 'name' | 'price' | 'bg' | 'desc' | 'opts';
   image?: { buffer: Buffer; mime_type: string };
   title?: string;
   price?: number;
@@ -146,7 +164,14 @@ interface ProductFlow {
 // Connect the shop's own Razorpay from chat: key id → key secret → saved
 // (secret encrypted at rest, exactly like the dashboard path).
 interface PaymentsFlow { kind: 'payments'; step: 'keyid' | 'secret'; keyId?: string }
-type Flow = (RegisterFlow | ProductFlow | PaymentsFlow) & { ts: number };
+// Connect the shop's Meta (FB/Insta) catalogue from chat: catalog id → token.
+interface MetaCatFlow { kind: 'metacat'; step: 'catalogid' | 'token'; catalogId?: string }
+type Flow = (RegisterFlow | ProductFlow | PaymentsFlow | MetaCatFlow) & { ts: number };
+
+const SHOP_CATEGORIES = [
+  '👕 Clothing & Fashion', '👟 Footwear', '📱 Electronics', '🛒 Grocery & Daily',
+  '🍰 Food & Bakery', '💄 Beauty & Care', '🏠 Home & Decor', '🎁 Other',
+];
 
 const FLOW_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const flows = new Map<string, Flow>();
@@ -426,34 +451,37 @@ async function finishProductCreation(
   const product = await createProduct(merchant.id, title, price, originalUrl, processedUrl);
   const storeUrl = `${env.FRONTEND_URL}/${merchant.store_slug}`;
 
-  await replyButtons(
-    msg,
-    `✅ *Product added successfully!*\n\n📦 *${product.title}*\n💰 ₹${product.price.toLocaleString('en-IN')}\n\n🔗 View your store: ${storeUrl}`,
-    [
-      { id: 'ADD', title: '➕ Add another' },
-      { id: 'LIST', title: '📦 My products' },
-      { id: 'MENU', title: '📋 Menu' },
-    ]
+  await msg.sendReply(
+    `✅ *Product added!*\n\n📦 *${product.title}*\n💰 ₹${product.price.toLocaleString('en-IN')}\n\n🔗 ${storeUrl}`
   );
   await triggerRevalidation(merchant.store_slug);
 
-  // Smart assist: recognise what kind of product this is, quietly set its
-  // category, and offer one-tap buyer options (the button carries the full,
-  // ready-to-run OPTIONS command). Best-effort — never blocks the add.
+  // Smart assist: recognise what kind of product this is and quietly set its
+  // category. Best-effort — never blocks the add.
   const kind = detectProductKind(product.title);
-  if (kind) {
-    setProductInfo(merchant.id, product.title, { category: kind.category }).catch(() => {});
-    if (kind.options && kind.buttonTitle) {
-      await replyButtons(
-        msg,
-        `🤖 This looks like *${kind.category}* — I've set its category.\n\nWant buyers to choose options before ordering?\n_(Tap to apply, or write your own: OPTIONS ${product.title} - ${kind.options})_`,
-        [
-          { id: `OPTIONS ${product.title} - ${kind.options}`, title: kind.buttonTitle },
-          { id: 'HELP OPTIONS', title: '✏️ Custom options' },
-        ]
-      ).catch(() => {});
-    }
-  }
+  if (kind) setProductInfo(merchant.id, product.title, { category: kind.category }).catch(() => {});
+
+  // Continue the form: ask for the details & specs Flipkart-style listings
+  // need, both skippable so a hurried owner is never blocked.
+  flows.set(`${msg.channel}:${msg.senderId}`, { kind: 'product', step: 'desc', title: product.title, ts: Date.now() });
+  await replyButtons(
+    msg,
+    `📝 *Add a short description?*\n\nBuyers see it when they tap the product.\ne.g. _"Soft premium cotton, made in India"_\n\nType it, or skip.`,
+    [{ id: 'SKIP', title: '⏭ Skip' }]
+  );
+}
+
+/** Ask the options/specs question (with a smart suggestion when we have one). */
+async function askOptionsStep(msg: BotMessage, title: string): Promise<void> {
+  const kind = detectProductKind(title);
+  const buttons: { id: string; title: string }[] = [];
+  if (kind?.options && kind.buttonTitle) buttons.push({ id: kind.options, title: kind.buttonTitle });
+  buttons.push({ id: 'SKIP', title: '⏭ Skip' });
+  await replyButtons(
+    msg,
+    `📐 *Options & specs — should buyers choose before ordering?*\n\nType like:\n*Size: S,M,L,XL* — one group\n*Size: S,M,L; Colour: Red,Blue* — two groups${kind?.options ? `\n\n🤖 Looks like ${kind.category} — tap below to apply *${kind.options}* in one tap.` : ''}\n\nOr skip.`,
+    buttons
+  );
 }
 
 async function handleImageMessage(msg: BotMessage): Promise<void> {
@@ -510,8 +538,61 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
         return true;
       }
       flow.storeName = text;
+      flow.step = 'category';
+      await replyMenu(
+        msg,
+        `Nice — *${text}* it is! 🏪\n\n*Step 2 of 6 — what do you sell?* (tap one, or type your own)`,
+        '🗂 Choose',
+        SHOP_CATEGORIES.map((c) => ({ id: c, title: c.slice(0, 24) })),
+        'Shop Category'
+      );
+      return true;
+    }
+
+    if (flow.step === 'category') {
+      flow.category = text.replace(/^[^\w]*/, '').trim().slice(0, 60) || 'Other';
+      flow.step = 'contact';
+      const isWa = msg.channel === 'whatsapp';
+      await replyButtons(
+        msg,
+        `*Step 3 of 6 — contact number for customers* 📞\n\nThis shows on your storefront's WhatsApp/Call buttons.${isWa ? '\n\nTap below to use this number, or type another.' : '\n\nType the number (e.g. 9198xxxxxxx), or SKIP.'}`,
+        isWa
+          ? [{ id: 'USE THIS NUMBER', title: '✅ Use this number' }, { id: 'SKIP', title: '⏭ Skip' }]
+          : [{ id: 'SKIP', title: '⏭ Skip' }]
+      );
+      return true;
+    }
+
+    if (flow.step === 'contact') {
+      if (upper === 'USE THIS NUMBER') flow.contact = msg.senderId;
+      else if (upper !== 'SKIP') {
+        const digits = text.replace(/\D/g, '');
+        if (digits.length < 10) {
+          await msg.sendReply('⚠️ That doesn\'t look like a phone number. Type it like 9198xxxxxxx, or SKIP.');
+          return true;
+        }
+        flow.contact = digits;
+      }
+      flow.step = 'address';
+      await replyButtons(msg, '*Step 4 of 6 — shop address* 📍\n\nCustomers see "Visit us" with a directions button.\n\nType it (e.g. 12 MG Road, Villupuram), or SKIP.', [
+        { id: 'SKIP', title: '⏭ Skip' },
+      ]);
+      return true;
+    }
+
+    if (flow.step === 'address') {
+      if (upper !== 'SKIP') flow.address = text.slice(0, 300);
+      flow.step = 'instagram';
+      await replyButtons(msg, '*Step 5 of 6 — Instagram handle* 📸\n\nShown as a button on your storefront.\n\nType it (e.g. mystore), or SKIP.', [
+        { id: 'SKIP', title: '⏭ Skip' },
+      ]);
+      return true;
+    }
+
+    if (flow.step === 'instagram') {
+      if (upper !== 'SKIP') flow.instagram = text.replace(/^@/, '').trim().slice(0, 60);
       flow.step = 'plan';
-      await sendPlanMenu(msg, `Nice — *${text}* it is! 🏪\n\n*Step 2 of 2 — pick your plan:*\n(Reply with a plan name, or CANCEL to stop.)`);
+      await sendPlanMenu(msg, `Almost done! 🎯\n\n*Step 6 of 6 — pick your plan:*\n(Reply with a plan name, or CANCEL to stop.)`);
       return true;
     }
 
@@ -548,6 +629,17 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
           return true;
         }
         const newMerchant = await createMerchant(msg.channel, msg.senderId, storeName, storeSlug);
+
+        // Apply everything collected in the wizard. Best-effort: a failed
+        // detail must never fail a successful registration.
+        const applied: string[] = [];
+        if (flow.category) { await updateStoreCategory(newMerchant.id, flow.category).then(() => applied.push(`🗂 ${flow.category}`), () => {}); }
+        if (flow.contact) { await updateMerchantSocial(newMerchant.id, 'phone_number', flow.contact).then(() => applied.push('📞 contact'), () => {}); }
+        if (flow.address) { await updateStoreAddress(newMerchant.id, flow.address).then(() => applied.push('📍 address'), () => {}); }
+        if (flow.instagram) { await updateMerchantSocial(newMerchant.id, 'instagram_handle', flow.instagram).then(() => applied.push('📸 @' + flow.instagram), () => {}); }
+        if (applied.length) {
+          await msg.sendReply(`✅ Saved your shop details: ${applied.join(' · ')}`).catch(() => {});
+        }
 
         if (requestedPlan === 'CUSTOM') {
           await msg.sendReply(`🎉 *Welcome to Maghgo!*\n\nYour store *${newMerchant.store_name}* has been reserved.\n\nOur team will contact you shortly to set up your Custom plan.`);
@@ -618,7 +710,68 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
       return true;
     }
 
-    // Final step: the owner decides whether this photo gets the AI clean-up.
+    // Post-creation: description → options, both skippable.
+    if (flow.step === 'desc') {
+      if (msg.type !== 'text' || !text) { await msg.sendReply('✍️ Type the description, or SKIP.'); return true; }
+      if (upper !== 'SKIP') {
+        const merchant = await getMerchantByChannel(msg.channel, msg.senderId);
+        if (merchant) {
+          await setProductInfo(merchant.id, flow.title!, { description: text }).catch(() => {});
+          await triggerRevalidation(merchant.store_slug).catch(() => {});
+          await msg.sendReply('📝 Description saved!');
+        }
+      }
+      flow.step = 'opts';
+      await askOptionsStep(msg, flow.title!);
+      return true;
+    }
+
+    if (flow.step === 'opts') {
+      if (msg.type !== 'text' || !text) { await msg.sendReply('✍️ Type the options (e.g. Size: S,M,L), or SKIP.'); return true; }
+      if (upper === 'SKIP') {
+        flows.delete(flowKey);
+        await replyButtons(msg, '👍 All set! What next?', [
+          { id: 'ADD', title: '➕ Add another' },
+          { id: 'LIST', title: '📦 My products' },
+          { id: 'MENU', title: '📋 Menu' },
+        ]);
+        return true;
+      }
+      // Accept "Size: S,M,L; Colour: Red,Blue" (also tolerate a pasted full
+      // "OPTIONS name - spec" command).
+      const spec = /^OPTIONS\s/i.test(text) ? text.split(/\s+-\s+/).slice(1).join(' - ') : text;
+      const variants = spec.split(';').map((group) => {
+        const [gName, gValues] = group.split(':');
+        return {
+          name: (gName || '').trim().slice(0, 40),
+          values: (gValues || '').split(',').map((v) => v.trim().slice(0, 40)).filter(Boolean).slice(0, 20),
+        };
+      }).filter((g) => g.name && g.values.length > 0).slice(0, 6);
+
+      if (variants.length === 0) {
+        await msg.sendReply('⚠️ I couldn\'t read that. Example:\n*Size: S,M,L; Colour: Red,Blue*\n\n(or SKIP)');
+        return true;
+      }
+      flows.delete(flowKey);
+      const merchant = await getMerchantByChannel(msg.channel, msg.senderId);
+      if (merchant) {
+        try {
+          await setProductInfo(merchant.id, flow.title!, { variants });
+          await triggerRevalidation(merchant.store_slug).catch(() => {});
+          const summary = variants.map((v) => `${v.name}: ${v.values.join(', ')}`).join(' · ');
+          await replyButtons(msg, `📐 *Options saved!* ${summary}\n\nBuyers now pick these before adding to cart. What next?`, [
+            { id: 'ADD', title: '➕ Add another' },
+            { id: 'LIST', title: '📦 My products' },
+            { id: 'MENU', title: '📋 Menu' },
+          ]);
+        } catch (err: any) {
+          await msg.sendReply(`❌ ${err.message || 'Could not save the options.'}`);
+        }
+      }
+      return true;
+    }
+
+    // The owner decides whether this photo gets the AI clean-up.
     if (flow.step === 'bg') {
       const yes = upper === 'BG YES' || upper === 'YES' || upper === 'Y';
       const no = upper === 'BG NO' || upper === 'NO' || upper === 'N';
@@ -674,6 +827,42 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
     }
   }
 
+  // ── Connect-Meta-catalogue wizard ──────────────────────────────────────────
+  if (flow.kind === 'metacat') {
+    if (msg.type !== 'text' || !text) {
+      await msg.sendReply('✍️ Please reply with text (or CANCEL to stop).');
+      return true;
+    }
+
+    if (flow.step === 'catalogid') {
+      const id = text.trim();
+      if (!/^\d{5,}$/.test(id)) {
+        await msg.sendReply('⚠️ A Catalog ID is a long number (e.g. 1234567890123456). Check Commerce Manager and paste it again (or CANCEL).');
+        return true;
+      }
+      flow.catalogId = id;
+      flow.step = 'token';
+      await msg.sendReply('🔑 Got it.\n\n*Step 2 of 2 — paste your Meta access token* (Business Settings → System Users → generate with catalogue access).\n\n🔒 Stored encrypted. Delete your message after I confirm.');
+      return true;
+    }
+
+    if (flow.step === 'token') {
+      flows.delete(flowKey);
+      const merchant = await getMerchantByChannel(msg.channel, msg.senderId);
+      if (!merchant) { await msg.sendReply('❌ Please REGISTER first.'); return true; }
+      try {
+        await connectMetaCatalog(merchant.id, flow.catalogId!, text.trim());
+        await replyButtons(msg, '✅ *Meta catalogue connected!*\n\n🧹 _Delete your last message (the token) from this chat._\n\nReady to pull your products in?', [
+          { id: 'IMPORT META', title: '📷 Import now' },
+          { id: 'MENU', title: '📋 Menu' },
+        ]);
+      } catch (err: any) {
+        await msg.sendReply(`❌ ${err.message || 'Could not connect the catalogue.'}\n\nReply *CONNECT META* to try again.`);
+      }
+      return true;
+    }
+  }
+
   flows.delete(flowKey);
   return false;
 }
@@ -682,8 +871,8 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   const { channel, senderId, sendReply } = msg;
   const command = text.trim().toUpperCase();
 
-  // Bare REGISTER starts the guided form: name → plan → payment link.
-  // (REGISTER <name> [- PLAN] below still works for one-shot registration.)
+  // Bare REGISTER starts the guided form: name → category → contact → address
+  // → instagram → plan. (REGISTER <name> [- PLAN] below still works one-shot.)
   if (command === 'REGISTER') {
     const existing = await getMerchantByChannel(channel, senderId);
     if (existing) {
@@ -691,7 +880,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
       return;
     }
     flows.set(`${channel}:${senderId}`, { kind: 'register', step: 'name', ts: Date.now() });
-    await sendReply('🏪 *Let\'s create your store! — Step 1 of 2*\n\nWhat\'s your shop\'s name?\n\n(e.g. Ramesh Mobiles — reply CANCEL to stop)');
+    await sendReply('🏪 *Let\'s create your store! — Step 1 of 6*\n\nWhat\'s your shop\'s name?\n\n(e.g. Ramesh Mobiles — reply CANCEL to stop)');
     return;
   }
 
@@ -1072,6 +1261,54 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     await updateMerchantSocial(merchant.id, 'phone_number', number);
     await sendReply(`✅ WhatsApp number updated to: ${number}`);
     await triggerRevalidation(merchant.store_slug);
+    return;
+  }
+
+  if (command.startsWith('SET CATEGORY ')) {
+    const cat = text.trim().substring(13).trim();
+    await updateStoreCategory(merchant.id, cat);
+    await sendReply(`🗂 Shop category set to: *${cat}*`);
+    await triggerRevalidation(merchant.store_slug);
+    return;
+  }
+
+  // Custom domain from chat (plan-gated like the dashboard).
+  if (command.startsWith('DOMAIN')) {
+    const value = text.trim().substring(6).trim();
+    if (!value) {
+      await sendReply('🌐 *Custom domain*\n\n• DOMAIN mystore.com — connect yours\n• DOMAIN off — remove it\n\nAfter connecting, point your domain\'s DNS at your storefront host.');
+      return;
+    }
+    const clearing = /^off$/i.test(value);
+    if (!clearing && !canUseFeature(merchant.subscription_plan, 'custom_domain')) {
+      await replyButtons(msg, `🔒 ${featureLockedMessage('custom_domain', merchant.subscription_plan)}`, [
+        { id: 'UPGRADE', title: '🚀 See plans' },
+        { id: 'MENU', title: '📋 Menu' },
+      ]);
+      return;
+    }
+    try {
+      const domain = await setCustomDomain(merchant.id, clearing ? null : value);
+      await sendReply(domain
+        ? `🌐 *${domain} connected!*\n\nLast step (one time): add a DNS record for it pointing at your storefront host, and add the domain in your hosting panel.`
+        : '🌐 Custom domain removed. Your store stays available at its Maghgo link.');
+    } catch (err: any) {
+      await sendReply(`❌ ${err.message}`);
+    }
+    return;
+  }
+
+  // Connect the Meta (FB/Insta Shop) catalogue entirely in chat.
+  if (command === 'CONNECT META') {
+    if (!canUseFeature(merchant.subscription_plan, 'meta_import')) {
+      await replyButtons(msg, `🔒 ${featureLockedMessage('meta_import', merchant.subscription_plan)}`, [
+        { id: 'UPGRADE', title: '🚀 See plans' },
+        { id: 'MENU', title: '📋 Menu' },
+      ]);
+      return;
+    }
+    flows.set(`${channel}:${senderId}`, { kind: 'metacat', step: 'catalogid', ts: Date.now() });
+    await sendReply('📷 *Connect your Meta Shop! — Step 1 of 2*\n\nOpen *Meta Commerce Manager* → your catalogue → its settings show the *Catalog ID* (a long number). Paste it here.\n\n(Reply CANCEL to stop.)');
     return;
   }
 
@@ -1532,10 +1769,40 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   if (command === 'HELP') {
     await replyButtons(
       msg,
-      `➕ *Add a product*\n\nSend a *photo* of your product with a caption:\n\n_Product name  Price_\nExample: *Red Cotton T-Shirt ₹499*\n\n(Include ₹, Rs, INR or MRP before the price.)\n\nOther things you can type:\n👁 VIEW name  ·  ✏️ EDIT name - ₹price\n📦 STOCK name qty  ·  📐 OPTIONS name - Size: S,M,L\n🧾 ORDERS → ORDER 1 → CONFIRM 1 / DELIVER 1\n🏷️ COUPONS  ·  📊 SALES  ·  🎨 THEMES\n💳 PAYMENTS  ·  🔳 QR  ·  📷 IMPORT META\n📍 ADDRESS your address  ·  🚀 UPGRADE  ·  ⚙️ MORE`,
+      `📖 *MAGHGO — every command*\n\n` +
+      `*➕ Add products*\n` +
+      `• ADD — guided: photo → name → price → details\n` +
+      `• Or send a photo captioned *Red Shirt ₹499*\n\n` +
+      `*📦 Manage products*\n` +
+      `• LIST — all products (tap to view)\n` +
+      `• VIEW name — full info card\n` +
+      `• EDIT name - ₹399 — change price\n` +
+      `• DETAILS name - soft cotton — description\n` +
+      `• OPTIONS name - Size: S,M,L — buyer choices\n` +
+      `• CATEGORY name - T-Shirt · STOCK name 10\n` +
+      `• PREBOOK name / SELL name · DELETE name\n\n` +
+      `*🧾 Orders*\n` +
+      `• ORDERS — recent list · ORDER 1 — full detail\n` +
+      `• CONFIRM 1 · SHIP 1 · DELIVER 1 · CANCEL 1\n` +
+      `  (customer is notified automatically)\n\n` +
+      `*💰 Business*\n` +
+      `• SALES — full analytics · COUPONS — discounts\n` +
+      `• COUPON CREATE DIWALI20 20% [MIN 999]\n` +
+      `• PAYMENTS — connect YOUR Razorpay\n` +
+      `• UPGRADE — see all plans\n\n` +
+      `*🏪 Store*\n` +
+      `• THEMES — 46 designs · QR — printable code\n` +
+      `• DESCRIBE text · ADDRESS your address\n` +
+      `• SET CATEGORY type · SET INSTAGRAM handle\n` +
+      `• SET FACEBOOK url · SET WHATSAPP number\n` +
+      `• DOMAIN mystore.com — custom domain\n` +
+      `• IMPORT META / CONNECT META — FB/Insta shop\n` +
+      `• PAUSE / RESUME · LINK — other channels\n` +
+      `• LOGIN — web dashboard (optional)\n\n` +
+      `Reply *MENU* for tappable buttons of all this.`,
       [
         { id: 'MENU', title: '📋 Main menu' },
-        { id: 'LIST', title: '📦 My products' },
+        { id: 'ADD', title: '➕ Add a product' },
       ]
     );
     return;

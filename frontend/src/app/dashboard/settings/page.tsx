@@ -12,6 +12,7 @@ export default function DashboardSettings() {
   const [storeName, setStoreName] = useState('');
   const [storeDescription, setStoreDescription] = useState('');
   const [storeAddress, setStoreAddress] = useState('');
+  const [storeCategory, setStoreCategory] = useState('');
   const [isActive, setIsActive] = useState(true);
 
   // Payments (own Razorpay)
@@ -85,6 +86,7 @@ export default function DashboardSettings() {
         setStoreName(data.store_name || '');
         setStoreDescription(data.store_description || '');
         setStoreAddress(data.store_address || '');
+        setStoreCategory(data.store_category || '');
         setIsActive(data.is_active);
         setRzpConnected(!!data.razorpay_connected);
       }
@@ -122,6 +124,7 @@ export default function DashboardSettings() {
         body: JSON.stringify({
           store_name: storeName,
           store_description: storeDescription,
+          store_category: storeCategory,
           is_active: isActive
         })
       });
@@ -174,6 +177,21 @@ export default function DashboardSettings() {
               placeholder="E.g. We sell the best quality shoes in Mumbai. Free shipping on all orders!"
             />
             <p className="text-xs text-gray-500 mt-2">A short bio to tell customers about your business.</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-900 mb-2">Shop Category <span className="font-normal text-gray-400">(optional)</span></label>
+            <select
+              value={storeCategory}
+              onChange={e => setStoreCategory(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-accent focus:border-accent bg-white"
+            >
+              <option value="">Choose a category…</option>
+              {['Clothing & Fashion', 'Footwear', 'Electronics', 'Grocery & Daily', 'Food & Bakery', 'Beauty & Care', 'Home & Decor', 'Other'].map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-2">What kind of shop this is. Also settable in the bot: SET CATEGORY.</p>
           </div>
 
           <div>

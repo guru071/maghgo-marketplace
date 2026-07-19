@@ -8,6 +8,7 @@ export default function RegisterPage() {
   const [storeName, setStoreName] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [storeCategory, setStoreCategory] = useState('');
   const [storeAddress, setStoreAddress] = useState('');
   const [instagram, setInstagram] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -34,6 +35,7 @@ export default function RegisterPage() {
           phone_number: phone,
           store_name: storeName,
           password,
+          store_category: storeCategory || undefined,
           store_address: storeAddress || undefined,
           instagram_handle: instagram || undefined,
         })
@@ -137,6 +139,21 @@ export default function RegisterPage() {
                 required
                 minLength={6}
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                What do you sell? <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <select
+                value={storeCategory}
+                onChange={e => setStoreCategory(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-accent focus:border-accent bg-white"
+              >
+                <option value="">Choose a category…</option>
+                {['Clothing & Fashion', 'Footwear', 'Electronics', 'Grocery & Daily', 'Food & Bakery', 'Beauty & Care', 'Home & Decor', 'Other'].map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">

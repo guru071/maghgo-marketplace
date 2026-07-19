@@ -88,15 +88,15 @@ async function requireFeature(req: AuthRequest, res: any, feature: GatedFeature)
 // Get Store Details
 router.get('/store', async (req: AuthRequest, res) => {
   try {
-    // Try to include store_address; if migration 15 hasn't run yet the column
-    // is missing, so fall back to the base columns rather than 500.
+    // Try to include store_address + store_category; if migrations 15/22 haven't
+    // run yet the columns are missing, so fall back rather than 500.
     let { data, error } = await supabase
       .from('merchants')
-      .select(`${MERCHANT_PUBLIC_COLUMNS}, store_address`)
+      .select(`${MERCHANT_PUBLIC_COLUMNS}, store_address, store_category`)
       .eq('id', req.merchantId)
       .single();
 
-    if (error && /store_address|schema cache|42703/i.test(error.message || '')) {
+    if (error && /store_address|store_category|schema cache|42703/i.test(error.message || '')) {
       ({ data, error } = await supabase
         .from('merchants')
         .select(MERCHANT_PUBLIC_COLUMNS)
@@ -270,20 +270,32 @@ router.post('/change-password', async (req: AuthRequest, res) => {
 // Update Store Details
 router.put('/store', async (req: AuthRequest, res) => {
   try {
-    const { store_name, store_description, is_active, theme_config } = req.body;
-    
+    const { store_name, store_description, is_active, theme_config, store_category } = req.body;
+
     let updates: any = {};
     if (store_name !== undefined) updates.store_name = store_name;
     if (store_description !== undefined) updates.store_description = store_description;
     if (is_active !== undefined) updates.is_active = is_active;
     if (theme_config !== undefined) updates.theme_config = theme_config;
+    if (store_category !== undefined) updates.store_category = store_category ? String(store_category).trim().slice(0, 60) : null;
 
-    const { data: merchant, error } = await supabase
+    let { data: merchant, error } = await supabase
       .from('merchants')
       .update(updates)
       .eq('id', req.merchantId)
       .select('store_slug')
       .single();
+
+    // store_category may not exist yet (migration 22) — retry without it.
+    if (error && 'store_category' in updates && /store_category|schema cache|42703|PGRST204/i.test(error.message || '')) {
+      const { store_category: _dropped, ...base } = updates;
+      ({ data: merchant, error } = await supabase
+        .from('merchants')
+        .update(base)
+        .eq('id', req.merchantId)
+        .select('store_slug')
+        .single());
+    }
 
     if (error) throw error;
 

@@ -284,6 +284,48 @@ export async function updateStoreAddress(merchantId: string, address: string): P
   }
 }
 
+/** Set what kind of shop this is (Clothing, Grocery…). Graceful pre-migration 22. */
+export async function updateStoreCategory(merchantId: string, category: string): Promise<void> {
+  const value = (category || '').trim().slice(0, 60) || null;
+  const { error } = await supabase
+    .from('merchants')
+    .update({ store_category: value })
+    .eq('id', merchantId);
+  if (error && !/store_category|schema cache|42703|PGRST204/i.test(error.message || '')) {
+    throw new Error(`Failed to save category: ${error.message}`);
+  }
+}
+
+/**
+ * Claim (or clear, with null) a custom domain. Normalises pasted URLs, and maps
+ * DB errors to friendly messages (missing migration 14 / already taken).
+ */
+export async function setCustomDomain(merchantId: string, raw: string | null): Promise<string | null> {
+  let domain: string | null = null;
+  if (raw && raw.trim()) {
+    const cleaned = raw.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '').replace(/\.$/, '').toLowerCase();
+    if (!/^([a-z0-9-]+\.)+[a-z]{2,}$/.test(cleaned)) {
+      throw new Error('That doesn\'t look like a valid domain. Example: mystore.com');
+    }
+    domain = cleaned;
+  }
+
+  const { error } = await supabase
+    .from('merchants')
+    .update({ custom_domain: domain })
+    .eq('id', merchantId);
+
+  if (error) {
+    const code = (error as any).code;
+    if (code === '23505') throw new Error('That domain is already connected to another store.');
+    if (code === '42703' || code === 'PGRST204' || /custom_domain|schema cache/i.test(error.message || '')) {
+      throw new Error('Custom domains need one setup step (migration 14) first.');
+    }
+    throw new Error(`Failed to save domain: ${error.message}`);
+  }
+  return domain;
+}
+
 // ─── Shop Razorpay keys (for the bot's PAYMENTS flow) ────────────────────────
 
 /** Whether this shop has connected its own Razorpay (never returns the secret). */

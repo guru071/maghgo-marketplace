@@ -20,7 +20,7 @@ router.use(authLimiter);
 // Register a new merchant directly via website
 router.post('/register', async (req, res) => {
   try {
-    const { phone_number, store_name, password, store_address, instagram_handle } = req.body;
+    const { phone_number, store_name, password, store_address, instagram_handle, store_category } = req.body;
 
     if (!phone_number || !store_name || !password) {
       return res.status(400).json({ error: 'Phone number, store name, and password are required' });
@@ -72,6 +72,9 @@ router.post('/register', async (req, res) => {
     const address = typeof store_address === 'string' && store_address.trim()
       ? store_address.trim().slice(0, 300)
       : null;
+    const category = typeof store_category === 'string' && store_category.trim()
+      ? store_category.trim().slice(0, 60)
+      : null;
 
     const baseInsert: any = {
       phone_number: normalizedPhone,
@@ -84,15 +87,16 @@ router.post('/register', async (req, res) => {
       instagram_handle: igHandle,
     };
 
-    // store_address may not exist yet (migration 15). Try with it; if the column
-    // is missing, retry without so registration never fails over an optional field.
+    // store_address / store_category may not exist yet (migrations 15/22). Try
+    // with them; if a column is missing, retry without so registration never
+    // fails over an optional field.
     let { data: newMerchant, error } = await supabase
       .from('merchants')
-      .insert({ ...baseInsert, store_address: address })
+      .insert({ ...baseInsert, store_address: address, store_category: category })
       .select()
       .single();
 
-    if (error && /store_address|schema cache|42703/i.test(error.message || '')) {
+    if (error && /store_address|store_category|schema cache|42703|PGRST204/i.test(error.message || '')) {
       ({ data: newMerchant, error } = await supabase
         .from('merchants')
         .insert(baseInsert)
