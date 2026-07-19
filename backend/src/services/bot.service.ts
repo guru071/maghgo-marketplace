@@ -82,7 +82,7 @@ async function sendMainMenu(msg: BotMessage, storeName?: string): Promise<void> 
     '📋 Open menu',
     [
       { id: 'LIST', title: '📦 My products', description: 'See everything in your store' },
-      { id: 'HELP', title: '➕ Add a product', description: 'How to add with a photo' },
+      { id: 'ADD', title: '➕ Add a product', description: 'Guided: photo → name → price' },
       { id: 'ORDERS', title: '🧾 Recent orders', description: 'View & update orders' },
       { id: 'SALES', title: '📊 Sales snapshot', description: 'Revenue & best seller' },
       { id: 'COUPONS', title: '🏷️ Coupons', description: 'Discount codes for customers' },
@@ -127,16 +127,29 @@ async function replyCta(msg: BotMessage, body: string, buttonText: string, url: 
 
 const GREETINGS = new Set(['HI', 'HELLO', 'HEY', 'MENU', 'START', 'MAGHGO', 'HII', 'HELLO!', 'HÍ']);
 
-// In-memory state for conversational flows (e.g. Instagram/FB missing captions).
-// Entries carry a timestamp so stale pending images are pruned and the map can
-// never grow without bound. (For multi-instance scaling, back this with Redis.)
-const PENDING_IMAGE_TTL_MS = 30 * 60 * 1000; // 30 minutes
-const pendingImages = new Map<string, { buffer: Buffer; mime_type: string; ts: number }>();
+// ─── Guided form flows ───────────────────────────────────────────────────────
+// Instead of dumping "type REGISTER Your Store Name" instructions, the bot can
+// walk the user through one question at a time, like a form:
+//   register: shop name → pick a plan → payment link
+//   product:  photo → name → price → created
+// State lives in-memory with a TTL, keyed per channel+sender. CANCEL exits any
+// flow. (For multi-instance scaling, back this with Redis.)
+interface RegisterFlow { kind: 'register'; step: 'name' | 'plan'; storeName?: string }
+interface ProductFlow {
+  kind: 'product';
+  step: 'photo' | 'name' | 'price';
+  image?: { buffer: Buffer; mime_type: string };
+  title?: string;
+}
+type Flow = (RegisterFlow | ProductFlow) & { ts: number };
 
-function prunePendingImages(): void {
+const FLOW_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const flows = new Map<string, Flow>();
+
+function pruneFlows(): void {
   const now = Date.now();
-  for (const [key, val] of pendingImages) {
-    if (now - val.ts > PENDING_IMAGE_TTL_MS) pendingImages.delete(key);
+  for (const [key, val] of flows) {
+    if (now - val.ts > FLOW_TTL_MS) flows.delete(key);
   }
 }
 
@@ -224,29 +237,29 @@ export async function processBotMessage(msg: BotMessage): Promise<void> {
   console.log(`▶️ Processing message from ${senderId} on ${channel}`);
 
   try {
-    const pendingKey = `${channel}:${senderId}`;
+    const flowKey = `${channel}:${senderId}`;
+    pruneFlows();
+
+    // An active form flow consumes messages first — the user is mid-wizard.
+    const flow = flows.get(flowKey);
+    if (flow) {
+      const handled = await handleFlowMessage(msg, flow, flowKey);
+      if (handled) return;
+    }
 
     if (msg.type === 'image' && msg.image) {
-      // Instagram and Facebook do not support captions on images.
+      // A photo with no caption starts the add-product form: ask for the name
+      // next instead of demanding a caption format. (Instagram and Facebook
+      // don't support captions on images at all.)
       if (!msg.image.caption) {
-        prunePendingImages();
-        pendingImages.set(pendingKey, { buffer: msg.image.buffer, mime_type: msg.image.mime_type, ts: Date.now() });
-        await sendReply('📸 Image received! Now please reply with the product name and price (e.g. "Red Shirt ₹499").');
+        const merchant = await ensureCanAddProduct(msg);
+        if (!merchant) return;
+        flows.set(flowKey, { kind: 'product', step: 'name', image: { buffer: msg.image.buffer, mime_type: msg.image.mime_type }, ts: Date.now() });
+        await sendReply('📸 Great photo!\n\n*Step 2 of 3 — What\'s this product called?*\n\n(e.g. Red Cotton T-Shirt. Reply CANCEL to stop.)');
         return;
       }
       await handleImageMessage(msg);
     } else if (msg.type === 'text' && msg.text) {
-      if (pendingImages.has(pendingKey)) {
-        // Treat text as caption for the pending image
-        const pending = pendingImages.get(pendingKey)!;
-        pendingImages.delete(pendingKey);
-
-        msg.type = 'image';
-        msg.image = { caption: msg.text, buffer: pending.buffer, mime_type: pending.mime_type };
-        await handleImageMessage(msg);
-        return;
-      }
-
       // Customer shopping takes precedence: if they're mid-session or starting
       // one ("SHOP <store>"), handle it as a shopper, not a merchant command.
       if (isShopTrigger(msg.text) || hasSession(msg)) {
@@ -262,13 +275,21 @@ export async function processBotMessage(msg: BotMessage): Promise<void> {
   }
 }
 
-async function handleImageMessage(msg: BotMessage): Promise<void> {
-  const { channel, senderId, image, sendReply } = msg;
+/**
+ * All the "may this user add a product right now?" checks in one place —
+ * registered, channel allowed, subscription active, under the plan limit.
+ * Replies with the right guidance itself; returns the merchant only when
+ * adding may proceed.
+ */
+async function ensureCanAddProduct(msg: BotMessage): Promise<any | null> {
+  const { channel, senderId, sendReply } = msg;
 
   const merchant = await getMerchantByChannel(channel, senderId);
   if (!merchant) {
-    await sendReply('❌ You\'re not registered yet on Maghgo.\n\nTo create your store instantly, reply with:\n\n*REGISTER Your Store Name*\n\nExample: REGISTER Ramesh Mobiles');
-    return;
+    await replyButtons(msg, '❌ You\'re not registered yet on Maghgo.\n\nLet\'s set up your store — it takes under a minute!', [
+      { id: 'REGISTER', title: '🚀 Create my store' },
+    ]);
+    return null;
   }
 
   if (!canUseChannel(merchant.subscription_plan, channel)) {
@@ -278,7 +299,7 @@ async function handleImageMessage(msg: BotMessage): Promise<void> {
       `Your store is on the *${merchant.subscription_plan.toUpperCase()}* plan, which doesn't include ${channelLabel(channel)}.\n\n` +
       `Reply *UPGRADE ${needed}* to unlock it.`
     );
-    return;
+    return null;
   }
 
   if (!isSubscriptionActive(merchant)) {
@@ -291,7 +312,7 @@ async function handleImageMessage(msg: BotMessage): Promise<void> {
         `⚠️ *Subscription Expired!*\n\nYour subscription has ended and your store is currently inactive. To reactivate your store and continue adding products, please renew your plan:`
       );
     }
-    return;
+    return null;
   }
 
   // Two independent reads → one round trip instead of two.
@@ -302,55 +323,235 @@ async function handleImageMessage(msg: BotMessage): Promise<void> {
 
   if (currentProductCount >= limit) {
     await sendReply(`⚠️ *Plan Limit Reached!*\n\nYour current plan allows a maximum of ${limit} products. Please reply with "UPGRADE" to see higher tier plans and unlock more capacity.`);
-    return;
+    return null;
   }
 
-  const caption = image!.caption || '';
-  const parsed = parseCaption(caption);
-  if (!parsed) {
-    await sendReply('⚠️ Could not parse product details from your caption.\n\nPlease include a currency symbol (Rs, ₹, INR, MRP) before the price:\n📝 *Product Name Rs Price*\n\nExamples:\n• Red Cotton T-Shirt Rs 499\n• Blue Jeans ₹1,299\n• Sneakers INR 2499');
-    return;
-  }
+  return merchant;
+}
 
+/** The shared tail of every add-product path: AI clean-up, upload, create. */
+async function finishProductCreation(
+  msg: BotMessage,
+  merchant: any,
+  title: string,
+  price: number,
+  image: { buffer: Buffer; mime_type: string }
+): Promise<void> {
   // Instant acknowledgement so the merchant isn't left staring at silence while
   // the AI background-removal + uploads run (a few seconds). Fire-and-forget:
   // its own latency must not delay the real work.
-  sendReply(`🎨 Got it! Adding *${parsed.title}* — one moment…`).catch(() => {});
+  msg.sendReply(`🎨 Got it! Adding *${title}* — one moment…`).catch(() => {});
 
   let processedBuffer: Buffer;
   try {
-    processedBuffer = await removeBackground(image!.buffer);
+    processedBuffer = await removeBackground(image.buffer);
   } catch (err) {
     console.warn('⚠️ Background removal failed, using original image:', err instanceof Error ? err.message : err);
-    processedBuffer = image!.buffer;
+    processedBuffer = image.buffer;
   }
 
   const crypto = require('crypto');
   const productId = crypto.randomUUID();
 
   const [originalUrl, processedUrl] = await Promise.all([
-    uploadImage(merchant.id, productId, image!.buffer, image!.mime_type, '-original'),
+    uploadImage(merchant.id, productId, image.buffer, image.mime_type, '-original'),
     uploadImage(merchant.id, productId, processedBuffer, 'image/png', '-processed'),
   ]);
 
-  const product = await createProduct(merchant.id, parsed.title, parsed.price, originalUrl, processedUrl);
+  const product = await createProduct(merchant.id, title, price, originalUrl, processedUrl);
   const storeUrl = `${env.FRONTEND_URL}/${merchant.store_slug}`;
 
   await replyButtons(
     msg,
-    `✅ *Product added successfully!*\n\n📦 *${product.title}*\n💰 ₹${product.price.toLocaleString('en-IN')}\n\n🔗 View your store: ${storeUrl}`,
+    `✅ *Product added successfully!*\n\n📦 *${product.title}*\n💰 ₹${product.price.toLocaleString('en-IN')}\n\n🔗 View your store: ${storeUrl}\n\n💡 _Optional: add sizes/colours with_\n_OPTIONS ${product.title} - Size: S,M,L_`,
     [
+      { id: 'ADD', title: '➕ Add another' },
       { id: 'LIST', title: '📦 My products' },
-      { id: 'STATUS', title: '📊 Status' },
       { id: 'MENU', title: '📋 Menu' },
     ]
   );
   await triggerRevalidation(merchant.store_slug);
 }
 
+async function handleImageMessage(msg: BotMessage): Promise<void> {
+  const { image, sendReply } = msg;
+
+  const merchant = await ensureCanAddProduct(msg);
+  if (!merchant) return;
+
+  const caption = image!.caption || '';
+  const parsed = parseCaption(caption);
+  if (!parsed) {
+    await sendReply('⚠️ Could not parse product details from your caption.\n\nPlease include a currency symbol (Rs, ₹, INR, MRP) before the price:\n📝 *Product Name Rs Price*\n\nExamples:\n• Red Cotton T-Shirt Rs 499\n• Blue Jeans ₹1,299\n• Sneakers INR 2499\n\n_Tip: you can also send the photo with no caption and I\'ll ask step by step._');
+    return;
+  }
+
+  await finishProductCreation(msg, merchant, parsed.title, parsed.price, { buffer: image!.buffer, mime_type: image!.mime_type });
+}
+
+/**
+ * Drive an active form flow. Returns true when the message was consumed.
+ * CANCEL always exits; MENU exits and falls through to the menu.
+ */
+async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): Promise<boolean> {
+  const text = (msg.type === 'text' ? msg.text || '' : '').trim();
+  const upper = text.toUpperCase();
+
+  // Universal escapes.
+  if (upper === 'CANCEL' || upper === 'STOP' || upper === 'EXIT') {
+    flows.delete(flowKey);
+    await msg.sendReply('❎ Cancelled. Reply *MENU* any time.');
+    return true;
+  }
+  if (upper === 'MENU' || isShopTrigger(text)) {
+    flows.delete(flowKey);
+    return false; // fall through to normal handling
+  }
+  flow.ts = Date.now();
+
+  // ── Register wizard ────────────────────────────────────────────────────────
+  if (flow.kind === 'register') {
+    if (msg.type !== 'text' || !text) {
+      await msg.sendReply('✍️ Please reply with text (or CANCEL to stop).');
+      return true;
+    }
+
+    if (flow.step === 'name') {
+      const storeSlug = buildStoreSlug(text);
+      if (!storeSlug) {
+        await msg.sendReply('⚠️ Please choose a shop name with letters or numbers in it (e.g. Ramesh Mobiles).');
+        return true;
+      }
+      flow.storeName = text;
+      flow.step = 'plan';
+      await sendPlanMenu(msg, `Nice — *${text}* it is! 🏪\n\n*Step 2 of 2 — pick your plan:*\n(Reply with a plan name, or CANCEL to stop.)`);
+      return true;
+    }
+
+    if (flow.step === 'plan') {
+      // Accept a tapped "UPGRADE <slug>" row or a typed plan name.
+      const token = (upper.startsWith('UPGRADE ') ? upper.substring(8) : upper).trim().toLowerCase();
+      const plans = await getAllPlans();
+      const plan = plans.find((p) => p.slug === token || p.name.toLowerCase() === token);
+      if (!plan) {
+        await msg.sendReply(`⚠️ I didn't recognise that plan. ${plans.length ? `Try one of: ${plans.map((p) => p.name).join(', ')}` : ''}\n\n(or CANCEL to stop)`);
+        return true;
+      }
+
+      const storeName = flow.storeName!;
+      flows.delete(flowKey);
+
+      // Never register onto a plan that can't use the channel they're on.
+      let requestedPlan = plan.slug.toUpperCase();
+      let channelUpgradeNote = '';
+      const minForChannel = minPlanForChannel(msg.channel);
+      if (requestedPlan !== 'CUSTOM' && !hasAccess(minForChannel, plan.slug)) {
+        channelUpgradeNote =
+          `\n\n_Note: ${channelLabel(msg.channel)} needs the ${minForChannel.toUpperCase()} plan, ` +
+          `so we've selected that instead of ${requestedPlan}._`;
+        requestedPlan = minForChannel.toUpperCase();
+      }
+
+      try {
+        // Validated at the name step, but re-check for the type system (and in
+        // case a pathological name slips through).
+        const storeSlug = buildStoreSlug(storeName);
+        if (!storeSlug) {
+          await msg.sendReply('⚠️ That shop name can\'t be used. Reply *REGISTER* to start again with a name containing letters or numbers.');
+          return true;
+        }
+        const newMerchant = await createMerchant(msg.channel, msg.senderId, storeName, storeSlug);
+
+        if (requestedPlan === 'CUSTOM') {
+          await msg.sendReply(`🎉 *Welcome to Maghgo!*\n\nYour store *${newMerchant.store_name}* has been reserved.\n\nOur team will contact you shortly to set up your Custom plan.`);
+          return true;
+        }
+        await sendPaymentOptions(
+          msg,
+          requestedPlan,
+          `🎉 *Welcome to Maghgo!*\n\nYour store *${newMerchant.store_name}* has been reserved.${channelUpgradeNote}\n\n🚀 To activate it and start adding products, complete your payment for the *${requestedPlan} Plan*:`
+        );
+      } catch (err: any) {
+        await msg.sendReply(`❌ ${err.message || 'Failed to create store.'}`);
+      }
+      return true;
+    }
+  }
+
+  // ── Add-product wizard ─────────────────────────────────────────────────────
+  if (flow.kind === 'product') {
+    if (flow.step === 'photo') {
+      if (msg.type === 'image' && msg.image) {
+        // Caption with name+price short-circuits the rest of the form.
+        const parsed = msg.image.caption ? parseCaption(msg.image.caption) : null;
+        if (parsed) {
+          flows.delete(flowKey);
+          const merchant = await ensureCanAddProduct(msg);
+          if (merchant) await finishProductCreation(msg, merchant, parsed.title, parsed.price, { buffer: msg.image.buffer, mime_type: msg.image.mime_type });
+          return true;
+        }
+        flow.image = { buffer: msg.image.buffer, mime_type: msg.image.mime_type };
+        flow.step = 'name';
+        await msg.sendReply('📸 Great photo!\n\n*Step 2 of 3 — What\'s this product called?*\n\n(e.g. Red Cotton T-Shirt)');
+        return true;
+      }
+      await msg.sendReply('📸 *Step 1 of 3 — Send me a photo of the product.*\n\n(Reply CANCEL to stop.)');
+      return true;
+    }
+
+    if (flow.step === 'name') {
+      if (msg.type !== 'text' || !text) {
+        await msg.sendReply('✍️ Please reply with the product name (or CANCEL).');
+        return true;
+      }
+      // "Red Shirt ₹499" in one go: accept name and price together.
+      const parsed = parseCaption(text);
+      if (parsed) {
+        flows.delete(flowKey);
+        const merchant = await ensureCanAddProduct(msg);
+        if (merchant) await finishProductCreation(msg, merchant, parsed.title, parsed.price, flow.image!);
+        return true;
+      }
+      flow.title = text.slice(0, 200);
+      flow.step = 'price';
+      await msg.sendReply(`💰 *Step 3 of 3 — How much is "${flow.title}"?*\n\nJust the number (e.g. 499).`);
+      return true;
+    }
+
+    if (flow.step === 'price') {
+      const m = text.replace(/[₹,]/g, '').match(/(\d+(?:\.\d{1,2})?)/);
+      const price = m ? Math.round(parseFloat(m[1])) : NaN;
+      if (!Number.isFinite(price) || price <= 0) {
+        await msg.sendReply('⚠️ Please send just the price as a number, e.g. *499* (or CANCEL).');
+        return true;
+      }
+      flows.delete(flowKey);
+      const merchant = await ensureCanAddProduct(msg);
+      if (merchant) await finishProductCreation(msg, merchant, flow.title!, price, flow.image!);
+      return true;
+    }
+  }
+
+  flows.delete(flowKey);
+  return false;
+}
+
 async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   const { channel, senderId, sendReply } = msg;
   const command = text.trim().toUpperCase();
+
+  // Bare REGISTER starts the guided form: name → plan → payment link.
+  // (REGISTER <name> [- PLAN] below still works for one-shot registration.)
+  if (command === 'REGISTER') {
+    const existing = await getMerchantByChannel(channel, senderId);
+    if (existing) {
+      await sendReply(`✅ You already have a store registered: *${existing.store_name}*\n\nLink: ${env.FRONTEND_URL}/${existing.store_slug}`);
+      return;
+    }
+    flows.set(`${channel}:${senderId}`, { kind: 'register', step: 'name', ts: Date.now() });
+    await sendReply('🏪 *Let\'s create your store! — Step 1 of 2*\n\nWhat\'s your shop\'s name?\n\n(e.g. Ramesh Mobiles — reply CANCEL to stop)');
+    return;
+  }
 
   if (command.startsWith('REGISTER ')) {
     const input = text.substring(9).trim();
@@ -439,8 +640,8 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   if (!merchant) {
     await replyButtons(
       msg,
-      '👋 Welcome to *Maghgo* — turn your chats into a web store.\n\nTo create your store instantly, reply:\n\n*REGISTER Your Store Name*\n\nAlready have a store? Reply with your link code (e.g. LINK A9F3K2).',
-      [{ id: 'REGISTER Your Store Name', title: '🚀 Create my store' }]
+      '👋 Welcome to *Maghgo* — turn your chats into a web store.\n\nTap the button (or reply *REGISTER*) and I\'ll set up your store step by step.\n\nAlready have a store on another app? Reply with your link code (e.g. LINK A9F3K2).',
+      [{ id: 'REGISTER', title: '🚀 Create my store' }]
     );
     return;
   }
@@ -534,12 +735,21 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     return;
   }
 
+  // Guided add-product form (also triggered by the ➕ menu row and buttons).
+  if (command === 'ADD' || command === 'ADD PRODUCT' || command === 'NEW PRODUCT') {
+    const ok = await ensureCanAddProduct(msg);
+    if (!ok) return;
+    flows.set(`${channel}:${senderId}`, { kind: 'product', step: 'photo', ts: Date.now() });
+    await sendReply('🧾 *New product — Step 1 of 3*\n\n📸 Send me a photo of the product.\n\n_Tip: a photo with the caption "Red Shirt ₹499" skips straight to done._\n(Reply CANCEL to stop.)');
+    return;
+  }
+
   if (command === 'LIST') {
     const products = await getProducts(merchant.id);
     const storeUrl = `${env.FRONTEND_URL}/${merchant.store_slug}`;
     if (products.length === 0) {
       await replyButtons(msg, '📭 Your store has no products yet.\n\nSend a product photo with a caption to add one!', [
-        { id: 'HELP', title: '➕ How to add' },
+        { id: 'ADD', title: '➕ Add a product' },
         { id: 'MENU', title: '📋 Menu' },
       ]);
       return;
@@ -561,7 +771,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
         await sendReply(`…and ${products.length - 10} more. See all on your store: ${storeUrl}`);
       }
       await replyButtons(msg, `📦 You have *${products.length}* product(s).`, [
-        { id: 'HELP', title: '➕ Add another' },
+        { id: 'ADD', title: '➕ Add another' },
         { id: 'MENU', title: '📋 Menu' },
       ]);
       return;
@@ -732,7 +942,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     );
     await replyButtons(msg, 'Anything else?', [
       { id: 'LIST', title: '📦 My products' },
-      { id: 'HELP', title: '➕ Add product' },
+      { id: 'ADD', title: '➕ Add product' },
       { id: 'MENU', title: '📋 Menu' },
     ]);
     return;
