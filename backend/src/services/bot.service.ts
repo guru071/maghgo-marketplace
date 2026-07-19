@@ -10,6 +10,7 @@ import { importMetaCatalog, connectMetaCatalog } from './metaCatalog.service';
 import { addReviewByPhone, getStoreRating } from './review.service';
 import { sendTextMessage } from './whatsapp.service';
 import { supabase } from '../db/supabase';
+import { normalizePhone } from '../utils/phone';
 import { triggerRevalidation } from './revalidate.service';
 import { createPaymentLink, getAmountFromPlan, getPlanFromAmount, getAllPlans } from './payment.service';
 import { env } from '../config/env';
@@ -1008,6 +1009,38 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
 
   const merchant = await getMerchantByChannel(channel, senderId);
   if (!merchant) {
+    // Returning CUSTOMER, not a merchant: if this number has ordered before,
+    // greet them as a shopper and offer one-tap re-entry to their recent
+    // store(s) — don't pitch them "create a store".
+    if (channel === 'whatsapp' || channel === 'sms') {
+      const phone = normalizePhone(senderId);
+      const { data: pastOrders } = await supabase
+        .from('order_logs')
+        .select('merchant_id')
+        .eq('customer_phone', phone)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      const merchantIds = [...new Set((pastOrders ?? []).map((o: any) => o.merchant_id))].slice(0, 2);
+      if (merchantIds.length > 0) {
+        const { data: shops } = await supabase
+          .from('merchants')
+          .select('store_name, store_slug')
+          .in('id', merchantIds)
+          .eq('is_active', true);
+        if (shops && shops.length > 0) {
+          await replyButtons(
+            msg,
+            `👋 Welcome back! Continue shopping?`,
+            [
+              ...shops.map((sh: any) => ({ id: `SHOP ${sh.store_slug}`, title: `🛍️ ${sh.store_name}`.slice(0, 20) })),
+              { id: 'REGISTER', title: '🚀 Open my own shop' },
+            ].slice(0, 3)
+          );
+          return;
+        }
+      }
+    }
+
     await replyButtons(
       msg,
       '👋 Welcome to *Maghgo* — turn your chats into a web store.\n\nTap the button (or reply *REGISTER*) and I\'ll set up your store step by step.\n\nAlready have a store on another app? Reply with your link code (e.g. LINK A9F3K2).',
