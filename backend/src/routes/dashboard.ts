@@ -39,6 +39,14 @@ import crypto from 'crypto';
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
 
+// Only real raster image types may reach the public bucket. Anything else —
+// notably SVG, which can carry scripts and would be served from our storage
+// domain — is refused server-side (the client-side accept= is not a gate).
+const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+function isAllowedImage(file?: { mimetype?: string }): boolean {
+  return !!file?.mimetype && ALLOWED_IMAGE_TYPES.has(file.mimetype.toLowerCase());
+}
+
 // Every merchant column EXCEPT password_hash. Never select('*') on merchants:
 // that ships the bcrypt hash to the browser, where it has no business being.
 const MERCHANT_PUBLIC_COLUMNS = [
@@ -177,6 +185,7 @@ router.put('/payment-keys', async (req: AuthRequest, res) => {
 router.post('/upload-image', upload.single('image'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Image is required' });
+    if (!isAllowedImage(req.file)) return res.status(400).json({ error: 'Please upload a JPG, PNG, WebP or GIF image.' });
     const id = `cover-${crypto.randomUUID()}`;
     const url = await uploadImage(req.merchantId!, id, req.file.buffer, req.file.mimetype, '');
     res.json({ url });
@@ -264,6 +273,7 @@ router.get('/products', async (req: AuthRequest, res) => {
 router.post('/products', upload.single('image'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Image is required' });
+    if (!isAllowedImage(req.file)) return res.status(400).json({ error: 'Please upload a JPG, PNG, WebP or GIF image.' });
     const { title, price, description, category } = req.body;
     if (!title || !price) return res.status(400).json({ error: 'Title and price are required' });
 
