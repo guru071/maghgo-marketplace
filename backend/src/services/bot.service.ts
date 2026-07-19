@@ -65,7 +65,16 @@ const TEXT_LIMIT: Record<string, number> = { whatsapp: 3900, messenger: 1800, in
 async function sendChunkedReply(msg: BotMessage, text: string): Promise<void> {
   const limit = TEXT_LIMIT[msg.channel] ?? 900;
   if (text.length <= limit) return msg.sendReply(text);
-  const paras = text.split('\n\n');
+
+  // A single paragraph can itself exceed the limit (e.g. a very long product
+  // description) — hard-split those so no chunk can ever be rejected.
+  const paras = text.split('\n\n').flatMap((p) => {
+    if (p.length <= limit) return [p];
+    const parts: string[] = [];
+    for (let i = 0; i < p.length; i += limit - 1) parts.push(p.slice(i, i + limit - 1));
+    return parts;
+  });
+
   let chunk = '';
   for (const p of paras) {
     const next = chunk ? `${chunk}\n\n${p}` : p;
