@@ -9,6 +9,7 @@ import FloatingCartButton from '@/components/store/FloatingCartButton';
 import { useCartStore } from '@/stores/cart';
 import EmptyStore from '@/components/store/EmptyStore';
 import StoreContact from '@/components/store/StoreContact';
+import AnimatedBg from '@/components/store/AnimatedBg';
 
 interface StoreClientProps {
   merchant: Merchant;
@@ -106,14 +107,23 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
   // override they kept the default orange on every theme.
   const themeAccent = activeTheme?.content?.find?.((b: any) => b?.type === 'ProductGrid')?.props?.accent;
 
+  // Optional animated background layer (orbs / aurora / particles) declared by
+  // the theme. Rendered behind everything; content sits on a z-indexed layer.
+  const themeEffect = activeTheme?.root?.props?.bgEffect as
+    | 'orbs' | 'aurora' | 'particles' | undefined;
+
   return (
     <div
       className={`min-h-screen pb-24 ${themeBg ? '' : 'bg-gray-50'}`}
       style={{
-        ...(themeBg ? { backgroundColor: themeBg } : {}),
+        // `background` (not backgroundColor) so themes can use CSS gradients.
+        ...(themeBg ? { background: themeBg } : {}),
         ...(themeAccent ? ({ '--accent': themeAccent } as React.CSSProperties) : {}),
+        position: 'relative',
       }}
     >
+      {themeEffect && <AnimatedBg effect={themeEffect} accent={themeAccent} />}
+      <div style={{ position: 'relative', zIndex: 1 }}>
       {activeTheme ? (
         <StoreContext.Provider value={{ products, onAddToCart: handleAddToCart, storeName: merchant.store_name, storeDescription: merchant.store_description }}>
           <Render config={config} data={activeTheme} />
@@ -142,6 +152,7 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
 
       <CartDrawer storeName={merchant.store_name} phone={merchant.phone_number} instagramHandle={merchant.instagram_handle} />
       <FloatingCartButton />
+      </div>
     </div>
   );
 }
