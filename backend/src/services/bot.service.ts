@@ -325,7 +325,10 @@ export async function processBotMessage(msg: BotMessage): Promise<void> {
   // notice and no processing. Cached (60s) and fail-open — see platform.service.
   if (!(await isChannelEnabled(channel))) {
     console.log(`⏸️ ${channel} is disabled by admin — ignoring message from ${senderId}`);
-    await sendReply('🛠 We\'re briefly under maintenance on this channel. Please try again a little later — or message us on WhatsApp!').catch(() => {});
+    const alt = channel === 'whatsapp'
+      ? ''
+      : ' — or message us on WhatsApp!';
+    await sendReply(`🛠 We're briefly under maintenance on this channel. Please try again a little later${alt}`).catch(() => {});
     return;
   }
 
