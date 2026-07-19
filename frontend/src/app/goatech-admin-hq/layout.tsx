@@ -26,6 +26,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <Users className="w-5 h-5 text-gray-500" />
             <span className="font-medium">Merchants</span>
           </Link>
+          <Link href="/goatech-admin-hq/payments" className="flex items-center gap-3 px-3 py-2 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
+            <span>💰</span>
+            <span>Payments</span>
+          </Link>
           <Link href="/goatech-admin-hq/plans" className="flex items-center gap-3 px-3 py-2 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
             <Settings className="w-5 h-5 text-gray-500" />
             <span className="font-medium">Pricing Plans</span>
