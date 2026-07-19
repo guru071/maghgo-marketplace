@@ -21,7 +21,19 @@ import type { BotMessage, BotCard } from './bot.service';
  * TTL — fine for a single instance; back with Redis to scale horizontally.
  */
 
-interface CartLine { productId: string; title: string; price: number; qty: number; image?: string; }
+interface CartLine { productId: string; title: string; price: number; qty: number; image?: string; variant?: string; }
+
+// A product with options (Size/Colour…) mid-selection: the shopper picks one
+// value per group before the line lands in the cart — same rule as the web.
+interface PendingAdd {
+  productId: string;
+  title: string;
+  price: number;
+  image?: string;
+  variants: { name: string; values: string[] }[];
+  chosen: Record<string, string>;
+}
+
 interface Session {
   storeSlug: string;
   storeName: string;
@@ -29,6 +41,7 @@ interface Session {
   merchantPhone: string | null;
   cart: CartLine[];
   coupon?: string;
+  pendingAdd?: PendingAdd;
   ts: number;
 }
 
@@ -147,7 +160,7 @@ async function showCart(msg: BotMessage, s: Session): Promise<void> {
     await msg.sendReply('🛒 Your cart is empty. Tap *Add* on a product to start.');
     return;
   }
-  const lines = s.cart.map((c) => `• ${c.qty} × ${c.title} — ${rupee(c.price * c.qty)}`).join('\n');
+  const lines = s.cart.map((c) => `• ${c.qty} × ${c.title}${c.variant ? ` (${c.variant})` : ''} — ${rupee(c.price * c.qty)}`).join('\n');
   const { subtotal, discount, total, couponNote } = await cartTotals(s);
   const totalBlock = discount > 0
     ? `Subtotal: ${rupee(subtotal)}${couponNote}\n*Total: ${rupee(total)}*`
@@ -164,6 +177,44 @@ async function showCart(msg: BotMessage, s: Session): Promise<void> {
   }
 }
 
+/** Prompt for the next unchosen option group (Size, Colour, …). */
+async function askVariant(msg: BotMessage, s: Session): Promise<void> {
+  const p = s.pendingAdd!;
+  const group = p.variants.find((v) => !p.chosen[v.name])!;
+  const body = `📐 *${p.title}* — which *${group.name}*?`;
+
+  if (msg.sendButtons && group.values.length <= 3) {
+    await msg.sendButtons(body, group.values.map((v) => ({ id: v, title: v.slice(0, 20) })));
+  } else if (msg.sendMenu && group.values.length <= 10) {
+    await msg.sendMenu(body, `Choose ${group.name}`.slice(0, 20), group.values.map((v) => ({ id: v, title: v.slice(0, 24) })));
+  } else {
+    await msg.sendReply(`${body}\n\nReply with one of: ${group.values.join(', ')}\n\n(or CANCEL)`);
+  }
+}
+
+/** Add a resolved line (with any chosen variant) to the cart and confirm. */
+async function pushCartLine(
+  msg: BotMessage,
+  s: Session,
+  item: { productId: string; title: string; price: number; image?: string; variant?: string }
+): Promise<void> {
+  const line = s.cart.find((c) => c.productId === item.productId && (c.variant ?? '') === (item.variant ?? ''));
+  if (line) line.qty += 1;
+  else s.cart.push({ ...item, qty: 1 });
+
+  const count = s.cart.reduce((n, c) => n + c.qty, 0);
+  const label = item.variant ? `${item.title} (${item.variant})` : item.title;
+  if (msg.sendButtons) {
+    await msg.sendButtons(`✅ Added *${label}*. Cart: ${count} item(s).`, [
+      { id: 'CHECKOUT', title: '✅ Checkout' },
+      { id: 'CART', title: '🛒 View cart' },
+      { id: 'SHOP', title: '➕ Add more' },
+    ]);
+  } else {
+    await msg.sendReply(`✅ Added *${label}*. Cart has ${count} item(s). Reply *CHECKOUT* or *CART*.`);
+  }
+}
+
 async function checkout(msg: BotMessage, s: Session): Promise<void> {
   if (s.cart.length === 0) {
     await msg.sendReply('🛒 Your cart is empty — nothing to check out.');
@@ -173,7 +224,7 @@ async function checkout(msg: BotMessage, s: Session): Promise<void> {
     const customerPhone = msg.channel === 'whatsapp' || msg.channel === 'sms' ? msg.senderId : undefined;
     const order = await createOrder(
       s.storeSlug,
-      s.cart.map((c) => ({ product_id: c.productId, quantity: c.qty })),
+      s.cart.map((c) => ({ product_id: c.productId, quantity: c.qty, variant: c.variant })),
       { phone: customerPhone, couponCode: s.coupon }
     );
     if (!order) {
@@ -211,7 +262,7 @@ async function checkout(msg: BotMessage, s: Session): Promise<void> {
 
     // Best-effort: ping the merchant on WhatsApp so they see it immediately.
     if (s.merchantPhone) {
-      const items = order.items.map((i: any) => `• ${i.quantity} × ${i.title} — ${rupee(Number(i.subtotal))}`).join('\n');
+      const items = order.items.map((i: any) => `• ${i.quantity} × ${i.title}${i.variant ? ` (${i.variant})` : ''} — ${rupee(Number(i.subtotal))}`).join('\n');
       await sendTextMessage(
         s.merchantPhone,
         `🔔 *New order on Maghgo!*\n\n${items}\n\n*Total: ${total}*${discountNote}\n\nSee it in your dashboard: ${env.FRONTEND_URL}/dashboard/orders`
@@ -292,9 +343,36 @@ export async function handleShopperMessage(msg: BotMessage, text: string): Promi
   if (upper === 'CONTACT' || upper === 'VISIT' || upper === 'LOCATION') { await showContact(msg, s); return true; }
   if (upper === 'CHECKOUT' || upper === 'BUY' || upper === 'PAY') { await checkout(msg, s); return true; }
   if (upper === 'CLEAR') { s.cart = []; await msg.sendReply('🗑️ Cart cleared.'); return true; }
+  if (upper === 'CANCEL' && s.pendingAdd) {
+    // Cancelling mid option-pick abandons that product, not the whole visit.
+    s.pendingAdd = undefined;
+    await msg.sendReply('❎ Okay, not added. Reply *SHOP* to keep browsing or *CART* to review.');
+    return true;
+  }
   if (upper === 'EXIT' || upper === 'STOP' || upper === 'CANCEL') {
     sessions.delete(k);
     await msg.sendReply('👋 Thanks for visiting! Send *SHOP* any time to browse again.');
+    return true;
+  }
+
+  // Mid option-pick: this message should be one of the current group's values.
+  if (s.pendingAdd) {
+    const p = s.pendingAdd;
+    const group = p.variants.find((v) => !p.chosen[v.name]);
+    const match = group?.values.find((v) => v.toLowerCase() === raw.toLowerCase());
+    if (group && match) {
+      p.chosen[group.name] = match;
+      if (p.variants.every((v) => p.chosen[v.name])) {
+        const variant = p.variants.map((v) => `${v.name}: ${p.chosen[v.name]}`).join(' · ');
+        s.pendingAdd = undefined;
+        await pushCartLine(msg, s, { productId: p.productId, title: p.title, price: p.price, image: p.image, variant });
+      } else {
+        await askVariant(msg, s);
+      }
+      return true;
+    }
+    // Not a valid value — re-ask rather than guessing.
+    await askVariant(msg, s);
     return true;
   }
 
@@ -314,19 +392,28 @@ export async function handleShopperMessage(msg: BotMessage, text: string): Promi
     return true;
   }
 
-  const line = s.cart.find((c) => c.productId === product.id);
-  if (line) line.qty += 1;
-  else s.cart.push({ productId: product.id, title: product.title, price: Number(product.price), qty: 1, image: product.processed_image_url || undefined });
-
-  const count = s.cart.reduce((n, c) => n + c.qty, 0);
-  if (msg.sendButtons) {
-    await msg.sendButtons(`✅ Added *${product.title}*. Cart: ${count} item(s).`, [
-      { id: 'CHECKOUT', title: '✅ Checkout' },
-      { id: 'CART', title: '🛒 View cart' },
-      { id: 'SHOP', title: '➕ Add more' },
-    ]);
-  } else {
-    await msg.sendReply(`✅ Added *${product.title}*. Cart has ${count} item(s). Reply *CHECKOUT* or *CART*.`);
+  // Same rules as the web store: no selling what's out of stock, and options
+  // (Size/Colour…) must be chosen before the cart.
+  if (product.stock != null && Number(product.stock) <= 0) {
+    await msg.sendReply(`😔 *${product.title}* is out of stock right now. Reply *SHOP* to see what's available.`);
+    return true;
   }
+
+  const variants = (Array.isArray(product.variants) ? product.variants : [])
+    .filter((v: any) => v?.name && Array.isArray(v.values) && v.values.length > 0);
+  const base = {
+    productId: product.id,
+    title: product.title,
+    price: Number(product.price),
+    image: product.processed_image_url || undefined,
+  };
+
+  if (variants.length > 0) {
+    s.pendingAdd = { ...base, variants, chosen: {} };
+    await askVariant(msg, s);
+    return true;
+  }
+
+  await pushCartLine(msg, s, base);
   return true;
 }

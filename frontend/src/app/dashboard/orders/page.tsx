@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 interface OrderLineItem {
   product_id: string;
   title: string;
+  variant?: string; // buyer-chosen options, e.g. "Size: M · Colour: Red"
   price: number;
   quantity: number;
   subtotal: number;
@@ -164,6 +165,7 @@ export default function OrdersPage() {
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="text-gray-800 font-medium truncate">{li.title}</div>
+                        {li.variant && <div className="text-xs text-indigo-500 font-medium truncate">{li.variant}</div>}
                         <div className="text-xs text-gray-400">{inr(li.price)} × {li.quantity}</div>
                       </div>
                       <span className="text-gray-700 font-semibold shrink-0">{inr(li.subtotal)}</span>

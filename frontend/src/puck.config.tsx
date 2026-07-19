@@ -282,20 +282,29 @@ const ProductGridComponent = ({ columns, showPrices, cardBg, gap, cardStyle, ani
       <ThemeStyles />
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${minTrack}, 1fr))`, gap: gap || '16px' }}>
         {hasLiveProducts
-          ? storeCtx.products.map((p: any, i: number) => (
-              <ProductCardMini
-                key={p.id}
-                index={i}
-                cardStyle={style}
-                title={p.title}
-                priceLabel={showPrices ? `${currencySymbol(p.currency)}${Number(p.price).toLocaleString('en-IN')}` : ''}
-                imageUrl={p.processed_image_url || p.original_image_url}
-                cardBg={bg}
-                accent={accent}
-                isPrebook={p.fulfillment_type === 'prebook'}
-                onClick={() => setDetail(p)}
-              />
-            ))
+          ? storeCtx.products.map((p: any, i: number) => {
+              const outOfStock = p.stock != null && Number(p.stock) <= 0;
+              return (
+                <div key={p.id} style={{ position: 'relative', opacity: outOfStock ? 0.7 : 1 }}>
+                  {outOfStock && (
+                    <span style={{ position: 'absolute', top: 8, right: 8, zIndex: 3, background: '#4b5563', color: '#fff', fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', padding: '3px 8px', borderRadius: 6 }}>
+                      Out of stock
+                    </span>
+                  )}
+                  <ProductCardMini
+                    index={i}
+                    cardStyle={style}
+                    title={p.title}
+                    priceLabel={showPrices ? `${currencySymbol(p.currency)}${Number(p.price).toLocaleString('en-IN')}` : ''}
+                    imageUrl={p.processed_image_url || p.original_image_url}
+                    cardBg={bg}
+                    accent={accent}
+                    isPrebook={p.fulfillment_type === 'prebook'}
+                    onClick={() => setDetail(p)}
+                  />
+                </div>
+              );
+            })
           : [1, 2, 3, 4, 5].map((i) => (
               <ProductCardMini key={i} index={i} cardStyle={style} title={`Sample Product ${i}`} priceLabel={showPrices ? '₹999' : ''} imageUrl="" cardBg={bg} accent={accent} disabled />
             ))}
