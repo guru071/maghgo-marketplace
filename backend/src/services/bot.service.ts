@@ -11,7 +11,7 @@ import { triggerRevalidation } from './revalidate.service';
 import { createPaymentLink, getAmountFromPlan, getPlanFromAmount, getAllPlans } from './payment.service';
 import { env } from '../config/env';
 import { buildStoreSlug } from '../utils/slug';
-import { canUseChannel, minPlanForChannel, channelLabel, hasAccess, canUseFeature, featureLockedMessage } from '../utils/plans';
+import { canUseChannel, minPlanForChannel, channelLabel, hasAccess, canUseFeature, featureLockedMessage, FEATURE_MIN_PLAN } from '../utils/plans';
 import { isShopTrigger, hasSession, handleShopperMessage } from './shopper.service';
 import jwt from 'jsonwebtoken';
 
@@ -86,18 +86,26 @@ async function replyMenu(
 }
 
 // The main GUI menu — a tappable list mapping to existing commands.
-async function sendMainMenu(msg: BotMessage, storeName?: string): Promise<void> {
+async function sendMainMenu(msg: BotMessage, merchant?: { store_name?: string; subscription_plan?: string }): Promise<void> {
+  const plan = merchant?.subscription_plan ?? 'basic';
+  // Locked rows stay visible with a 🔒 so the merchant can SEE what upgrading
+  // unlocks — tapping one gets the friendly upgrade prompt, never the feature.
+  const lock = (feature: Parameters<typeof canUseFeature>[1], title: string, desc: string) =>
+    canUseFeature(plan, feature)
+      ? { title, description: desc }
+      : { title: `🔒 ${title}`.slice(0, 24), description: `Needs ${FEATURE_MIN_PLAN[feature].toUpperCase()} plan — tap to see`.slice(0, 72) };
+
   await replyMenu(
     msg,
-    storeName ? `What would you like to do for *${storeName}*?` : 'What would you like to do?',
+    merchant?.store_name ? `What would you like to do for *${merchant.store_name}*?` : 'What would you like to do?',
     '📋 Open menu',
     [
       { id: 'LIST', title: '📦 My products', description: 'See everything in your store' },
       { id: 'ADD', title: '➕ Add a product', description: 'Guided: photo → name → price' },
       { id: 'ORDERS', title: '🧾 Recent orders', description: 'View & update orders' },
       { id: 'SALES', title: '📊 Sales snapshot', description: 'Revenue & best seller' },
-      { id: 'COUPONS', title: '🏷️ Coupons', description: 'Discount codes for customers' },
-      { id: 'THEMES', title: '🎨 Change theme', description: 'Restyle your storefront' },
+      { id: 'COUPONS', ...lock('coupons', '🏷️ Coupons', 'Discount codes for customers') },
+      { id: 'THEMES', ...lock('premium_themes', '🎨 Change theme', 'Restyle your storefront') },
       { id: 'UPGRADE', title: '🚀 Upgrade plan', description: 'See all plans' },
       { id: 'LOGIN', title: '🔐 Web dashboard', description: 'Manage on the web' },
       { id: 'PAUSE', title: '⏸️ Pause store', description: 'Temporarily go offline' },
@@ -109,7 +117,9 @@ async function sendMainMenu(msg: BotMessage, storeName?: string): Promise<void> 
 
 // Second page of tools — WhatsApp lists max out at 10 rows, so the main menu
 // keeps daily actions and this holds setup/occasional ones.
-async function sendMoreMenu(msg: BotMessage): Promise<void> {
+async function sendMoreMenu(msg: BotMessage, merchant?: { subscription_plan?: string }): Promise<void> {
+  const plan = merchant?.subscription_plan ?? 'basic';
+  const metaLocked = !canUseFeature(plan, 'meta_import');
   await replyMenu(
     msg,
     'More store tools:',
@@ -117,7 +127,9 @@ async function sendMoreMenu(msg: BotMessage): Promise<void> {
     [
       { id: 'PAYMENTS', title: '💳 Online payments', description: 'Connect YOUR Razorpay in chat' },
       { id: 'QR', title: '🔳 Store QR code', description: 'Sent as an image, print it' },
-      { id: 'IMPORT META', title: '📷 Import Meta Shop', description: 'Pull your FB/Insta catalog in' },
+      metaLocked
+        ? { id: 'IMPORT META', title: '🔒 Import Meta Shop', description: 'Needs PRO plan — tap to see' }
+        : { id: 'IMPORT META', title: '📷 Import Meta Shop', description: 'Pull your FB/Insta catalog in' },
       { id: 'RESUME', title: '▶️ Resume store', description: 'Go back online' },
       { id: 'LINK', title: '🔗 Link channels', description: 'Manage from Insta/Messenger too' },
       { id: 'HELP ADDRESS', title: '📍 Shop address', description: 'Show "Visit us" + directions' },
@@ -235,7 +247,7 @@ async function sendPaymentOptions(
  * (fallback), instead of silently defaulting to Basic. Each row sends
  * "UPGRADE <slug>", which flows back into the existing payment-link handler.
  */
-async function sendPlanMenu(msg: BotMessage, headline: string): Promise<void> {
+async function sendPlanMenu(msg: BotMessage, headline: string, currentPlan?: string): Promise<void> {
   const plans = await getAllPlans();
   if (plans.length === 0) {
     await msg.sendReply(`${headline}\n\nReply *UPGRADE <plan>* (e.g. UPGRADE PRO) to continue.`);
@@ -245,10 +257,12 @@ async function sendPlanMenu(msg: BotMessage, headline: string): Promise<void> {
   const rows = plans.slice(0, 10).map((p) => ({
     id: `UPGRADE ${p.slug}`,
     // WhatsApp list rows: title <= 24 chars, description <= 72.
-    title: p.is_custom ? `${p.name} — Let's talk`.slice(0, 24) : `${p.name} · ₹${p.monthly_price}/mo`.slice(0, 24),
-    description: (p.is_custom
-      ? 'Tailored to your needs'
-      : `Up to ${p.product_limit.toLocaleString('en-IN')} products`).slice(0, 72),
+    title: `${p.slug === currentPlan ? '✅ ' : ''}${p.is_custom ? `${p.name} — Let's talk` : `${p.name} · ₹${p.monthly_price}/mo`}`.slice(0, 24),
+    description: (p.slug === currentPlan
+      ? 'Your current plan'
+      : p.is_custom
+        ? 'Tailored to your needs'
+        : `Up to ${p.product_limit.toLocaleString('en-IN')} products`).slice(0, 72),
   }));
 
   await replyMenu(msg, headline, '💳 Choose a plan', rows, 'Maghgo Plans');
@@ -979,7 +993,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
 
   // A greeting (or the Menu button) opens the tappable main menu.
   if (GREETINGS.has(command)) {
-    await sendMainMenu(msg, merchant.store_name);
+    await sendMainMenu(msg, merchant);
     return;
   }
 
@@ -1001,7 +1015,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     // Just "UPGRADE" with no plan → show ALL plans to choose from, rather than
     // silently assuming Basic.
     if (!priceMatch && !planToken) {
-      await sendPlanMenu(msg, '🚀 *Choose your Maghgo plan* — tap one to get a payment link:');
+      await sendPlanMenu(msg, '🚀 *Choose your Maghgo plan* — tap one to get a payment link:', merchant.subscription_plan);
       return;
     }
 
@@ -1358,11 +1372,14 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
       return;
     }
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-    const rows = themes.map((t) => ({
-      id: `THEME ${t.id}`,
-      title: t.name.slice(0, 24),
-      description: `Requires ${t.plan_required} plan`.slice(0, 72),
-    }));
+    const rows = themes.map((t) => {
+      const locked = !hasAccess(t.plan_required, merchant.subscription_plan);
+      return {
+        id: `THEME ${t.id}`,
+        title: `${locked ? '🔒 ' : ''}${t.name}`.slice(0, 24),
+        description: (locked ? `Needs ${t.plan_required.toUpperCase()} — tap to see` : 'Tap to apply instantly').slice(0, 72),
+      };
+    });
     if (page < totalPages) rows.push({ id: `THEMES ${page + 1}`, title: `➡️ More (${page + 1}/${totalPages})`, description: 'Next page of themes' });
     if (page > 1) rows.push({ id: `THEMES ${page - 1}`, title: '⬅️ Previous page', description: `Back to page ${page - 1}` });
     await replyMenu(msg, `🎨 *Pick a theme* (page ${page}/${totalPages}, ${total} designs) — tap to apply instantly:`, '🎨 Themes', rows.slice(0, 10), 'Store Themes');
@@ -1394,7 +1411,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   }
 
   if (command === 'MORE' || command === 'TOOLS' || command === 'SETTINGS') {
-    await sendMoreMenu(msg);
+    await sendMoreMenu(msg, merchant);
     return;
   }
 
@@ -1424,6 +1441,15 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   // ── Coupons ────────────────────────────────────────────────────────────────
   if (command === 'COUPONS') {
     const coupons = await listCoupons(merchant.id);
+    // No coupons + no access → straight to the upgrade prompt instead of
+    // teaching a command that would only bounce off the plan gate.
+    if (coupons.length === 0 && !canUseFeature(merchant.subscription_plan, 'coupons')) {
+      await replyButtons(msg, `🔒 ${featureLockedMessage('coupons', merchant.subscription_plan)}`, [
+        { id: 'UPGRADE', title: '🚀 See plans' },
+        { id: 'MENU', title: '📋 Menu' },
+      ]);
+      return;
+    }
     if (coupons.length === 0) {
       await replyButtons(msg, '🏷️ You have no coupons yet.\n\nCreate one like:\n*COUPON CREATE DIWALI20 20%*', [
         { id: 'HELP COUPON', title: '➕ How to create' },
@@ -1809,5 +1835,5 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
   }
 
   // Unknown input: open the GUI menu instead of a dead end.
-  await sendMainMenu(msg, merchant.store_name);
+  await sendMainMenu(msg, merchant);
 }
