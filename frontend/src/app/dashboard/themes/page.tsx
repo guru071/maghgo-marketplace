@@ -67,6 +67,7 @@ export default function ThemesPage() {
   const [onlyPremium, setOnlyPremium] = useState(true);
   const [query, setQuery] = useState('');
   const [cover, setCover] = useState('');
+  const [uploadingCover, setUploadingCover] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
@@ -137,14 +138,46 @@ export default function ThemesPage() {
 
         <div className="bg-white border border-gray-200 rounded-xl p-3">
           <label className="block text-xs font-bold text-gray-700 mb-1">🖼️ Your cover image (optional)</label>
-          <p className="text-[11px] text-gray-500 mb-2">Paste an image URL to use your own hero photo. Preview updates instantly; it&apos;s saved when you apply a theme. Leave blank for the theme&apos;s default.</p>
-          <div className="flex gap-2">
+          <p className="text-[11px] text-gray-500 mb-2">Upload your own shop photo (or paste a URL) to replace the theme&apos;s hero image. Preview updates instantly; it&apos;s saved when you apply a theme.</p>
+          <div className="flex gap-2 items-center">
             <input
               value={cover}
               onChange={(e) => setCover(e.target.value)}
               placeholder="https://…/your-photo.jpg"
-              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              className="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             />
+            <label className={`text-xs font-bold px-3 py-2 rounded-lg cursor-pointer whitespace-nowrap ${uploadingCover ? 'bg-gray-200 text-gray-400' : 'bg-accent text-white hover:bg-black'}`}>
+              {uploadingCover ? 'Uploading…' : '📤 Upload'}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={uploadingCover}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setUploadingCover(true);
+                  try {
+                    const fd = new FormData();
+                    fd.append('image', file);
+                    const token = localStorage.getItem('maghgo_merchant_token');
+                    const res = await fetch(`${apiUrl}/api/dashboard/upload-image`, {
+                      method: 'POST',
+                      headers: { Authorization: `Bearer ${token}` },
+                      body: fd,
+                    });
+                    const d = await res.json();
+                    if (!res.ok) throw new Error(d.error || 'Upload failed');
+                    setCover(d.url);
+                  } catch (err: any) {
+                    alert(err.message || 'Could not upload the image.');
+                  } finally {
+                    setUploadingCover(false);
+                    e.target.value = '';
+                  }
+                }}
+              />
+            </label>
             {cover && (
               <button onClick={() => setCover('')} className="text-xs font-medium text-gray-500 hover:text-red-600 px-2">Clear</button>
             )}

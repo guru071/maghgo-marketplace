@@ -171,6 +171,20 @@ router.put('/payment-keys', async (req: AuthRequest, res) => {
   }
 });
 
+// Upload a standalone image (theme hero/cover, logo…) to storage and return its
+// public URL. Used by the themes page so an owner can use their own shop photo
+// instead of pasting a URL.
+router.post('/upload-image', upload.single('image'), async (req: AuthRequest, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Image is required' });
+    const id = `cover-${crypto.randomUUID()}`;
+    const url = await uploadImage(req.merchantId!, id, req.file.buffer, req.file.mimetype, '');
+    res.json({ url });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Meta catalogue ──────────────────────────────────────────────────────────
 
 // Connect the shop's own Meta (Facebook/Instagram) product catalogue. The token

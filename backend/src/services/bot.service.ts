@@ -329,6 +329,44 @@ async function ensureCanAddProduct(msg: BotMessage): Promise<any | null> {
   return merchant;
 }
 
+/**
+ * Smart product-type detection: classify what was just added from its title and
+ * suggest the right category + buyer options (sizes for clothing, UK sizes for
+ * footwear, storage for phones…). Rule-based on-device — deterministic, free,
+ * and instant; no external AI call or key required.
+ */
+interface ProductKind {
+  category: string;
+  options?: string;      // ready-to-apply OPTIONS spec, e.g. "Size: S,M,L,XL"
+  buttonTitle?: string;  // <= 20 chars (WhatsApp button limit)
+}
+
+function detectProductKind(title: string): ProductKind | null {
+  const t = title.toLowerCase();
+  if (/(t-?shirt|shirt|kurta|kurti|saree|sari|dress|top|jean|trouser|pant|hoodie|jacket|sweater|lehenga|salwar|cloth|apparel|wear)/.test(t)) {
+    return { category: 'Clothing', options: 'Size: S,M,L,XL', buttonTitle: '📐 Add sizes S–XL' };
+  }
+  if (/(shoe|sneaker|sandal|slipper|boot|footwear|heel|loafer)/.test(t)) {
+    return { category: 'Footwear', options: 'Size (UK): 6,7,8,9,10', buttonTitle: '👟 UK sizes 6–10' };
+  }
+  if (/(phone|mobile|laptop|tablet|ipad|macbook)/.test(t)) {
+    return { category: 'Electronics', options: 'Storage: 64GB,128GB,256GB', buttonTitle: '💾 Add storage' };
+  }
+  if (/(earbud|headphone|earphone|speaker|smartwatch|watch|camera|charger|powerbank|tv|monitor)/.test(t)) {
+    return { category: 'Electronics', options: 'Colour: Black,White', buttonTitle: '🎨 Add colours' };
+  }
+  if (/(bag|backpack|wallet|belt|purse|handbag|jewel|necklace|earring|bangle|ring|bracelet|accessor)/.test(t)) {
+    return { category: 'Accessories', options: 'Colour: Black,Brown', buttonTitle: '🎨 Add colours' };
+  }
+  if (/(cake|sweet|snack|pickle|masala|spice|tea|coffee|chocolate|cookie|food)/.test(t)) {
+    return { category: 'Food & Treats' };
+  }
+  if (/(sofa|chair|table|lamp|curtain|cushion|decor|vase|furniture|bedsheet|pillow)/.test(t)) {
+    return { category: 'Home & Decor' };
+  }
+  return null;
+}
+
 /** The shared tail of every add-product path: AI clean-up, upload, create. */
 async function finishProductCreation(
   msg: BotMessage,
@@ -363,7 +401,7 @@ async function finishProductCreation(
 
   await replyButtons(
     msg,
-    `✅ *Product added successfully!*\n\n📦 *${product.title}*\n💰 ₹${product.price.toLocaleString('en-IN')}\n\n🔗 View your store: ${storeUrl}\n\n💡 _Optional: add sizes/colours with_\n_OPTIONS ${product.title} - Size: S,M,L_`,
+    `✅ *Product added successfully!*\n\n📦 *${product.title}*\n💰 ₹${product.price.toLocaleString('en-IN')}\n\n🔗 View your store: ${storeUrl}`,
     [
       { id: 'ADD', title: '➕ Add another' },
       { id: 'LIST', title: '📦 My products' },
@@ -371,6 +409,24 @@ async function finishProductCreation(
     ]
   );
   await triggerRevalidation(merchant.store_slug);
+
+  // Smart assist: recognise what kind of product this is, quietly set its
+  // category, and offer one-tap buyer options (the button carries the full,
+  // ready-to-run OPTIONS command). Best-effort — never blocks the add.
+  const kind = detectProductKind(product.title);
+  if (kind) {
+    setProductInfo(merchant.id, product.title, { category: kind.category }).catch(() => {});
+    if (kind.options && kind.buttonTitle) {
+      await replyButtons(
+        msg,
+        `🤖 This looks like *${kind.category}* — I've set its category.\n\nWant buyers to choose options before ordering?\n_(Tap to apply, or write your own: OPTIONS ${product.title} - ${kind.options})_`,
+        [
+          { id: `OPTIONS ${product.title} - ${kind.options}`, title: kind.buttonTitle },
+          { id: 'HELP OPTIONS', title: '✏️ Custom options' },
+        ]
+      ).catch(() => {});
+    }
+  }
 }
 
 async function handleImageMessage(msg: BotMessage): Promise<void> {

@@ -100,10 +100,19 @@ export function StoreClient({ merchant, products }: StoreClientProps) {
   // headings were unreadable.
   const themeBg = activeTheme?.root?.props?.background;
 
+  // The theme's accent must also reach surfaces rendered OUTSIDE the Puck
+  // canvas — the floating cart button, cart drawer CTAs, and the product
+  // details sheet all colour themselves with var(--accent). Without this
+  // override they kept the default orange on every theme.
+  const themeAccent = activeTheme?.content?.find?.((b: any) => b?.type === 'ProductGrid')?.props?.accent;
+
   return (
     <div
       className={`min-h-screen pb-24 ${themeBg ? '' : 'bg-gray-50'}`}
-      style={themeBg ? { backgroundColor: themeBg } : undefined}
+      style={{
+        ...(themeBg ? { backgroundColor: themeBg } : {}),
+        ...(themeAccent ? ({ '--accent': themeAccent } as React.CSSProperties) : {}),
+      }}
     >
       {activeTheme ? (
         <StoreContext.Provider value={{ products, onAddToCart: handleAddToCart, storeName: merchant.store_name, storeDescription: merchant.store_description }}>
