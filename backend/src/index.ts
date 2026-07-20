@@ -5,7 +5,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
-import { env } from './config/env';
+import { env, publicBaseUrl } from './config/env';
 import webhookRouter from './routes/webhook';
 import healthRouter from './routes/health';
 import { paymentRouter } from './routes/payment';
@@ -60,6 +60,16 @@ startCleanupJob();
 startDigestJob();
 startMetaSyncJob();
 startExpiryJob();
+
+// Surface how the backend's own public URL resolved — shops' Telegram bots
+// depend on it, and a silent absence is otherwise only discovered when a
+// merchant tries to connect one.
+{
+  const base = publicBaseUrl();
+  console.log(base
+    ? `🔗 Public backend URL: ${base}${env.BACKEND_PUBLIC_URL ? '' : ' (auto-detected from Render)'}`
+    : '⚠️ No public backend URL — shops cannot connect their OWN Telegram bots. Set BACKEND_PUBLIC_URL to this service\'s https:// address.');
+}
 
 // ─── Middleware ──────────────────────────────────────────────────────────────
 

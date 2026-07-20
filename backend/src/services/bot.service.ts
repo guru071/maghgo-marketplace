@@ -15,7 +15,7 @@ import { supabase } from '../db/supabase';
 import { normalizePhone } from '../utils/phone';
 import { triggerRevalidation } from './revalidate.service';
 import { createPaymentLink, getAmountFromPlan, getPlanFromAmount, getAllPlans } from './payment.service';
-import { env } from '../config/env';
+import { env, publicBaseUrl } from '../config/env';
 import { buildStoreSlug } from '../utils/slug';
 import { canUseChannel, minPlanForChannel, channelLabel, hasAccess, canUseFeature, featureLockedMessage, FEATURE_MIN_PLAN } from '../utils/plans';
 import { isShopTrigger, hasSession, handleShopperMessage } from './shopper.service';
@@ -1028,7 +1028,7 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
         const secret = require('crypto').randomBytes(16).toString('hex');
         // Save BEFORE pointing the webhook, so the first update finds the row.
         await setShopTelegramBot(merchant.id, encryptSecret(tok), username, secret);
-        await setShopWebhook(tok, merchant.id, secret, env.BACKEND_PUBLIC_URL!);
+        await setShopWebhook(tok, merchant.id, secret, publicBaseUrl()!);
         await msg.sendReply(`🎉 *t.me/${username} is LIVE!*\n\nAnyone who messages it shops *${merchant.store_name}* directly — browsing, cart, coupons, payment, tracking. You (this account) get owner tools there too.\n\n📣 Put the link in your Instagram bio & posters!\n🧹 _Delete your last message (the token) from this chat._`);
       } catch (err: any) {
         await msg.sendReply(`❌ ${err.message || 'Could not connect your bot.'}\n\nReply *CONNECT TELEGRAM* to try again.`);
@@ -1669,8 +1669,8 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
       ]);
       return;
     }
-    if (!env.BACKEND_PUBLIC_URL) {
-      await sendReply('⚠️ This feature needs the platform admin to set BACKEND_PUBLIC_URL on the server first.');
+    if (!publicBaseUrl()) {
+      await sendReply('⚠️ Your own Telegram bot isn\'t available just yet — the Maghgo server still needs its public URL configured. Everything else in your store works normally; please try again later.');
       return;
     }
     flows.set(`${channel}:${senderId}`, { kind: 'shopbot', step: 'token', ts: Date.now() });

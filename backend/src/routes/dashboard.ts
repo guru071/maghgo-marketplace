@@ -11,7 +11,7 @@ import { connectMetaCatalog, importMetaCatalog, disconnectMetaCatalog } from '..
 import { validateBotToken, setShopWebhook, deleteShopWebhook } from '../services/telegram.service';
 import { setShopTelegramBot, clearShopTelegramBot } from '../services/merchant.service';
 import { decryptSecret } from '../utils/crypto';
-import { env } from '../config/env';
+import { env, publicBaseUrl } from '../config/env';
 
 // Normalise buyer-selectable options: [{name, values:[...]}], trimmed & capped.
 function sanitizeVariants(raw: any): { name: string; values: string[] }[] | undefined {
@@ -233,14 +233,17 @@ router.put('/telegram-bot', async (req: AuthRequest, res) => {
     if (!/^\d{6,}:[A-Za-z0-9_-]{30,}$/.test(token)) {
       return res.status(400).json({ error: 'That doesn\'t look like a bot token (format 123456789:AAAA…). Copy it from @BotFather.' });
     }
-    if (!env.BACKEND_PUBLIC_URL) {
-      return res.status(400).json({ error: 'The platform admin must set BACKEND_PUBLIC_URL on the server first.' });
+    const baseUrl = publicBaseUrl();
+    if (!baseUrl) {
+      return res.status(503).json({
+        error: 'Telegram bots aren\'t available yet — the Maghgo server needs its public URL configured. Please contact support; everything else in your store works normally.',
+      });
     }
 
     const username = await validateBotToken(token);
     const secret = crypto.randomBytes(16).toString('hex');
     await setShopTelegramBot(req.merchantId!, encryptSecret(token), username, secret);
-    await setShopWebhook(token, req.merchantId!, secret, env.BACKEND_PUBLIC_URL);
+    await setShopWebhook(token, req.merchantId!, secret, baseUrl);
 
     res.json({ success: true, telegram_bot_username: username });
   } catch (err: any) {

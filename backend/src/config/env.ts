@@ -65,7 +65,12 @@ const envSchema = z.object({
   // rejects everything and the channel is simply off.
   // The backend's own public URL (e.g. https://maghgo-marketplace.onrender.com)
   // — required only for shops' OWN Telegram bots, whose webhooks must point here.
+  // Usually you don't need to set this: Render injects RENDER_EXTERNAL_URL
+  // automatically and publicBaseUrl() falls back to it. Set it explicitly when
+  // hosting elsewhere, or when the service sits behind your own domain.
   BACKEND_PUBLIC_URL: z.string().optional(),
+  // Set automatically by Render for every web service. Never set this by hand.
+  RENDER_EXTERNAL_URL: z.string().optional(),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
 
@@ -88,3 +93,35 @@ if (!parsed.success) {
 export const env = parsed.data;
 
 export type Env = z.infer<typeof envSchema>;
+
+/**
+ * The backend's own public HTTPS origin, used to point Telegram webhooks at
+ * this server (each shop's own bot needs a webhook URL under our domain).
+ *
+ * Resolution order:
+ *   1. BACKEND_PUBLIC_URL — explicit, always wins.
+ *   2. RENDER_EXTERNAL_URL — Render sets this on every web service, so on our
+ *      host this "just works" with no admin step at all.
+ *
+ * Deliberately NOT derived from the incoming request's Host header. That would
+ * remove the last bit of configuration, but the Host header is attacker-
+ * controlled: one forged request would teach us a wrong origin and we'd then
+ * point shops' Telegram webhooks at someone else's server, handing them the
+ * shops' customer messages. A missing env var is a much better failure than
+ * that.
+ *
+ * @returns the origin with any trailing slash removed, or null if unresolved.
+ */
+export function publicBaseUrl(): string | null {
+  const raw = env.BACKEND_PUBLIC_URL || env.RENDER_EXTERNAL_URL;
+  if (!raw) return null;
+
+  const trimmed = raw.trim().replace(/\/+$/, '');
+  // Telegram refuses non-HTTPS webhooks, so a bad value should fail loudly here
+  // rather than as a confusing error from their API later.
+  if (!/^https:\/\/[^\s/]+$/i.test(trimmed)) {
+    console.warn(`⚠️ Public backend URL "${trimmed}" is not a plain https:// origin — Telegram webhooks will be refused.`);
+    return null;
+  }
+  return trimmed;
+}
