@@ -49,7 +49,19 @@ interface Session {
   deliveryAddress?: string;
   addressAsked?: boolean;
   nudged?: boolean;
+  // Current browse view: search text, category, price band, sort and page.
+  // Persisted on the session so FILTER choices compose (e.g. a category AND a
+  // price cap) instead of each one resetting the last.
+  view?: BrowseView;
   ts: number;
+}
+
+interface BrowseView {
+  q?: string;
+  category?: string;
+  max?: number;
+  sort?: 'price_asc' | 'price_desc' | 'new';
+  page: number;
 }
 
 // ─── Shopper-facing translations ─────────────────────────────────────────────
@@ -87,11 +99,23 @@ const TR: Record<string, Record<'en' | 'ta' | 'hi', (...a: any[]) => string>> = 
     ta: (store, total) => `✅ *ஆர்டர் வெற்றிகரமாக!*\n\n*${store}*-இல் *${total}*-க்கான உங்கள் ஆர்டர் கடைக்கு அனுப்பப்பட்டது. விரைவில் உறுதிப்படுத்துவார்கள். 🙏`,
     hi: (store, total) => `✅ *ऑर्डर हो गया!*\n\n*${store}* पर *${total}* का आपका ऑर्डर दुकान को भेज दिया गया है। वे जल्द पुष्टि करेंगे। 🙏`,
   },
+  noMatch: {
+    en: (what) => `🔎 Nothing matched *${what}*.\n\nTry another word, or reply *CLEARFILTER* to see everything.`,
+    ta: (what) => `🔎 *${what}*-க்கு எதுவும் கிடைக்கவில்லை.\n\nவேறு வார்த்தை முயற்சிக்கவும், அல்லது *CLEARFILTER*.`,
+    hi: (what) => `🔎 *${what}* से कुछ नहीं मिला।\n\nदूसरा शब्द आज़माएँ, या *CLEARFILTER* भेजें।`,
+  },
+  filterMenu: {
+    en: () => '🔎 *Find what you want*\n\nPick a filter, or type *SEARCH <word>*:',
+    ta: () => '🔎 *நீங்கள் விரும்புவதைத் தேடுங்கள்*\n\nஒரு வடிகட்டியைத் தேர்வுசெய்யவும், அல்லது *SEARCH <சொல்>*:',
+    hi: () => '🔎 *अपनी पसंद खोजें*\n\nफ़िल्टर चुनें, या *SEARCH <शब्द>* भेजें:',
+  },
   help: {
     en: (store, contact) =>
       `🛍️ *${store}* — how to order\n\n` +
       `• *SHOP* — see all products\n` +
       `• Type a product name to add it\n` +
+      `• *SEARCH <word>* — find a product\n` +
+      `• *FILTER* — by category, price, sort\n` +
       `• *CART* — review your basket\n` +
       `• *CHECKOUT* — place your order\n` +
       `• *COUPON <code>* — apply a discount\n` +
@@ -102,6 +126,8 @@ const TR: Record<string, Record<'en' | 'ta' | 'hi', (...a: any[]) => string>> = 
       `🛍️ *${store}* — எப்படி ஆர்டர் செய்வது\n\n` +
       `• *SHOP* — அனைத்து பொருட்களும்\n` +
       `• பொருளின் பெயரை அனுப்பினால் கார்ட்டில் சேரும்\n` +
+      `• *SEARCH <சொல்>* — பொருளைத் தேட\n` +
+      `• *FILTER* — வகை, விலை, வரிசை\n` +
       `• *CART* — உங்கள் கார்ட்\n` +
       `• *CHECKOUT* — ஆர்டர் செய்ய\n` +
       `• *COUPON <code>* — தள்ளுபடி குறியீடு\n` +
@@ -112,6 +138,8 @@ const TR: Record<string, Record<'en' | 'ta' | 'hi', (...a: any[]) => string>> = 
       `🛍️ *${store}* — ऑर्डर कैसे करें\n\n` +
       `• *SHOP* — सभी प्रोडक्ट देखें\n` +
       `• प्रोडक्ट का नाम भेजें, कार्ट में जुड़ जाएगा\n` +
+      `• *SEARCH <शब्द>* — प्रोडक्ट खोजें\n` +
+      `• *FILTER* — कैटेगरी, कीमत, क्रम\n` +
       `• *CART* — अपनी कार्ट देखें\n` +
       `• *CHECKOUT* — ऑर्डर करें\n` +
       `• *COUPON <code>* — डिस्काउंट कोड लगाएँ\n` +
@@ -166,18 +194,129 @@ export function hasSession(msg: BotMessage): boolean {
   return sessions.has(key(msg));
 }
 
-async function sendCatalogue(msg: BotMessage, s: Session): Promise<void> {
+const PAGE_SIZE = 10;
+
+/** Products matching the session's current view, in the requested order. */
+function applyView(products: any[], view?: BrowseView): any[] {
+  if (!view) return products;
+  let out = products;
+
+  if (view.q) {
+    const q = view.q.toLowerCase();
+    // Match the name first, then description/category, so a search for "shirt"
+    // ranks actual shirts above things that merely mention one.
+    const byTitle = out.filter((p) => String(p.title || '').toLowerCase().includes(q));
+    const byOther = out.filter(
+      (p) => !byTitle.includes(p) &&
+        (String(p.description || '').toLowerCase().includes(q) ||
+         String(p.category || '').toLowerCase().includes(q))
+    );
+    out = [...byTitle, ...byOther];
+  }
+  if (view.category) {
+    const c = view.category.toLowerCase();
+    out = out.filter((p) => String(p.category || '').toLowerCase() === c);
+  }
+  if (view.max != null) {
+    out = out.filter((p) => Number(p.price) <= view.max!);
+  }
+
+  if (view.sort === 'price_asc') out = [...out].sort((a, b) => Number(a.price) - Number(b.price));
+  else if (view.sort === 'price_desc') out = [...out].sort((a, b) => Number(b.price) - Number(a.price));
+  // 'new' is the order getProducts already returns (created_at desc).
+
+  return out;
+}
+
+/** One-line description of what's currently filtered, for the list header. */
+function viewLabel(view?: BrowseView): string {
+  if (!view) return '';
+  const bits: string[] = [];
+  if (view.q) bits.push(`"${view.q}"`);
+  if (view.category) bits.push(view.category);
+  if (view.max != null) bits.push(`under ${rupee(view.max)}`);
+  if (view.sort === 'price_asc') bits.push('cheapest first');
+  if (view.sort === 'price_desc') bits.push('priciest first');
+  return bits.length ? `\n_Showing: ${bits.join(' · ')}_` : '';
+}
+
+/** The filter menu — categories the shop actually uses, plus price and sort. */
+async function sendFilterMenu(msg: BotMessage, s: Session): Promise<void> {
   const merchant = await getMerchantBySlug(s.storeSlug);
   const products = merchant ? await getProducts(merchant.id) : [];
-  if (products.length === 0) {
+
+  // Only offer categories and price bands that exist in this shop — a filter
+  // that returns nothing is worse than no filter.
+  const categories = [...new Set(products.map((p: any) => String(p.category || '').trim()).filter(Boolean))].slice(0, 5);
+  const prices = products.map((p: any) => Number(p.price)).filter((n) => n > 0).sort((a, b) => a - b);
+  const bands: number[] = [];
+  if (prices.length > 2) {
+    const mid = prices[Math.floor(prices.length / 2)];
+    const high = prices[Math.floor(prices.length * 0.85)];
+    for (const b of [Math.ceil(mid / 100) * 100, Math.ceil(high / 100) * 100]) {
+      if (b > 0 && !bands.includes(b) && b < prices[prices.length - 1]) bands.push(b);
+    }
+  }
+
+  const rows = [
+    ...categories.map((c) => ({ id: `CATEGORY ${c}`, title: `🗂 ${c}`.slice(0, 24), description: 'Show only this category' })),
+    ...bands.map((b) => ({ id: `UNDER ${b}`, title: `💰 Under ${rupee(b)}`.slice(0, 24), description: 'Budget-friendly picks' })),
+    { id: 'SORT LOW', title: '⬆️ Price: low to high', description: 'Cheapest first' },
+    { id: 'SORT HIGH', title: '⬇️ Price: high to low', description: 'Priciest first' },
+    { id: 'CLEARFILTER', title: '♻️ Show everything', description: 'Clear all filters' },
+  ].slice(0, 10);
+
+  if (msg.sendMenu) await msg.sendMenu(tr(s, 'filterMenu'), '🔎 Filter', rows, 'Find products');
+  else await msg.sendReply(tr(s, 'filterMenu') + '\n\n' + rows.map((r) => `• ${r.title}`).join('\n'));
+}
+
+async function sendCatalogue(msg: BotMessage, s: Session): Promise<void> {
+  const merchant = await getMerchantBySlug(s.storeSlug);
+  const all = merchant ? await getProducts(merchant.id) : [];
+  if (all.length === 0) {
     await msg.sendReply(`🛍️ *${s.storeName}* has no products available right now. Please check back soon!`);
     return;
   }
 
+  const matched = applyView(all, s.view);
+  if (matched.length === 0) {
+    await msg.sendReply(tr(s, 'noMatch', s.view?.q || viewLabel(s.view).trim() || 'that'));
+    if (msg.sendButtons) {
+      await msg.sendButtons('What next?', [
+        { id: 'CLEARFILTER', title: '♻️ Show everything' },
+        { id: 'FILTER', title: '🔎 Filter' },
+      ]);
+    }
+    return;
+  }
+
+  // Clamp the page: MORE past the end used to slice an empty window and send a
+  // card list with nothing in it.
+  const totalPages = Math.max(1, Math.ceil(matched.length / PAGE_SIZE));
+  const requested = s.view?.page ?? 0;
+  const page = Math.min(requested, totalPages - 1);
+  if (requested > page) {
+    if (s.view) s.view.page = page;
+    await msg.sendReply(`✅ That's everything — you've seen all ${matched.length} product${matched.length === 1 ? '' : 's'}.`);
+    if (msg.sendButtons) {
+      await msg.sendButtons('What next?', [
+        { id: 'FILTER', title: '🔎 Filter & search' },
+        { id: 'CART', title: '🛒 View cart' },
+      ]);
+    }
+    return;
+  }
+  const start = page * PAGE_SIZE;
+  const products = matched.slice(start, start + PAGE_SIZE);
+  const hasMore = matched.length > start + PAGE_SIZE;
+  const header = `🛍️ *${s.storeName}* — ${matched.length} product${matched.length === 1 ? '' : 's'}${viewLabel(s.view)}`;
+
   const inStock = (p: any) => p.stock == null || Number(p.stock) > 0;
   const storeUrl = `${env.FRONTEND_URL}/${s.storeSlug}`;
   if (msg.sendCards) {
-    const cards: BotCard[] = products.slice(0, 10).map((p) => {
+    // Cards carry no header of their own, so say what's being shown first.
+    if (s.view || page > 0) await msg.sendReply(header);
+    const cards: BotCard[] = products.map((p) => {
       const stocked = inStock(p);
       return {
         title: p.title,
@@ -193,18 +332,20 @@ async function sendCatalogue(msg: BotMessage, s: Session): Promise<void> {
     await msg.sendCards(cards, storeUrl);
   } else {
     const list = products
-      .slice(0, 20)
-      .map((p, i) => `${i + 1}. *${p.title}* — ${rupee(Number(p.price))}${inStock(p) ? '' : ' _(out of stock)_'}`)
+      .map((p, i) => `${start + i + 1}. *${p.title}* — ${rupee(Number(p.price))}${inStock(p) ? '' : ' _(out of stock)_'}`)
       .join('\n');
-    await msg.sendReply(`🛍️ *${s.storeName}*\n\n${list}\n\nReply with a product name to add it to your cart, then *CART* to review.`);
+    await msg.sendReply(`${header}\n\n${list}\n\nReply with a product name to add it to your cart, then *CART* to review.`);
   }
 
   if (msg.sendButtons) {
-    await msg.sendButtons('Tap *Add* on a product, or:', [
-      { id: 'CART', title: '🛒 View cart' },
-      { id: 'CONTACT', title: '📍 Contact & visit' },
-      { id: 'SHOP', title: '🔄 Refresh' },
-    ]);
+    await msg.sendButtons(
+      hasMore ? `Showing ${start + 1}–${start + products.length} of ${matched.length}.` : 'Tap *Add* on a product, or:',
+      [
+        ...(hasMore ? [{ id: 'MORE', title: '➡️ Show more' }] : []),
+        { id: 'FILTER', title: '🔎 Filter & search' },
+        { id: 'CART', title: '🛒 View cart' },
+      ]
+    );
   }
 }
 
@@ -463,8 +604,64 @@ export async function handleShopperMessage(msg: BotMessage, text: string): Promi
     return true;
   }
 
-  // "SHOP" alone → re-show the catalogue
-  if (upper === 'SHOP' || upper === 'REFRESH' || upper === 'BROWSE') { await sendCatalogue(msg, s); return true; }
+  // ── Search & filter ────────────────────────────────────────────────────────
+  if (upper === 'FILTER' || upper === 'SEARCH' || upper === 'FIND' || upper === 'SORT') {
+    await sendFilterMenu(msg, s);
+    return true;
+  }
+
+  // SEARCH <word> / FIND <word> — free-text search.
+  const searchMatch = raw.match(/^\s*(?:SEARCH|FIND|LOOKING FOR)\s+(.{1,60})$/i);
+  if (searchMatch) {
+    s.view = { ...(s.view ?? {}), q: searchMatch[1].trim(), page: 0 };
+    await sendCatalogue(msg, s);
+    return true;
+  }
+
+  const categoryMatch = raw.match(/^\s*CATEGORY\s+(.{1,60})$/i);
+  if (categoryMatch) {
+    s.view = { ...(s.view ?? {}), category: categoryMatch[1].trim(), page: 0 };
+    await sendCatalogue(msg, s);
+    return true;
+  }
+
+  // UNDER 500 / BELOW 500 — price cap.
+  const underMatch = raw.match(/^\s*(?:UNDER|BELOW|MAX)\s*₹?\s*(\d{1,7})\s*$/i);
+  if (underMatch) {
+    s.view = { ...(s.view ?? {}), max: Number(underMatch[1]), page: 0 };
+    await sendCatalogue(msg, s);
+    return true;
+  }
+
+  if (upper === 'SORT LOW' || upper === 'CHEAPEST') {
+    s.view = { ...(s.view ?? {}), sort: 'price_asc', page: 0 };
+    await sendCatalogue(msg, s);
+    return true;
+  }
+  if (upper === 'SORT HIGH') {
+    s.view = { ...(s.view ?? {}), sort: 'price_desc', page: 0 };
+    await sendCatalogue(msg, s);
+    return true;
+  }
+  if (upper === 'CLEARFILTER' || upper === 'CLEAR FILTER' || upper === 'ALL' || upper === 'SHOW ALL') {
+    s.view = undefined;
+    await sendCatalogue(msg, s);
+    return true;
+  }
+  // MORE — next page of the CURRENT view, so paging doesn't drop the filters.
+  if (upper === 'MORE' || upper === 'NEXT') {
+    s.view = { ...(s.view ?? {}), page: (s.view?.page ?? 0) + 1 };
+    await sendCatalogue(msg, s);
+    return true;
+  }
+
+  // "SHOP" alone → re-show the catalogue (and start fresh: an old filter
+  // silently still applied is the most confusing possible result).
+  if (upper === 'SHOP' || upper === 'REFRESH' || upper === 'BROWSE') {
+    s.view = undefined;
+    await sendCatalogue(msg, s);
+    return true;
+  }
   if (upper === 'CART') { await showCart(msg, s); return true; }
 
   // "COUPON <code>" — apply a discount code to the current cart.
@@ -537,7 +734,15 @@ export async function handleShopperMessage(msg: BotMessage, text: string): Promi
     products.find((p) => p.title.toLowerCase().includes(query.toLowerCase()));
 
   if (!product) {
-    await msg.sendReply(`🔎 I couldn't find "${query}". Tap *Add* on a product card, or reply *SHOP* to browse, *CART* to review — or *HELP* for everything you can do.`);
+    // Before giving up, treat what they typed as a search — a shopper writing
+    // "shirt" wants results, not an error.
+    const asSearch = applyView(products, { q: query, page: 0 });
+    if (asSearch.length > 0) {
+      s.view = { q: query, page: 0 };
+      await sendCatalogue(msg, s);
+      return true;
+    }
+    await msg.sendReply(`🔎 I couldn't find "${query}". Reply *SHOP* to browse everything, *FILTER* to search by category or price — or *HELP* for what I can do.`);
     return true;
   }
 

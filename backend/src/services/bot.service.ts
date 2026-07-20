@@ -378,6 +378,17 @@ export async function processBotMessage(msg: BotMessage): Promise<void> {
   console.log(`▶️ Processing message from ${senderId} on ${channel}`);
 
   try {
+    // ── A shop's OWN bot is a CUSTOMER channel, full stop ───────────────────
+    // It exists to show that shop's products and take its orders. None of the
+    // Maghgo merchant surface belongs here: before this, an unrecognised word
+    // fell through to the Maghgo menu, and a customer sending a photo landed
+    // in the merchant's add-product wizard ("Step 2 of 3 — what's this product
+    // called?"). Store owners manage their shop on the Maghgo bot instead.
+    if (msg.dedicatedStoreSlug) {
+      await handleDedicatedShopMessage(msg, msg.dedicatedStoreSlug);
+      return;
+    }
+
     const flowKey = `${channel}:${senderId}`;
     pruneFlows();
 
@@ -401,16 +412,6 @@ export async function processBotMessage(msg: BotMessage): Promise<void> {
       }
       await handleImageMessage(msg);
     } else if (msg.type === 'text' && msg.text) {
-      // Dedicated store number: any non-owner texting it is a CUSTOMER of that
-      // one store — open their shopping session automatically.
-      if (msg.dedicatedStoreSlug && !hasSession(msg) && !isShopTrigger(msg.text)) {
-        const owner = await getMerchantByChannel(channel, senderId);
-        if (!owner || owner.store_slug !== msg.dedicatedStoreSlug) {
-          const handled = await handleShopperMessage(msg, `SHOP ${msg.dedicatedStoreSlug}`);
-          if (handled) return;
-        }
-      }
-
       // Customer shopping takes precedence: if they're mid-session or starting
       // one ("SHOP <store>"), handle it as a shopper, not a merchant command.
       if (isShopTrigger(msg.text) || hasSession(msg)) {
@@ -424,6 +425,43 @@ export async function processBotMessage(msg: BotMessage): Promise<void> {
     console.error(`❌ Error processing message from ${senderId} on ${channel}:`, error);
     await sendReply('❌ Sorry, something went wrong on our end while processing your request. Please try again later.').catch(e => console.error('Failed to send error fallback:', e));
   }
+}
+
+/**
+ * Everything arriving on a shop's own bot (its own Telegram bot, or a
+ * dedicated WhatsApp number). Customer-only by design: product browsing,
+ * search, cart and orders for that one shop.
+ *
+ * Anything the shopper flow doesn't recognise gets the shop's own help card —
+ * never a Maghgo merchant reply, and never a fall-through to handleTextCommand.
+ */
+async function handleDedicatedShopMessage(msg: BotMessage, slug: string): Promise<void> {
+  // Photos have no meaning to a shopper flow; acknowledge rather than ignore,
+  // so the customer isn't left wondering, and never start a merchant wizard.
+  if (msg.type === 'image') {
+    if (!hasSession(msg)) await handleShopperMessage(msg, `SHOP ${slug}`);
+    await msg.sendReply('📷 Thanks! I can\'t read photos — reply *SHOP* to browse products, or *HELP* to see what I can do.');
+    return;
+  }
+
+  const text = (msg.text || '').trim();
+
+  // Open (or reopen) this shop's session on first contact, so the customer is
+  // scoped to the shop without ever typing "SHOP <name>".
+  if (!hasSession(msg)) {
+    const opened = await handleShopperMessage(msg, `SHOP ${slug}`);
+    // A greeting or empty opener is fully served by the catalogue itself.
+    if (!text || /^(HI|HELLO|HEY|START|MENU|HELP)$/i.test(text)) return;
+    if (!opened) return;
+  }
+
+  // "SHOP <other-store>" must not let a customer hop to a different shop from
+  // inside this one's bot.
+  const hop = text.match(/^\s*SHOP\s+(\S+)\s*$/i);
+  const normalised = hop && hop[1].toLowerCase() !== slug.toLowerCase() ? 'SHOP' : text;
+
+  const handled = await handleShopperMessage(msg, normalised);
+  if (!handled) await handleShopperMessage(msg, 'HELP');
 }
 
 /**
