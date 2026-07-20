@@ -325,22 +325,30 @@ function processTelegramUpdate(update: any, botToken?: string, dedicatedStoreSlu
         messageId: callback ? `cbq-${callback.id}` : `${chatId}-${message.message_id}`,
         type: isPhoto ? 'image' : 'text',
         text: isPhoto ? undefined : text,
-        sendReply: async (t) => { await sendTgText(chatId, t); },
-        sendButtons: async (body, buttons) => { await sendTgButtons(chatId, body, buttons); },
-        sendMenu: async (body, _label, rows, header) => { await sendTgMenu(chatId, body, rows, header); },
-        sendCtaUrl: async (body, buttonText, url) => { await sendTgCta(chatId, body, buttonText, url); },
+        // Scopes the customer to this shop's storefront — without it they'd get
+        // the generic Maghgo bot and have to name a store.
+        dedicatedStoreSlug,
+        // EVERY sender must carry botToken. Without it a shop's own bot replies
+        // with the PLATFORM token — a different bot entirely, which doesn't
+        // share the chat, so the send fails and the customer sees no reply at
+        // all. (answerCallback and downloadTgFile already passed it; these did
+        // not, which is why shop bots received messages but never answered.)
+        sendReply: async (t) => { await sendTgText(chatId, t, botToken); },
+        sendButtons: async (body, buttons) => { await sendTgButtons(chatId, body, buttons, botToken); },
+        sendMenu: async (body, _label, rows, header) => { await sendTgMenu(chatId, body, rows, header, botToken); },
+        sendCtaUrl: async (body, buttonText, url) => { await sendTgCta(chatId, body, buttonText, url, botToken); },
         sendCards: async (cards, storeUrl) => {
           for (const c of cards) {
             const caption = `*${c.title}*${c.subtitle ? `\n${c.subtitle}` : ''}`;
             try {
               if (c.imageUrl) {
-                await sendTgPhoto(chatId, c.imageUrl, caption, c.actionId ? { id: c.actionId, title: c.actionTitle || 'Select' } : undefined);
+                await sendTgPhoto(chatId, c.imageUrl, caption, c.actionId ? { id: c.actionId, title: c.actionTitle || 'Select' } : undefined, botToken);
               } else {
-                await sendTgText(chatId, caption);
+                await sendTgText(chatId, caption, botToken);
               }
             } catch (e: any) {
               // One broken image must not kill the whole list.
-              await sendTgText(chatId, caption).catch(() => {});
+              await sendTgText(chatId, caption, botToken).catch(() => {});
             }
             // Pace the stream — Telegram rate-limits rapid sends to one chat.
             await new Promise((r) => setTimeout(r, 350));

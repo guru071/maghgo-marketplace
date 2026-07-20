@@ -87,6 +87,38 @@ const TR: Record<string, Record<'en' | 'ta' | 'hi', (...a: any[]) => string>> = 
     ta: (store, total) => `✅ *ஆர்டர் வெற்றிகரமாக!*\n\n*${store}*-இல் *${total}*-க்கான உங்கள் ஆர்டர் கடைக்கு அனுப்பப்பட்டது. விரைவில் உறுதிப்படுத்துவார்கள். 🙏`,
     hi: (store, total) => `✅ *ऑर्डर हो गया!*\n\n*${store}* पर *${total}* का आपका ऑर्डर दुकान को भेज दिया गया है। वे जल्द पुष्टि करेंगे। 🙏`,
   },
+  help: {
+    en: (store, contact) =>
+      `🛍️ *${store}* — how to order\n\n` +
+      `• *SHOP* — see all products\n` +
+      `• Type a product name to add it\n` +
+      `• *CART* — review your basket\n` +
+      `• *CHECKOUT* — place your order\n` +
+      `• *COUPON <code>* — apply a discount\n` +
+      (contact ? `• *CONTACT* — call or visit the shop\n` : '') +
+      `• *EXIT* — end this chat\n\n` +
+      `Just reply with what you need 🙂`,
+    ta: (store, contact) =>
+      `🛍️ *${store}* — எப்படி ஆர்டர் செய்வது\n\n` +
+      `• *SHOP* — அனைத்து பொருட்களும்\n` +
+      `• பொருளின் பெயரை அனுப்பினால் கார்ட்டில் சேரும்\n` +
+      `• *CART* — உங்கள் கார்ட்\n` +
+      `• *CHECKOUT* — ஆர்டர் செய்ய\n` +
+      `• *COUPON <code>* — தள்ளுபடி குறியீடு\n` +
+      (contact ? `• *CONTACT* — கடையை தொடர்பு கொள்ள\n` : '') +
+      `• *EXIT* — உரையாடலை முடிக்க\n\n` +
+      `உங்களுக்கு தேவையானதை அனுப்புங்கள் 🙂`,
+    hi: (store, contact) =>
+      `🛍️ *${store}* — ऑर्डर कैसे करें\n\n` +
+      `• *SHOP* — सभी प्रोडक्ट देखें\n` +
+      `• प्रोडक्ट का नाम भेजें, कार्ट में जुड़ जाएगा\n` +
+      `• *CART* — अपनी कार्ट देखें\n` +
+      `• *CHECKOUT* — ऑर्डर करें\n` +
+      `• *COUPON <code>* — डिस्काउंट कोड लगाएँ\n` +
+      (contact ? `• *CONTACT* — दुकान से संपर्क करें\n` : '') +
+      `• *EXIT* — चैट बंद करें\n\n` +
+      `जो चाहिए वो भेजें 🙂`,
+  },
   bye: {
     en: () => '👋 Thanks for visiting! Send *SHOP* any time to browse again.',
     ta: () => '👋 வந்ததற்கு நன்றி! மீண்டும் பார்க்க *SHOP* அனுப்புங்கள்.',
@@ -415,6 +447,22 @@ export async function handleShopperMessage(msg: BotMessage, text: string): Promi
     return true;
   }
 
+  // HELP — and the greetings a shopper naturally opens with, which otherwise
+  // fell through to product search ("I couldn't find \"HI\"").
+  // Kept deliberately short: Instagram truncates bodies near 1000 characters,
+  // which is exactly what once broke the merchant-side HELP.
+  if (['HELP', 'MENU', 'COMMANDS', '?', 'HOW', 'HI', 'HELLO', 'HEY', 'உதவி', 'मदद'].includes(upper)) {
+    const buttons = [
+      { id: 'SHOP', title: '🛍️ See products' },
+      { id: 'CART', title: '🛒 My cart' },
+      ...(s.merchantPhone ? [{ id: 'CONTACT', title: '📞 Contact shop' }] : []),
+    ];
+    const body = tr(s, 'help', s.storeName, Boolean(s.merchantPhone));
+    if (msg.sendButtons) await msg.sendButtons(body, buttons);
+    else await msg.sendReply(body);
+    return true;
+  }
+
   // "SHOP" alone → re-show the catalogue
   if (upper === 'SHOP' || upper === 'REFRESH' || upper === 'BROWSE') { await sendCatalogue(msg, s); return true; }
   if (upper === 'CART') { await showCart(msg, s); return true; }
@@ -489,7 +537,7 @@ export async function handleShopperMessage(msg: BotMessage, text: string): Promi
     products.find((p) => p.title.toLowerCase().includes(query.toLowerCase()));
 
   if (!product) {
-    await msg.sendReply(`🔎 I couldn't find "${query}". Tap *Add* on a product card, or reply *CART* / *CHECKOUT*.`);
+    await msg.sendReply(`🔎 I couldn't find "${query}". Tap *Add* on a product card, or reply *SHOP* to browse, *CART* to review — or *HELP* for everything you can do.`);
     return true;
   }
 
