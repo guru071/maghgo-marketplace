@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useTransition } from 'react';
-import { extendSubscription, setMerchantPlan, setMerchantActive, deleteMerchant } from './actions';
+import { extendSubscription, setMerchantPlan, setMerchantActive, deleteMerchant, generateAdminLinkCode } from './actions';
 
 const PLANS = ['basic', 'starter', 'pro', 'advanced', 'premium', 'business', 'agency', 'vip', 'enterprise', 'custom'];
 
@@ -11,6 +11,7 @@ export default function MerchantActions({ merchantId, storeName, plan, isActive 
 }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; message: string } | null>(null);
+  const [linkCode, setLinkCode] = useState<string | null>(null);
   const run = (fn: () => Promise<{ ok: boolean; message: string }>) =>
     start(async () => setMsg(await fn()));
 
@@ -46,6 +47,23 @@ export default function MerchantActions({ merchantId, storeName, plan, isActive 
       >
         {isActive ? 'Suspend' : 'Reactivate'}
       </button>
+      <button
+        onClick={() => start(async () => {
+          const r = await generateAdminLinkCode(merchantId);
+          if (r.ok) { setLinkCode(r.code); setMsg({ ok: true, message: r.message }); }
+          else setMsg(r);
+        })}
+        disabled={pending}
+        className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+        title="Mint a 2-minute link code — the owner sends LINK <code> on the new chat app"
+      >
+        🔗 Link code
+      </button>
+      {linkCode && (
+        <span className="text-xs font-mono font-black bg-indigo-600 text-white px-2.5 py-1.5 rounded-lg tracking-widest">
+          {linkCode}
+        </span>
+      )}
       <button
         onClick={() => {
           if (!confirm(`PERMANENTLY delete "${storeName}"?\n\nAll their products, orders, coupons and reviews are deleted too. This cannot be undone.`)) return;

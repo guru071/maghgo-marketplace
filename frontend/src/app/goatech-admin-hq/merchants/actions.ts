@@ -65,3 +65,30 @@ export async function deleteMerchant(merchantId: string) {
   if (error) return done(false, error.message);
   return done(true, 'Merchant permanently deleted');
 }
+
+/**
+ * Support flow: a shop owner asks to link a new chat app; the admin picks their
+ * shop here and mints a code that expires in 2 MINUTES. The owner sends
+ * "LINK <code>" on the new app within that window.
+ */
+export async function generateAdminLinkCode(merchantId: string) {
+  const supabase = createAdminSupabaseClient();
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+
+  const expires = new Date(Date.now() + 2 * 60 * 1000).toISOString();
+  let { error } = await supabase
+    .from('merchants')
+    .update({ link_code: code, link_code_expires_at: expires })
+    .eq('id', merchantId);
+
+  // Expiry column missing (migration 26 not run) → still mint, but say so.
+  let note = 'expires in 2 minutes';
+  if (error && /link_code_expires_at|schema cache|42703|PGRST204/i.test(error.message || '')) {
+    ({ error } = await supabase.from('merchants').update({ link_code: code }).eq('id', merchantId));
+    note = 'no expiry — run migration 26 for the 2-minute limit';
+  }
+  if (error) return { ok: false as const, message: error.message };
+  return { ok: true as const, code, message: note };
+}

@@ -291,7 +291,9 @@ export function handleTelegramUpdate(req: Request, res: Response): void {
       const botMsg: BotMessage = {
         channel: 'telegram',
         senderId: chatId,
-        messageId: String(callback ? `cbq-${callback.id}` : message.message_id),
+        // message_id is per-CHAT sequential on Telegram (chat A's msg 5 and
+        // chat B's msg 5 collide) — scope the dedup key by chat.
+        messageId: callback ? `cbq-${callback.id}` : `${chatId}-${message.message_id}`,
         type: isPhoto ? 'image' : 'text',
         text: isPhoto ? undefined : text,
         sendReply: async (t) => { await sendTgText(chatId, t); },
@@ -301,11 +303,18 @@ export function handleTelegramUpdate(req: Request, res: Response): void {
         sendCards: async (cards, storeUrl) => {
           for (const c of cards) {
             const caption = `*${c.title}*${c.subtitle ? `\n${c.subtitle}` : ''}`;
-            if (c.imageUrl) {
-              await sendTgPhoto(chatId, c.imageUrl, caption, c.actionId ? { id: c.actionId, title: c.actionTitle || 'Select' } : undefined);
-            } else {
-              await sendTgText(chatId, caption);
+            try {
+              if (c.imageUrl) {
+                await sendTgPhoto(chatId, c.imageUrl, caption, c.actionId ? { id: c.actionId, title: c.actionTitle || 'Select' } : undefined);
+              } else {
+                await sendTgText(chatId, caption);
+              }
+            } catch (e: any) {
+              // One broken image must not kill the whole list.
+              await sendTgText(chatId, caption).catch(() => {});
             }
+            // Pace the stream — Telegram rate-limits rapid sends to one chat.
+            await new Promise((r) => setTimeout(r, 350));
           }
           if (storeUrl) await sendTgCta(chatId, 'See everything on the web:', '🛍️ View store', storeUrl);
         },

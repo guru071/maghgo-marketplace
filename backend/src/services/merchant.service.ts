@@ -177,11 +177,20 @@ export async function generateLinkCode(channel: Channel, senderId: string): Prom
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
 
-  const { error } = await supabase
+  const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  let { error } = await supabase
     .from('merchants')
-    .update({ link_code: code })
+    .update({ link_code: code, link_code_expires_at: expires })
     .eq(column, value);
 
+  // Expiry column may not exist yet (migration 26) — codes then simply don't
+  // expire, exactly the old behaviour.
+  if (error && /link_code_expires_at|schema cache|42703|PGRST204/i.test(error.message || '')) {
+    ({ error } = await supabase
+      .from('merchants')
+      .update({ link_code: code })
+      .eq(column, value));
+  }
   if (error) {
     throw new Error(`Failed to generate link code: ${error.message}`);
   }
@@ -203,6 +212,14 @@ export async function linkChannelToMerchant(
 
   if (lookupError || !merchant) {
     throw new Error('Invalid or expired link code.');
+  }
+
+  // Expired? Clear it and refuse — a stale code must not remain a standing
+  // invitation to claim someone's store.
+  const expiresAt = (merchant as any).link_code_expires_at;
+  if (expiresAt && new Date(expiresAt) < new Date()) {
+    await supabase.from('merchants').update({ link_code: null }).eq('id', merchant.id);
+    throw new Error('That link code has expired. Please generate a fresh one and try again.');
   }
 
   // 2. Update the merchant with the new channel ID
