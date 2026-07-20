@@ -5,7 +5,7 @@ import { Merchant } from '@/types';
 import { groupByCategory } from '@/lib/categorize';
 
 interface StoreFooterProps {
-  merchant: Merchant & { store_address?: string | null; store_category?: string | null };
+  merchant: Merchant & { store_address?: string | null; store_category?: string | null; telegram_bot_username?: string | null };
   productTitles: { title: string }[];
   rating?: { average: number; count: number } | null;
   showPoweredBy: boolean;
@@ -21,6 +21,7 @@ export default function StoreFooter({ merchant, productTitles, rating, showPower
   const wa = merchant.phone_number ? `https://wa.me/${merchant.phone_number.replace(/\D/g, '')}` : null;
   const ig = merchant.instagram_handle ? `https://instagram.com/${merchant.instagram_handle.replace('@', '')}` : null;
   const fb = merchant.facebook_url || null;
+  const tg = merchant.telegram_bot_username ? `https://t.me/${merchant.telegram_bot_username}` : null;
   const maps = merchant.store_address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(merchant.store_address)}` : null;
 
   const col: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 8, minWidth: 180, flex: 1 };
@@ -64,6 +65,7 @@ export default function StoreFooter({ merchant, productTitles, rating, showPower
             {wa && <a href={wa} target="_blank" rel="noopener noreferrer" style={link}>💬 WhatsApp us</a>}
             {merchant.phone_number && <a href={`tel:${merchant.phone_number}`} style={link}>📞 {merchant.phone_number}</a>}
             {ig && <a href={ig} target="_blank" rel="noopener noreferrer" style={link}>📸 @{merchant.instagram_handle!.replace('@', '')}</a>}
+            {tg && <a href={tg} target="_blank" rel="noopener noreferrer" style={link}>✈️ Order on Telegram</a>}
             {fb && <a href={fb} target="_blank" rel="noopener noreferrer" style={link}>👥 Facebook</a>}
           </div>
 

@@ -376,6 +376,39 @@ export async function updateBotLanguage(merchantId: string, lang: 'en' | 'ta' | 
   }
 }
 
+// ─── Shop's own Telegram bot ─────────────────────────────────────────────────
+
+/** Fetch a merchant by id (used by the per-shop Telegram webhook). */
+export async function getMerchantById(id: string): Promise<Merchant | null> {
+  const { data, error } = await supabase.from('merchants').select('*').eq('id', id).maybeSingle();
+  if (error) return null;
+  return (data as Merchant) ?? null;
+}
+
+/** Save a shop's own bot (token arrives already encrypted). Graceful pre-migration 27. */
+export async function setShopTelegramBot(merchantId: string, encryptedToken: string, username: string, secret: string): Promise<void> {
+  const { error } = await supabase
+    .from('merchants')
+    .update({ telegram_bot_token: encryptedToken, telegram_bot_username: username, telegram_bot_secret: secret })
+    .eq('id', merchantId);
+  if (error) {
+    if (/telegram_bot|schema cache|42703|PGRST204/i.test(error.message || '')) {
+      throw new Error('Your own Telegram bot needs one setup step (migration 27) first.');
+    }
+    throw new Error(`Failed to save your bot: ${error.message}`);
+  }
+}
+
+export async function clearShopTelegramBot(merchantId: string): Promise<void> {
+  const { error } = await supabase
+    .from('merchants')
+    .update({ telegram_bot_token: null, telegram_bot_username: null, telegram_bot_secret: null })
+    .eq('id', merchantId);
+  if (error && !/telegram_bot|schema cache|42703|PGRST204/i.test(error.message || '')) {
+    throw new Error(`Failed to disconnect your bot: ${error.message}`);
+  }
+}
+
 // ─── Shop Razorpay keys (for the bot's PAYMENTS flow) ────────────────────────
 
 /** Whether this shop has connected its own Razorpay (never returns the secret). */

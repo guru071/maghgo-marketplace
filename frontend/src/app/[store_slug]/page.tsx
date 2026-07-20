@@ -107,13 +107,21 @@ export default async function StorePage({ params }: StorePageProps) {
   // therefore serialised into the HTML sent to every anonymous visitor. Using
   // '*' shipped the merchant's bcrypt password_hash to the public internet.
   const BASE_COLS = 'id, phone_number, store_name, store_slug, store_description, store_logo_url, is_active, subscription_plan, subscription_ends_at, created_at, theme_config, instagram_handle, facebook_url, x_handle';
-  // Include store_address, but fall back if migration 15 hasn't run.
+  // Optional columns arrive with migrations 15/27 — fall back tier by tier so
+  // a store never 500s because one migration hasn't run yet.
   let { data: merchant, error: merchantError } = await supabase
     .from('merchants')
-    .select(`${BASE_COLS}, store_address`)
+    .select(`${BASE_COLS}, store_address, telegram_bot_username`)
     .eq('store_slug', store_slug)
     .single();
 
+  if (merchantError && /telegram_bot_username|schema cache|42703/i.test(merchantError.message || '')) {
+    ({ data: merchant, error: merchantError } = await supabase
+      .from('merchants')
+      .select(`${BASE_COLS}, store_address`)
+      .eq('store_slug', store_slug)
+      .single());
+  }
   if (merchantError && /store_address|schema cache|42703/i.test(merchantError.message || '')) {
     ({ data: merchant, error: merchantError } = await supabase
       .from('merchants')

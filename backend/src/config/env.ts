@@ -63,6 +63,9 @@ const envSchema = z.object({
 
   // Telegram bot (optional channel). Both unset → the /webhook/telegram route
   // rejects everything and the channel is simply off.
+  // The backend's own public URL (e.g. https://maghgo-marketplace.onrender.com)
+  // — required only for shops' OWN Telegram bots, whose webhooks must point here.
+  BACKEND_PUBLIC_URL: z.string().optional(),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
 

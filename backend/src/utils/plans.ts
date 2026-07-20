@@ -88,13 +88,14 @@ export function minPlanForChannel(channel: Channel): PlanTier {
  * orders + customer notifications, online payments via the shop's own Razorpay,
  * stock, product details/options, store QR, address.
  */
-export type GatedFeature = 'coupons' | 'premium_themes' | 'custom_domain' | 'meta_import';
+export type GatedFeature = 'coupons' | 'premium_themes' | 'custom_domain' | 'meta_import' | 'own_telegram_bot';
 
 export const FEATURE_MIN_PLAN: Record<GatedFeature, PlanTier> = {
   coupons: 'starter',        // discount codes
   premium_themes: 'starter', // rich full-layout themes (per-theme plan_required still applies)
   custom_domain: 'pro',
   meta_import: 'pro',        // Facebook/Instagram catalogue import
+  own_telegram_bot: 'pro',   // the shop's own branded Telegram bot
 };
 
 const FEATURE_LABEL: Record<GatedFeature, string> = {
@@ -102,6 +103,7 @@ const FEATURE_LABEL: Record<GatedFeature, string> = {
   premium_themes: 'Premium themes',
   custom_domain: 'Custom domain',
   meta_import: 'Meta catalogue import',
+  own_telegram_bot: 'Your own Telegram bot',
 };
 
 export function canUseFeature(plan: string, feature: GatedFeature): boolean {

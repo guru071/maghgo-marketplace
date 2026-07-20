@@ -2,7 +2,8 @@ import { Request, Response } from 'express';
 import { env } from '../config/env';
 import { WhatsAppWebhookPayload } from '../types/whatsapp';
 import { processBotMessage, BotMessage } from '../services/bot.service';
-import { getMerchantByDedicatedNumber } from '../services/merchant.service';
+import { getMerchantByDedicatedNumber, getMerchantById } from '../services/merchant.service';
+import { decryptSecret } from '../utils/crypto';
 import { getMediaUrl, downloadMedia, sendReply as sendWhatsappReply, sendButtons as sendWhatsappButtons, sendList as sendWhatsappList, sendCtaUrl as sendWhatsappCta, sendImage as sendWhatsappImage } from '../services/whatsapp.service';
 import { sendMetaReply, sendMetaQuickReplies, sendMetaCards, downloadMetaMedia, instagramUserFollows } from '../services/meta.service';
 import { sendTgText, sendTgButtons, sendTgMenu, sendTgCta, sendTgPhoto, downloadTgFile, resolveCallback, answerCallback, telegramConfigured } from '../services/telegram.service';
@@ -262,8 +263,36 @@ export function handleTelegramUpdate(req: Request, res: Response): void {
     return;
   }
   res.sendStatus(200); // ack first, like every other webhook
+  processTelegramUpdate(req.body);
+}
 
-  const update = req.body;
+/**
+ * A SHOP's own branded bot (POST /webhook/telegram/shop/:merchantId). The
+ * shop pasted its BotFather token into Maghgo; updates are verified against
+ * the shop's stored webhook secret, replies go out via the SHOP's token, and
+ * non-owner senders are auto-scoped into that store's shopping session.
+ */
+export async function handleShopTelegramUpdate(req: Request, res: Response): Promise<void> {
+  try {
+    const merchant = await getMerchantById(String(req.params.merchantId));
+    const secret = (merchant as any)?.telegram_bot_secret;
+    const token = decryptSecret((merchant as any)?.telegram_bot_token);
+    if (!merchant || !secret || !token) {
+      res.sendStatus(404);
+      return;
+    }
+    if (req.headers['x-telegram-bot-api-secret-token'] !== secret) {
+      res.sendStatus(403);
+      return;
+    }
+    res.sendStatus(200);
+    processTelegramUpdate(req.body, token, merchant.store_slug);
+  } catch {
+    if (!res.headersSent) res.sendStatus(500);
+  }
+}
+
+function processTelegramUpdate(update: any, botToken?: string, dedicatedStoreSlug?: string): void {
   setImmediate(async () => {
     try {
       const message = update.message;
@@ -273,7 +302,7 @@ export function handleTelegramUpdate(req: Request, res: Response): void {
       const chatId = String(callback ? callback.message?.chat?.id : message.chat?.id);
       if (!chatId || chatId === 'undefined') return;
 
-      if (callback) await answerCallback(callback.id); // stop the button spinner
+      if (callback) await answerCallback(callback.id, botToken); // stop the button spinner
 
       // Inline-button taps carry our command id (via the 64-byte token map);
       // "/start" is Telegram's universal opener — treat it as a greeting.
@@ -316,7 +345,7 @@ export function handleTelegramUpdate(req: Request, res: Response): void {
             // Pace the stream — Telegram rate-limits rapid sends to one chat.
             await new Promise((r) => setTimeout(r, 350));
           }
-          if (storeUrl) await sendTgCta(chatId, 'See everything on the web:', '🛍️ View store', storeUrl);
+          if (storeUrl) await sendTgCta(chatId, 'See everything on the web:', '🛍️ View store', storeUrl, botToken);
         },
       };
 
@@ -326,7 +355,7 @@ export function handleTelegramUpdate(req: Request, res: Response): void {
         botMsg.image = {
           caption: message.caption,
           mime_type: 'image/jpeg',
-          buffer: await downloadTgFile(fileId),
+          buffer: await downloadTgFile(fileId, botToken),
         };
       }
 

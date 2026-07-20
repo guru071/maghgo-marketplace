@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { env } from '../config/env';
 import { verifyWebhookSignature, verifyTwilioWebhookSignature } from '../middleware/webhook-verify';
-import { handleIncomingMessage, handleTelegramUpdate } from '../controllers/message.controller';
+import { handleIncomingMessage, handleTelegramUpdate, handleShopTelegramUpdate } from '../controllers/message.controller';
 import { handleIncomingSms } from '../controllers/sms.controller';
 import express from 'express';
 
@@ -41,6 +41,7 @@ router.post('/', verifyWebhookSignature, handleIncomingMessage);
  * We use Express's URL-encoded parser since Twilio sends application/x-www-form-urlencoded.
  */
 router.post('/telegram', handleTelegramUpdate);
+router.post('/telegram/shop/:merchantId', handleShopTelegramUpdate);
 
 router.post('/sms', express.urlencoded({ extended: true }), verifyTwilioWebhookSignature, handleIncomingSms);
 

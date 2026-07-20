@@ -1,5 +1,5 @@
-import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, updateStoreAddress, updateStoreCategory, updateBotLanguage, setCustomDomain, toggleStoreStatus, updateMerchantSocial, listThemes, applyThemeById, hasRazorpayKeys, setRazorpayKeys, clearRazorpayKeys, Channel } from './merchant.service';
-import { encryptSecret } from '../utils/crypto';
+import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, updateStoreAddress, updateStoreCategory, updateBotLanguage, setCustomDomain, toggleStoreStatus, updateMerchantSocial, listThemes, applyThemeById, hasRazorpayKeys, setRazorpayKeys, clearRazorpayKeys, setShopTelegramBot, clearShopTelegramBot, Channel } from './merchant.service';
+import { encryptSecret, decryptSecret } from '../utils/crypto';
 import { parseCaption } from './parser.service';
 import { removeBackground } from './media.service';
 import { uploadImage } from './storage.service';
@@ -7,6 +7,7 @@ import { createProduct, getProducts, deleteProduct, getProductCount, updateProdu
 import { getOrders, getAnalytics, updateOrderStatus, OrderStatus } from './order.service';
 import { listCoupons, createCoupon, deleteCoupon } from './coupon.service';
 import { importMetaCatalog, connectMetaCatalog } from './metaCatalog.service';
+import { validateBotToken, setShopWebhook, deleteShopWebhook } from './telegram.service';
 import { addReviewByPhone, getStoreRating } from './review.service';
 import { isChannelEnabled } from './platform.service';
 import { sendTextMessage } from './whatsapp.service';
@@ -225,7 +226,10 @@ interface ProductFlow {
 interface PaymentsFlow { kind: 'payments'; step: 'keyid' | 'secret'; keyId?: string }
 // Connect the shop's Meta (FB/Insta) catalogue from chat: catalog id → token.
 interface MetaCatFlow { kind: 'metacat'; step: 'catalogid' | 'token'; catalogId?: string }
-type Flow = (RegisterFlow | ProductFlow | PaymentsFlow | MetaCatFlow) & { ts: number };
+// The shop's own branded Telegram bot: paste the BotFather token → we verify,
+// encrypt, store, and point its webhook at us automatically.
+interface ShopBotFlow { kind: 'shopbot'; step: 'token' }
+type Flow = (RegisterFlow | ProductFlow | PaymentsFlow | MetaCatFlow | ShopBotFlow) & { ts: number };
 
 const SHOP_CATEGORIES = [
   '👕 Clothing & Fashion', '👟 Footwear', '📱 Electronics', '🛒 Grocery & Daily',
@@ -909,6 +913,35 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
     }
   }
 
+  // ── Own-Telegram-bot wizard ────────────────────────────────────────────────
+  if (flow.kind === 'shopbot') {
+    if (msg.type !== 'text' || !text) {
+      await msg.sendReply('✍️ Please paste the bot token (or CANCEL).');
+      return true;
+    }
+    if (flow.step === 'token') {
+      const tok = text.trim();
+      if (!/^\d{6,}:[A-Za-z0-9_-]{30,}$/.test(tok)) {
+        await msg.sendReply('⚠️ That doesn\'t look like a bot token (format: 123456789:AAAA…). Copy it exactly from @BotFather (or CANCEL).');
+        return true;
+      }
+      flows.delete(flowKey);
+      const merchant = await getMerchantByChannel(msg.channel, msg.senderId);
+      if (!merchant) { await msg.sendReply('❌ Please REGISTER first.'); return true; }
+      try {
+        const username = await validateBotToken(tok);
+        const secret = require('crypto').randomBytes(16).toString('hex');
+        // Save BEFORE pointing the webhook, so the first update finds the row.
+        await setShopTelegramBot(merchant.id, encryptSecret(tok), username, secret);
+        await setShopWebhook(tok, merchant.id, secret, env.BACKEND_PUBLIC_URL!);
+        await msg.sendReply(`🎉 *t.me/${username} is LIVE!*\n\nAnyone who messages it shops *${merchant.store_name}* directly — browsing, cart, coupons, payment, tracking. You (this account) get owner tools there too.\n\n📣 Put the link in your Instagram bio & posters!\n🧹 _Delete your last message (the token) from this chat._`);
+      } catch (err: any) {
+        await msg.sendReply(`❌ ${err.message || 'Could not connect your bot.'}\n\nReply *CONNECT TELEGRAM* to try again.`);
+      }
+      return true;
+    }
+  }
+
   // ── Connect-Meta-catalogue wizard ──────────────────────────────────────────
   if (flow.kind === 'metacat') {
     if (msg.type !== 'text' || !text) {
@@ -1431,6 +1464,40 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     } catch (err: any) {
       await sendReply(`❌ ${err.message}`);
     }
+    return;
+  }
+
+  // The shop's OWN branded Telegram bot (their name, their t.me link) —
+  // the Telegram twin of dedicated WhatsApp numbers, but fully self-serve.
+  if (command === 'CONNECT TELEGRAM' || command === 'MY BOT') {
+    if (!canUseFeature(merchant.subscription_plan, 'own_telegram_bot')) {
+      await replyButtons(msg, `🔒 ${featureLockedMessage('own_telegram_bot', merchant.subscription_plan)}`, [
+        { id: 'UPGRADE', title: '🚀 See plans' },
+        { id: 'MENU', title: '📋 Menu' },
+      ]);
+      return;
+    }
+    if ((merchant as any).telegram_bot_username) {
+      await replyButtons(msg, `🤖 *Your own bot is LIVE:* t.me/${(merchant as any).telegram_bot_username}\n\nCustomers who message it shop YOUR store directly — no store name needed.`, [
+        { id: 'DISCONNECT TELEGRAM', title: '🔌 Disconnect' },
+        { id: 'MENU', title: '📋 Menu' },
+      ]);
+      return;
+    }
+    if (!env.BACKEND_PUBLIC_URL) {
+      await sendReply('⚠️ This feature needs the platform admin to set BACKEND_PUBLIC_URL on the server first.');
+      return;
+    }
+    flows.set(`${channel}:${senderId}`, { kind: 'shopbot', step: 'token', ts: Date.now() });
+    await sendReply('🤖 *Your own Telegram bot! — 2 minutes, free*\n\n1️⃣ Open *@BotFather* in Telegram\n2️⃣ Send /newbot → pick a name (your shop!) and a username ending in "bot"\n3️⃣ BotFather gives you a *token* — paste it here.\n\n🔒 Stored encrypted. (Reply CANCEL to stop.)');
+    return;
+  }
+
+  if (command === 'DISCONNECT TELEGRAM') {
+    const tok = decryptSecret((merchant as any).telegram_bot_token);
+    if (tok) await deleteShopWebhook(tok);
+    await clearShopTelegramBot(merchant.id);
+    await sendReply('🔌 Your own bot is disconnected. Customers can still shop via the main Maghgo bot and your store link.');
     return;
   }
 
@@ -1997,6 +2064,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
       `• SET FACEBOOK url · SET WHATSAPP number\n` +
       `• DOMAIN mystore.com — custom domain\n` +
       `• IMPORT META / CONNECT META — FB/Insta shop\n` +
+      `• CONNECT TELEGRAM — your OWN branded bot\n` +
       `• PAUSE / RESUME · LINK — other channels\n` +
       `• LOGIN — web dashboard (optional)\n\n` +
       `Reply *MENU* for tappable buttons of all this.`,
