@@ -8,12 +8,17 @@ import { groupByCategory, type Category } from '@/lib/categorize';
 interface ProductGridProps {
   products: Product[];
   onAddToCart: (product: Product, opts?: { variant?: string }) => void;
+  // Optional controlled mode: the page (e.g. category tiles) owns the selection.
+  selectedCategory?: string;
+  onSelectCategory?: (key: string) => void;
 }
 
 const ALL: Category = { key: 'all', label: 'All', icon: '🛍️' };
 
-export default function ProductGrid({ products, onAddToCart }: ProductGridProps) {
-  const [selected, setSelected] = useState<string>('all');
+export default function ProductGrid({ products, onAddToCart, selectedCategory, onSelectCategory }: ProductGridProps) {
+  const [internal, setInternal] = useState<string>('all');
+  const selected = selectedCategory ?? internal;
+  const setSelected = (k: string) => { onSelectCategory ? onSelectCategory(k) : setInternal(k); };
 
   // The store organises itself around what's actually sold: categories are
   // auto-detected from product titles, so a fashion shop shows Clothing /

@@ -14,6 +14,7 @@ export default function DashboardInventory() {
   // New product form state
   const [newTitle, setNewTitle] = useState('');
   const [newPrice, setNewPrice] = useState('');
+  const [newMrp, setNewMrp] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newCategory, setNewCategory] = useState('');
   const [newSpecs, setNewSpecs] = useState<{ label: string; value: string }[]>([]);
@@ -81,6 +82,7 @@ export default function DashboardInventory() {
     formData.append('image', selectedFile);
     formData.append('title', newTitle);
     formData.append('price', newPrice);
+    if (newMrp) formData.append('mrp', newMrp);
     formData.append('description', newDescription);
     formData.append('category', newCategory);
     formData.append('specifications', JSON.stringify(newSpecs.filter((s) => s.label.trim() && s.value.trim())));
@@ -101,6 +103,7 @@ export default function DashboardInventory() {
         setShowAddModal(false);
         setNewTitle('');
         setNewPrice('');
+        setNewMrp('');
         setNewDescription('');
         setNewCategory('');
         setNewSpecs([]);
@@ -307,6 +310,17 @@ export default function DashboardInventory() {
                   className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-accent focus:border-accent"
                   required
                   min="0"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">MRP / &ldquo;was&rdquo; price <span className="text-gray-400">(optional)</span></label>
+                <input
+                  type="number"
+                  value={newMrp}
+                  onChange={(e) => setNewMrp(e.target.value)}
+                  min="0"
+                  placeholder="e.g. 599 — shows a ₹-Off badge"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-accent focus:border-accent"
                 />
               </div>
               <div>

@@ -365,6 +365,21 @@ export async function getMerchantByDedicatedNumber(phoneNumberId: string): Promi
   }
 }
 
+/** Set the storefront's scrolling offer ticker. Graceful pre-migration 28. */
+export async function updateAnnouncement(merchantId: string, text: string): Promise<void> {
+  const value = (text || '').trim().slice(0, 200) || null;
+  const { error } = await supabase
+    .from('merchants')
+    .update({ announcement: value })
+    .eq('id', merchantId);
+  if (error) {
+    if (/announcement|schema cache|42703|PGRST204/i.test(error.message || '')) {
+      throw new Error('Announcements need one setup step (migration 28) first.');
+    }
+    throw new Error(`Failed to save announcement: ${error.message}`);
+  }
+}
+
 /** Set the shopper-facing bot language ('en' | 'ta' | 'hi'). Graceful pre-migration 23. */
 export async function updateBotLanguage(merchantId: string, lang: 'en' | 'ta' | 'hi'): Promise<void> {
   const { error } = await supabase

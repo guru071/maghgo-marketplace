@@ -12,6 +12,10 @@ import StoreContact from '@/components/store/StoreContact';
 import AnimatedBg from '@/components/store/AnimatedBg';
 import StoreNav, { SortMode } from '@/components/store/StoreNav';
 import StoreFooter from '@/components/store/StoreFooter';
+import AnnouncementBar from '@/components/store/AnnouncementBar';
+import CategoryTiles from '@/components/store/CategoryTiles';
+import BackToTop from '@/components/store/BackToTop';
+import { groupByCategory } from '@/lib/categorize';
 
 interface StoreClientProps {
   merchant: Merchant;
@@ -33,6 +37,7 @@ export function StoreClient({ merchant, products, rating }: StoreClientProps) {
   // both read the filtered list.
   const [query, setQuery] = React.useState('');
   const [sort, setSort] = React.useState<SortMode>('newest');
+  const [selectedCategory, setSelectedCategory] = React.useState('all');
   const visibleProducts = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     let list = q
@@ -47,8 +52,12 @@ export function StoreClient({ merchant, products, rating }: StoreClientProps) {
       case 'name': list.sort((a, b) => a.title.localeCompare(b.title)); break;
       default: list.sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
     }
+    if (selectedCategory !== 'all') {
+      const group = groupByCategory(list).find((g) => g.category.key === selectedCategory);
+      if (group) list = group.products as typeof list;
+    }
     return list;
-  }, [products, query, sort]);
+  }, [products, query, sort, selectedCategory]);
   const [activeTheme, setActiveTheme] = React.useState<any>(() => {
     const dbTheme = merchant.theme_config as any;
     if (!dbTheme) return null;
@@ -149,6 +158,7 @@ export function StoreClient({ merchant, products, rating }: StoreClientProps) {
     >
       {themeEffect && <AnimatedBg effect={themeEffect} accent={themeAccent} />}
       <div style={{ position: 'relative', zIndex: 1 }}>
+      {(merchant as any).announcement && <AnnouncementBar text={(merchant as any).announcement} />}
       <StoreNav
         storeName={merchant.store_name}
         storeSlug={merchant.store_slug}
@@ -165,8 +175,9 @@ export function StoreClient({ merchant, products, rating }: StoreClientProps) {
       ) : (
         <>
           <StoreHeader merchant={merchant} />
+          <CategoryTiles products={products} selected={selectedCategory} onSelect={setSelectedCategory} />
           <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
-            <ProductGrid products={visibleProducts} onAddToCart={handleAddToCart} />
+            <ProductGrid products={visibleProducts} onAddToCart={handleAddToCart} selectedCategory="all" onSelectCategory={setSelectedCategory} />
           </main>
         </>
       )}
@@ -184,6 +195,7 @@ export function StoreClient({ merchant, products, rating }: StoreClientProps) {
 
       <CartDrawer storeName={merchant.store_name} phone={merchant.phone_number} instagramHandle={merchant.instagram_handle} />
       <FloatingCartButton />
+      <BackToTop />
       </div>
     </div>
   );

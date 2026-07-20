@@ -66,6 +66,16 @@ export default function ProductDetails({ product, onAdd, onClose }: ProductDetai
           </div>
           <p style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--accent)', margin: '0.25rem 0 0.75rem' }}>
             {formatPrice(product.price, product.currency)}
+            {product.mrp && Number(product.mrp) > product.price && (
+              <>
+                <span style={{ marginLeft: 10, fontSize: '0.95rem', color: '#9ca3af', textDecoration: 'line-through', fontWeight: 500 }}>
+                  {formatPrice(Number(product.mrp), product.currency)}
+                </span>
+                <span style={{ marginLeft: 8, fontSize: '0.8rem', color: '#059669', fontWeight: 800 }}>
+                  ₹{(Number(product.mrp) - product.price).toLocaleString('en-IN')} Off
+                </span>
+              </>
+            )}
           </p>
 
           {isPrebook && (

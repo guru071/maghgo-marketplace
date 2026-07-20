@@ -34,6 +34,8 @@ export interface Product {
   // 'buy' = shop delivers; 'prebook' = customer reserves and collects at the
   // shop. Optional so the type is valid before migration 13 adds the column.
   fulfillment_type?: 'buy' | 'prebook';
+  // 'Was' price — shows the ₹-Off badge + strike-through (migration 28).
+  mrp?: number | null;
   // null/undefined = stock not tracked (sell freely); 0 = out of stock.
   // Optional so the type is valid before migration 16 adds the column.
   stock?: number | null;

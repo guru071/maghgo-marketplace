@@ -111,11 +111,11 @@ export default async function StorePage({ params }: StorePageProps) {
   // a store never 500s because one migration hasn't run yet.
   let { data: merchant, error: merchantError } = await supabase
     .from('merchants')
-    .select(`${BASE_COLS}, store_address, telegram_bot_username`)
+    .select(`${BASE_COLS}, store_address, telegram_bot_username, announcement`)
     .eq('store_slug', store_slug)
     .single();
 
-  if (merchantError && /telegram_bot_username|schema cache|42703/i.test(merchantError.message || '')) {
+  if (merchantError && /telegram_bot_username|announcement|schema cache|42703/i.test(merchantError.message || '')) {
     ({ data: merchant, error: merchantError } = await supabase
       .from('merchants')
       .select(`${BASE_COLS}, store_address`)

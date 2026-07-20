@@ -94,6 +94,7 @@ export interface Product {
   is_available: boolean;
   fulfillment_type?: 'buy' | 'prebook';
   stock?: number | null; // null/undefined = not tracked; 0 = out of stock
+  mrp?: number | null;    // 'was' price for the strike-through/off badge
   description?: string;
   category?: string | null;
   specifications?: ProductSpec[];

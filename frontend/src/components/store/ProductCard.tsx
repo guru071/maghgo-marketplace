@@ -24,6 +24,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
   const showImage = imageUrl && !imgError;
 
   const isPrebook = product.fulfillment_type === 'prebook';
+  const off = product.mrp && Number(product.mrp) > product.price ? Number(product.mrp) - product.price : 0;
   const outOfStock = product.stock != null && product.stock <= 0;
   const lowStock = product.stock != null && product.stock > 0 && product.stock <= 5;
 
@@ -60,6 +61,11 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
         {outOfStock && (
           <span style={{ position: 'absolute', top: 8, right: 8, zIndex: 2, background: '#4b5563', color: '#fff', fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', padding: '3px 8px', borderRadius: '6px' }}>
             Out of stock
+          </span>
+        )}
+        {!outOfStock && off > 0 && (
+          <span style={{ position: 'absolute', top: 8, right: 8, zIndex: 2, background: '#F59E0B', color: '#111', fontSize: '0.68rem', fontWeight: 800, padding: '3px 8px', borderRadius: '6px' }}>
+            ₹{off.toLocaleString('en-IN')} Off
           </span>
         )}
         {isPrebook && (
@@ -108,6 +114,11 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
         )}
         <p className="product-card__price">
           {formatPrice(product.price, product.currency)}
+          {off > 0 && (
+            <span style={{ marginLeft: 8, fontSize: '0.8rem', color: '#9ca3af', textDecoration: 'line-through', fontWeight: 500 }}>
+              {formatPrice(Number(product.mrp), product.currency)}
+            </span>
+          )}
           {lowStock && (
             <span style={{ marginLeft: 8, fontSize: '0.7rem', fontWeight: 700, color: '#d97706' }}>
               Only {product.stock} left

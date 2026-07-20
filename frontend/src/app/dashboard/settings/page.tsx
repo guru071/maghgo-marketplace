@@ -13,6 +13,7 @@ export default function DashboardSettings() {
   const [storeDescription, setStoreDescription] = useState('');
   const [storeAddress, setStoreAddress] = useState('');
   const [storeCategory, setStoreCategory] = useState('');
+  const [announcement, setAnnouncement] = useState('');
   const [isActive, setIsActive] = useState(true);
 
   // Payments (own Razorpay)
@@ -87,6 +88,7 @@ export default function DashboardSettings() {
         setStoreDescription(data.store_description || '');
         setStoreAddress(data.store_address || '');
         setStoreCategory(data.store_category || '');
+        setAnnouncement(data.announcement || '');
         setIsActive(data.is_active);
         setRzpConnected(!!data.razorpay_connected);
       }
@@ -125,6 +127,7 @@ export default function DashboardSettings() {
           store_name: storeName,
           store_description: storeDescription,
           store_category: storeCategory,
+          announcement,
           is_active: isActive
         })
       });
@@ -192,6 +195,19 @@ export default function DashboardSettings() {
               ))}
             </select>
             <p className="text-xs text-gray-500 mt-2">What kind of shop this is. Also settable in the bot: SET CATEGORY.</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-900 mb-2">Announcement ticker <span className="font-normal text-gray-400">(optional)</span></label>
+            <input
+              type="text"
+              value={announcement}
+              onChange={e => setAnnouncement(e.target.value)}
+              maxLength={200}
+              placeholder="Free delivery over ₹499 ✨ Fresh stock every Friday!"
+              className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-accent focus:border-accent"
+            />
+            <p className="text-xs text-gray-500 mt-2">Scrolls across the top of your storefront. Also settable in the bot: ANNOUNCE.</p>
           </div>
 
           <div>

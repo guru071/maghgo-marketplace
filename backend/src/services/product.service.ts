@@ -18,6 +18,7 @@ export async function createProduct(
     category?: string | null;
     specifications?: { label: string; value: string }[];
     variants?: { name: string; values: string[] }[];
+    mrp?: number | null;
   } = {}
 ): Promise<Product> {
   const row: Record<string, any> = {
@@ -32,12 +33,13 @@ export async function createProduct(
   if (extra.category !== undefined) row.category = extra.category;
   if (extra.specifications !== undefined) row.specifications = extra.specifications;
   if (extra.variants !== undefined) row.variants = extra.variants;
+  if (extra.mrp !== undefined && extra.mrp) row.mrp = extra.mrp;
 
   let { data, error } = await supabase.from('products').insert(row).select().single();
 
-  // category/specifications/variants may not exist yet (migration 17/18) — retry.
-  if (error && /category|specifications|variants|schema cache|42703|PGRST204/i.test(error.message || '')) {
-    const { category, specifications, variants, ...base } = row;
+  // category/specifications/variants/mrp may not exist yet (migrations 17/18/28) — retry.
+  if (error && /category|specifications|variants|mrp|schema cache|42703|PGRST204/i.test(error.message || '')) {
+    const { category, specifications, variants, mrp, ...base } = row;
     ({ data, error } = await supabase.from('products').insert(base).select().single());
   }
 
@@ -211,7 +213,7 @@ export async function setProductStockById(
 export async function setProductInfo(
   merchantId: string,
   title: string,
-  info: { description?: string; category?: string | null; variants?: { name: string; values: string[] }[] }
+  info: { description?: string; category?: string | null; variants?: { name: string; values: string[] }[]; mrp?: number | null }
 ): Promise<number> {
   const escapedTitle = title.replace(/[%_\\]/g, '\\$&');
 
@@ -219,6 +221,7 @@ export async function setProductInfo(
   if (info.description !== undefined) updates.description = info.description.slice(0, 2000);
   if (info.category !== undefined) updates.category = info.category ? info.category.slice(0, 60) : null;
   if (info.variants !== undefined) updates.variants = info.variants;
+  if (info.mrp !== undefined) updates.mrp = info.mrp;
   if (Object.keys(updates).length === 0) return 0;
 
   let { data, error } = await supabase
@@ -229,10 +232,10 @@ export async function setProductInfo(
     .eq('is_available', true)
     .select('id');
 
-  if (error && /category|variants|schema cache|42703|PGRST204/i.test(error.message || '')) {
+  if (error && /category|variants|mrp|schema cache|42703|PGRST204/i.test(error.message || '')) {
     // Column(s) missing pre-migration: if description was part of the update it
     // still applies; otherwise surface a friendly setup message.
-    const { category, variants, ...base } = updates;
+    const { category, variants, mrp, ...base } = updates;
     if (Object.keys(base).length === 0) {
       throw new Error('This needs one setup step (migration 17/18) before it can be used.');
     }

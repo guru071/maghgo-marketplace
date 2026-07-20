@@ -1,4 +1,4 @@
-import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, updateStoreAddress, updateStoreCategory, updateBotLanguage, setCustomDomain, toggleStoreStatus, updateMerchantSocial, listThemes, applyThemeById, hasRazorpayKeys, setRazorpayKeys, clearRazorpayKeys, setShopTelegramBot, clearShopTelegramBot, Channel } from './merchant.service';
+import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, updateStoreAddress, updateStoreCategory, updateAnnouncement, updateBotLanguage, setCustomDomain, toggleStoreStatus, updateMerchantSocial, listThemes, applyThemeById, hasRazorpayKeys, setRazorpayKeys, clearRazorpayKeys, setShopTelegramBot, clearShopTelegramBot, Channel } from './merchant.service';
 import { encryptSecret, decryptSecret } from '../utils/crypto';
 import { parseCaption } from './parser.service';
 import { removeBackground } from './media.service';
@@ -1430,6 +1430,50 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     await updateMerchantSocial(merchant.id, 'phone_number', number);
     await sendReply(`✅ WhatsApp number updated to: ${number}`);
     await triggerRevalidation(merchant.store_slug);
+    return;
+  }
+
+  // "Was" price → the ₹-Off badge + strike-through on the storefront.
+  if (command.startsWith('MRP ')) {
+    const rest = text.trim().substring(4).trim();
+    const m = rest.match(/^(.*?)\s*-\s*(?:₹|RS\.?\s*)?([\d,]+)$/i) || rest.match(/^(.*?)\s+(?:₹|RS\.?\s*)?([\d,]+)$/i);
+    if (!m || !m[1].trim()) {
+      await sendReply('⚠️ Format: *MRP Red Shirt - ₹599*\n\nShows "₹100 Off" and ~~₹599~~ next to your selling price.\nRemove with: *MRP Red Shirt - 0*');
+      return;
+    }
+    const name = m[1].trim();
+    const mrp = parseInt(m[2].replace(/,/g, ''), 10);
+    try {
+      const count = await setProductInfo(merchant.id, name, { mrp: mrp > 0 ? mrp : null });
+      if (count === 0) await sendReply(`❌ No product found matching "*${name}*".`);
+      else {
+        await sendReply(mrp > 0
+          ? `🏷️ MRP ₹${mrp.toLocaleString('en-IN')} set for ${count} product(s) matching "*${name}*" — buyers now see the discount badge.`
+          : `🏷️ MRP removed for ${count} product(s) matching "*${name}*".`);
+        await triggerRevalidation(merchant.store_slug);
+      }
+    } catch (err: any) {
+      await sendReply(`❌ ${err.message || 'Could not set the MRP.'}`);
+    }
+    return;
+  }
+
+  // The scrolling offer ticker at the top of the storefront.
+  if (command.startsWith('ANNOUNCE')) {
+    const value = text.trim().substring(8).trim();
+    if (!value) {
+      await sendReply('📢 *Storefront announcement*\n\nReply like:\n*ANNOUNCE Free delivery over ₹499 ✨ Fresh stock every Friday!*\n\nOr *ANNOUNCE off* to remove it.');
+      return;
+    }
+    try {
+      await updateAnnouncement(merchant.id, /^off$/i.test(value) ? '' : value);
+      await sendReply(/^off$/i.test(value)
+        ? '📢 Announcement removed.'
+        : `📢 *Live!* Your store now shows a scrolling ticker:\n\n"${value}"`);
+      await triggerRevalidation(merchant.store_slug);
+    } catch (err: any) {
+      await sendReply(`❌ ${err.message || 'Could not save the announcement.'}`);
+    }
     return;
   }
 

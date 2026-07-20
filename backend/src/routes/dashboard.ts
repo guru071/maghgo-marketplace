@@ -92,11 +92,11 @@ router.get('/store', async (req: AuthRequest, res) => {
     // run yet the columns are missing, so fall back rather than 500.
     let { data, error } = await supabase
       .from('merchants')
-      .select(`${MERCHANT_PUBLIC_COLUMNS}, store_address, store_category`)
+      .select(`${MERCHANT_PUBLIC_COLUMNS}, store_address, store_category, announcement`)
       .eq('id', req.merchantId)
       .single();
 
-    if (error && /store_address|store_category|schema cache|42703/i.test(error.message || '')) {
+    if (error && /store_address|store_category|announcement|schema cache|42703/i.test(error.message || '')) {
       ({ data, error } = await supabase
         .from('merchants')
         .select(MERCHANT_PUBLIC_COLUMNS)
@@ -270,7 +270,7 @@ router.post('/change-password', async (req: AuthRequest, res) => {
 // Update Store Details
 router.put('/store', async (req: AuthRequest, res) => {
   try {
-    const { store_name, store_description, is_active, theme_config, store_category } = req.body;
+    const { store_name, store_description, is_active, theme_config, store_category, announcement } = req.body;
 
     let updates: any = {};
     if (store_name !== undefined) updates.store_name = store_name;
@@ -278,6 +278,7 @@ router.put('/store', async (req: AuthRequest, res) => {
     if (is_active !== undefined) updates.is_active = is_active;
     if (theme_config !== undefined) updates.theme_config = theme_config;
     if (store_category !== undefined) updates.store_category = store_category ? String(store_category).trim().slice(0, 60) : null;
+    if (announcement !== undefined) updates.announcement = announcement ? String(announcement).trim().slice(0, 200) : null;
 
     let { data: merchant, error } = await supabase
       .from('merchants')
@@ -287,8 +288,8 @@ router.put('/store', async (req: AuthRequest, res) => {
       .single();
 
     // store_category may not exist yet (migration 22) — retry without it.
-    if (error && 'store_category' in updates && /store_category|schema cache|42703|PGRST204/i.test(error.message || '')) {
-      const { store_category: _dropped, ...base } = updates;
+    if (error && ('store_category' in updates || 'announcement' in updates) && /store_category|announcement|schema cache|42703|PGRST204/i.test(error.message || '')) {
+      const { store_category: _dropped, announcement: _a, ...base } = updates;
       ({ data: merchant, error } = await supabase
         .from('merchants')
         .update(base)
@@ -324,7 +325,7 @@ router.post('/products', upload.single('image'), async (req: AuthRequest, res) =
   try {
     if (!req.file) return res.status(400).json({ error: 'Image is required' });
     if (!isAllowedImage(req.file)) return res.status(400).json({ error: 'Please upload a JPG, PNG, WebP or GIF image.' });
-    const { title, price, description, category } = req.body;
+    const { title, price, description, category, mrp } = req.body;
     if (!title || !price) return res.status(400).json({ error: 'Title and price are required' });
 
     // specifications arrives as a JSON string from the multipart form.
@@ -377,6 +378,7 @@ router.post('/products', upload.single('image'), async (req: AuthRequest, res) =
       category: category ? String(category).trim().slice(0, 60) : undefined,
       specifications,
       variants: sanitizeVariants(req.body.variants),
+      mrp: mrp ? Math.max(0, Math.round(Number(mrp))) || null : undefined,
     });
 
     if (merchant) {
@@ -393,11 +395,12 @@ router.post('/products', upload.single('image'), async (req: AuthRequest, res) =
 // gracefully if migration 16 hasn't added the column yet.
 router.put('/products/:id', async (req: AuthRequest, res) => {
   try {
-    const { title, price, stock, description, category, specifications } = req.body;
+    const { title, price, stock, description, category, specifications, mrp } = req.body;
 
     const updates: Record<string, any> = {};
     if (title !== undefined) updates.title = title;
     if (price !== undefined) updates.price = price;
+    if (mrp !== undefined) updates.mrp = mrp === '' || mrp === null ? null : Math.max(0, Math.round(Number(mrp)));
     if (description !== undefined) updates.description = String(description).slice(0, 2000);
     if (category !== undefined) updates.category = category ? String(category).trim().slice(0, 60) : null;
     if (specifications !== undefined && Array.isArray(specifications)) {
@@ -425,8 +428,8 @@ router.put('/products/:id', async (req: AuthRequest, res) => {
       .eq('merchant_id', req.merchantId);
 
     // Retry without columns migration 16/17/18 may not have added yet.
-    if (error && /stock|category|specifications|variants|schema cache|42703|PGRST204/i.test(error.message || '')) {
-      const { stock: _s, category: _c, specifications: _sp, variants: _v, ...base } = updates;
+    if (error && /stock|category|specifications|variants|mrp|schema cache|42703|PGRST204/i.test(error.message || '')) {
+      const { stock: _s, category: _c, specifications: _sp, variants: _v, mrp: _m, ...base } = updates;
       ({ error } = await supabase
         .from('products')
         .update(base)
