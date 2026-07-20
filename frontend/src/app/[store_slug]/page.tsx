@@ -115,14 +115,14 @@ export default async function StorePage({ params }: StorePageProps) {
     .eq('store_slug', store_slug)
     .single();
 
-  if (merchantError && /telegram_bot_username|announcement|razorpay_key_id|schema cache|42703/i.test(merchantError.message || '')) {
+  if (merchantError && /telegram_bot_username|announcement|razorpay_key_id|schema cache|42703|42501|permission denied/i.test(merchantError.message || '')) {
     ({ data: merchant, error: merchantError } = await supabase
       .from('merchants')
       .select(`${BASE_COLS}, store_address`)
       .eq('store_slug', store_slug)
       .single());
   }
-  if (merchantError && /store_address|schema cache|42703/i.test(merchantError.message || '')) {
+  if (merchantError && /store_address|schema cache|42703|42501|permission denied/i.test(merchantError.message || '')) {
     ({ data: merchant, error: merchantError } = await supabase
       .from('merchants')
       .select(BASE_COLS)
