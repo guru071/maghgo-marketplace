@@ -168,6 +168,7 @@ export function StoreClient({ merchant, products, rating }: StoreClientProps) {
         sort={sort}
         onSort={setSort}
       />
+      <CategoryTiles products={products} selected={selectedCategory} onSelect={setSelectedCategory} />
       {activeTheme ? (
         <StoreContext.Provider value={{ products: visibleProducts, onAddToCart: handleAddToCart, storeName: merchant.store_name, storeDescription: merchant.store_description }}>
           <Render config={config} data={activeTheme} />
@@ -175,7 +176,6 @@ export function StoreClient({ merchant, products, rating }: StoreClientProps) {
       ) : (
         <>
           <StoreHeader merchant={merchant} />
-          <CategoryTiles products={products} selected={selectedCategory} onSelect={setSelectedCategory} />
           <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
             <ProductGrid products={visibleProducts} onAddToCart={handleAddToCart} selectedCategory="all" onSelectCategory={setSelectedCategory} />
           </main>
