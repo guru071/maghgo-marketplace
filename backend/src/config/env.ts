@@ -61,6 +61,11 @@ const envSchema = z.object({
   WHATSAPP_TEMPLATE_ORDER_UPDATE: z.string().optional(),
   WHATSAPP_TEMPLATE_LANG: z.string().optional(),
 
+  // Telegram bot (optional channel). Both unset → the /webhook/telegram route
+  // rejects everything and the channel is simply off.
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
+
   // Background removal provider: 'removebg' (paid API, default) or 'local'
   // (free on-server AI — needs `npm i @imgly/background-removal-node` and
   // ~2GB RAM; silently falls back to remove.bg if unavailable).

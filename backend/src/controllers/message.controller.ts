@@ -5,6 +5,7 @@ import { processBotMessage, BotMessage } from '../services/bot.service';
 import { getMerchantByDedicatedNumber } from '../services/merchant.service';
 import { getMediaUrl, downloadMedia, sendReply as sendWhatsappReply, sendButtons as sendWhatsappButtons, sendList as sendWhatsappList, sendCtaUrl as sendWhatsappCta, sendImage as sendWhatsappImage } from '../services/whatsapp.service';
 import { sendMetaReply, sendMetaQuickReplies, sendMetaCards, downloadMetaMedia, instagramUserFollows } from '../services/meta.service';
+import { sendTgText, sendTgButtons, sendTgMenu, sendTgCta, sendTgPhoto, downloadTgFile, resolveCallback, answerCallback, telegramConfigured } from '../services/telegram.service';
 
 export function handleIncomingMessage(req: Request, res: Response): void {
   console.log('📬 Webhook received:', JSON.stringify(req.body, null, 2));
@@ -241,4 +242,84 @@ function handleMessenger(body: any) {
       });
     }
   }
+}
+
+
+// ─── Telegram ────────────────────────────────────────────────────────────────
+
+/**
+ * Telegram webhook entry (POST /webhook/telegram). Verified by the secret
+ * header configured in setWebhook. Maps messages, photos and inline-button
+ * taps onto the same channel-agnostic BotMessage every other channel uses.
+ */
+export function handleTelegramUpdate(req: Request, res: Response): void {
+  if (!telegramConfigured() || !env.TELEGRAM_WEBHOOK_SECRET) {
+    res.sendStatus(404);
+    return;
+  }
+  if (req.headers['x-telegram-bot-api-secret-token'] !== env.TELEGRAM_WEBHOOK_SECRET) {
+    res.sendStatus(403);
+    return;
+  }
+  res.sendStatus(200); // ack first, like every other webhook
+
+  const update = req.body;
+  setImmediate(async () => {
+    try {
+      const message = update.message;
+      const callback = update.callback_query;
+      if (!message && !callback) return;
+
+      const chatId = String(callback ? callback.message?.chat?.id : message.chat?.id);
+      if (!chatId || chatId === 'undefined') return;
+
+      if (callback) await answerCallback(callback.id); // stop the button spinner
+
+      // Inline-button taps carry our command id (via the 64-byte token map);
+      // "/start" is Telegram's universal opener — treat it as a greeting.
+      let text: string | undefined = callback
+        ? resolveCallback(String(callback.data ?? ''))
+        : message.text || message.caption;
+      if (text === '/start') text = 'HI';
+
+      const isPhoto = !callback && Array.isArray(message.photo) && message.photo.length > 0;
+
+      const botMsg: BotMessage = {
+        channel: 'telegram',
+        senderId: chatId,
+        messageId: String(callback ? `cbq-${callback.id}` : message.message_id),
+        type: isPhoto ? 'image' : 'text',
+        text: isPhoto ? undefined : text,
+        sendReply: async (t) => { await sendTgText(chatId, t); },
+        sendButtons: async (body, buttons) => { await sendTgButtons(chatId, body, buttons); },
+        sendMenu: async (body, _label, rows, header) => { await sendTgMenu(chatId, body, rows, header); },
+        sendCtaUrl: async (body, buttonText, url) => { await sendTgCta(chatId, body, buttonText, url); },
+        sendCards: async (cards, storeUrl) => {
+          for (const c of cards) {
+            const caption = `*${c.title}*${c.subtitle ? `\n${c.subtitle}` : ''}`;
+            if (c.imageUrl) {
+              await sendTgPhoto(chatId, c.imageUrl, caption, c.actionId ? { id: c.actionId, title: c.actionTitle || 'Select' } : undefined);
+            } else {
+              await sendTgText(chatId, caption);
+            }
+          }
+          if (storeUrl) await sendTgCta(chatId, 'See everything on the web:', '🛍️ View store', storeUrl);
+        },
+      };
+
+      if (isPhoto) {
+        // Telegram sends multiple sizes; the last is the largest.
+        const fileId = message.photo[message.photo.length - 1].file_id;
+        botMsg.image = {
+          caption: message.caption,
+          mime_type: 'image/jpeg',
+          buffer: await downloadTgFile(fileId),
+        };
+      }
+
+      await processBotMessage(botMsg);
+    } catch (err: any) {
+      console.error('❌ Error processing Telegram update:', err?.response?.data || err?.message || err);
+    }
+  });
 }

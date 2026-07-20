@@ -19,6 +19,11 @@ export const siteConfig = {
 } as const;
 
 /** True when the WhatsApp channel is actually configured. */
+export function telegramLink(): string | null {
+  const bot = process.env.NEXT_PUBLIC_TELEGRAM_BOT;
+  return bot ? `https://t.me/${bot.replace(/^@/, '')}` : null;
+}
+
 export const isWhatsappConfigured = Boolean(siteConfig.whatsappNumber);
 
 /**

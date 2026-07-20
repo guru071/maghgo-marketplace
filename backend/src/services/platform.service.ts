@@ -16,6 +16,7 @@ interface PlatformFlags {
   instagram_enabled: boolean;
   messenger_enabled: boolean;
   sms_enabled: boolean;
+  telegram_enabled?: boolean;
 }
 
 const CACHE_TTL_MS = 60 * 1000;
@@ -26,6 +27,7 @@ const FLAG_FOR_CHANNEL: Record<Channel, keyof PlatformFlags> = {
   instagram: 'instagram_enabled',
   messenger: 'messenger_enabled',
   sms: 'sms_enabled',
+  telegram: 'telegram_enabled',
 };
 
 export async function isChannelEnabled(channel: Channel): Promise<boolean> {
@@ -34,7 +36,7 @@ export async function isChannelEnabled(channel: Channel): Promise<boolean> {
     try {
       const { data, error } = await supabase
         .from('platform_settings')
-        .select('whatsapp_enabled, instagram_enabled, messenger_enabled, sms_enabled')
+        .select('*')
         .eq('id', 1)
         .maybeSingle();
       if (error || !data) {

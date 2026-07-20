@@ -49,6 +49,7 @@ export function hasAccess(requiredPlan: string, currentPlan: string): boolean {
 export const CHANNEL_MIN_PLAN: Record<Channel, PlanTier> = {
   whatsapp: 'basic',
   instagram: 'starter',
+  telegram: 'starter',
   messenger: 'pro',
   sms: 'pro',
 };
@@ -56,6 +57,7 @@ export const CHANNEL_MIN_PLAN: Record<Channel, PlanTier> = {
 const CHANNEL_LABEL: Record<Channel, string> = {
   whatsapp: 'WhatsApp',
   instagram: 'Instagram',
+  telegram: 'Telegram',
   messenger: 'Facebook Messenger',
   sms: 'SMS',
 };

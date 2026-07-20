@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Button from '@/components/ui/Button';
 import { MessageCircle, MessageSquare, Camera, X } from 'lucide-react';
-import { whatsappLink, instagramLink, messengerLink, smsLink } from '@/lib/site-config';
+import { whatsappLink, instagramLink, messengerLink, smsLink, telegramLink } from '@/lib/site-config';
 
 export function Pricing({ 
   enabledPlatforms = {
@@ -174,6 +174,23 @@ export function Pricing({
                   <div className="ml-4 text-left">
                     <span className="block font-semibold text-gray-900">Messenger</span>
                     <span className="text-sm text-gray-500">Use Facebook Messenger</span>
+                  </div>
+                </a>
+              )}
+
+              {(enabledPlatforms.telegram_enabled ?? true) && telegramLink() && (
+                <a
+                  href={telegramLink()!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center p-4 rounded-xl border border-gray-200 hover:border-sky-500 hover:bg-sky-50 transition-all group"
+                >
+                  <div className="w-12 h-12 flex items-center justify-center rounded-full bg-sky-100 text-sky-600 group-hover:bg-sky-500 group-hover:text-white transition-colors">
+                    <MessageCircle size={24} />
+                  </div>
+                  <div className="ml-4 text-left">
+                    <span className="block font-semibold text-gray-900">Telegram</span>
+                    <span className="text-sm text-gray-500">Fast, free, no phone needed</span>
                   </div>
                 </a>
               )}

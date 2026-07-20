@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button';
 export default function SettingsPage() {
   const [settings, setSettings] = useState({
     whatsapp_enabled: true,
+    telegram_enabled: true,
     instagram_enabled: true,
     messenger_enabled: true,
     sms_enabled: true,
@@ -20,6 +21,7 @@ export default function SettingsPage() {
     getPlatformSettings().then(data => {
       setSettings({
         whatsapp_enabled: data.whatsapp_enabled,
+        telegram_enabled: data.telegram_enabled ?? true,
         instagram_enabled: data.instagram_enabled,
         messenger_enabled: data.messenger_enabled,
         sms_enabled: data.sms_enabled,
@@ -102,6 +104,22 @@ export default function SettingsPage() {
             <Toggle 
               checked={settings.whatsapp_enabled} 
               onChange={v => setSettings(s => ({ ...s, whatsapp_enabled: v }))} 
+            />
+          </div>
+
+          <div className="flex items-center justify-between p-6 hover:bg-gray-50 transition-colors">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center">
+                <MessageCircle size={20} />
+              </div>
+              <div>
+                <h3 className="font-medium text-gray-900">Telegram</h3>
+                <p className="text-sm text-gray-500">Allow users to build stores via Telegram</p>
+              </div>
+            </div>
+            <Toggle 
+              checked={settings.telegram_enabled ?? true} 
+              onChange={v => setSettings(s => ({ ...s, telegram_enabled: v }))} 
             />
           </div>
 

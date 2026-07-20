@@ -3,7 +3,7 @@ import { Merchant } from '../types/whatsapp';
 import { normalizePhone } from '../utils/phone';
 import { hasAccess } from '../utils/plans';
 
-export type Channel = 'whatsapp' | 'instagram' | 'messenger' | 'sms';
+export type Channel = 'whatsapp' | 'instagram' | 'messenger' | 'sms' | 'telegram';
 
 /**
  * Resolve the lookup column and the canonical value for a channel.
@@ -14,6 +14,7 @@ export type Channel = 'whatsapp' | 'instagram' | 'messenger' | 'sms';
 function channelLookup(channel: Channel, senderId: string): { column: string; value: string } {
   if (channel === 'instagram') return { column: 'instagram_id', value: senderId };
   if (channel === 'messenger') return { column: 'messenger_id', value: senderId };
+  if (channel === 'telegram') return { column: 'telegram_id', value: senderId };
   return { column: 'phone_number', value: normalizePhone(senderId) };
 }
 
@@ -73,6 +74,7 @@ export async function createMerchant(
   if (channel === 'whatsapp' || channel === 'sms') insertData.phone_number = normalizePhone(senderId);
   if (channel === 'instagram') insertData.instagram_id = senderId;
   if (channel === 'messenger') insertData.messenger_id = senderId;
+  if (channel === 'telegram') insertData.telegram_id = senderId;
 
   const { data, error } = await supabase
     .from('merchants')
@@ -207,6 +209,7 @@ export async function linkChannelToMerchant(
   let updateData: any = {};
   if (newChannel === 'instagram') updateData.instagram_id = newSenderId;
   if (newChannel === 'messenger') updateData.messenger_id = newSenderId;
+  if (newChannel === 'telegram') updateData.telegram_id = newSenderId;
   if (newChannel === 'whatsapp' || newChannel === 'sms') updateData.phone_number = normalizePhone(newSenderId);
 
   // Clear the link code after successful linking for security
