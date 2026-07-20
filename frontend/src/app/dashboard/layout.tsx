@@ -5,6 +5,7 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { whatsappLink, instagramLink, messengerLink, smsLink } from '@/lib/site-config';
+import { getSubscriptionStatus } from '@/lib/subscription';
 import { hasAccess } from '@/lib/plans';
 
 // Nothing is "coming soon" any more — Custom Domain and Support are both real
@@ -19,6 +20,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [merchantPlan, setMerchantPlan] = useState<string>('starter');
   const [storeSlug, setStoreSlug] = useState<string>('');
+  const [subEndsAt, setSubEndsAt] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
   // Upgrade Modal State
@@ -54,6 +56,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
           const data = await res.json();
           setMerchantPlan(data.subscription_plan || 'starter');
           setStoreSlug(data.store_slug || '');
+          setSubEndsAt(data.subscription_ends_at || null);
           setIsAuthorized(true);
         } else {
           setIsAuthorized(false);
@@ -175,6 +178,20 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
           <span className="text-xs font-bold bg-accent/10 text-accent px-2 py-1 rounded-full uppercase tracking-wider mt-1 inline-block">
             {merchantPlan} Plan
           </span>
+          {(() => {
+            const st = getSubscriptionStatus({ subscription_plan: merchantPlan, subscription_ends_at: subEndsAt });
+            if (!subEndsAt || !st.hasPlan) return null;
+            return (
+              <Link
+                href="/dashboard/billing"
+                className={`block mt-2 text-[11px] font-medium hover:underline ${st.expired ? 'text-red-600' : st.expiringSoon ? 'text-amber-600' : 'text-gray-400'}`}
+              >
+                {st.expired
+                  ? `Expired ${st.endsAtLabel}`
+                  : `${st.daysLeft} day${st.daysLeft === 1 ? '' : 's'} left · ${st.endsAtLabel}`}
+              </Link>
+            );
+          })()}
         </div>
         <nav className="mt-4 px-4 space-y-1 flex-1">
           <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-4 px-4">Core</div>
@@ -272,6 +289,36 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
       {/* Main Content */}
       <main className="flex-1 p-8 overflow-y-auto">
+        {(() => {
+          const st = getSubscriptionStatus({ subscription_plan: merchantPlan, subscription_ends_at: subEndsAt });
+          if (!subEndsAt || !st.hasPlan || (!st.expired && !st.expiringSoon)) return null;
+          return (
+            <div
+              className={`mb-6 rounded-xl border px-5 py-4 flex flex-wrap items-center justify-between gap-3 ${
+                st.expired ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'
+              }`}
+            >
+              <div className={`text-sm ${st.expired ? 'text-red-800' : 'text-amber-900'}`}>
+                <strong className="font-bold">
+                  {st.expired
+                    ? `Your ${merchantPlan.toUpperCase()} plan expired on ${st.endsAtLabel}.`
+                    : `Your ${merchantPlan.toUpperCase()} plan ends in ${st.daysLeft} day${st.daysLeft === 1 ? '' : 's'}, on ${st.endsAtLabel}.`}
+                </strong>{' '}
+                {st.expired
+                  ? 'Your storefront is offline — your products and orders are all safe and come back the moment you renew.'
+                  : 'Renew to keep your storefront online.'}
+              </div>
+              <Link
+                href="/dashboard/billing"
+                className={`text-sm font-bold px-4 py-2 rounded-lg text-white whitespace-nowrap ${
+                  st.expired ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'
+                }`}
+              >
+                {st.expired ? 'Renew now' : 'Renew'}
+              </Link>
+            </div>
+          );
+        })()}
         {children}
       </main>
 

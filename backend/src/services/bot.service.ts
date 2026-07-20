@@ -1,4 +1,4 @@
-import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, updateStoreAddress, updateStoreLogo, updateStoreCategory, updateAnnouncement, updateBotLanguage, setCustomDomain, toggleStoreStatus, updateMerchantSocial, listThemes, applyThemeById, hasRazorpayKeys, setRazorpayKeys, clearRazorpayKeys, setShopTelegramBot, clearShopTelegramBot, Channel } from './merchant.service';
+import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, updateStoreAddress, updateStoreLogo, getSubscriptionStatus, updateStoreCategory, updateAnnouncement, updateBotLanguage, setCustomDomain, toggleStoreStatus, updateMerchantSocial, listThemes, applyThemeById, hasRazorpayKeys, setRazorpayKeys, clearRazorpayKeys, setShopTelegramBot, clearShopTelegramBot, Channel } from './merchant.service';
 import { encryptSecret, decryptSecret } from '../utils/crypto';
 import { parseCaption } from './parser.service';
 import { removeBackground } from './media.service';
@@ -134,7 +134,7 @@ async function replyMenu(
 }
 
 // The main GUI menu — a tappable list mapping to existing commands.
-async function sendMainMenu(msg: BotMessage, merchant?: { store_name?: string; subscription_plan?: string }): Promise<void> {
+async function sendMainMenu(msg: BotMessage, merchant?: { store_name?: string; subscription_plan?: string; subscription_ends_at?: string }): Promise<void> {
   const plan = merchant?.subscription_plan ?? 'basic';
   // Locked rows stay visible with a 🔒 so the merchant can SEE what upgrading
   // unlocks — tapping one gets the friendly upgrade prompt, never the feature.
@@ -145,7 +145,16 @@ async function sendMainMenu(msg: BotMessage, merchant?: { store_name?: string; s
 
   await replyMenu(
     msg,
-    merchant?.store_name ? `What would you like to do for *${merchant.store_name}*?` : 'What would you like to do?',
+    // A plan about to lapse is worth one line at the top of every menu — the
+    // merchant otherwise finds out when their storefront goes dark.
+    (merchant?.store_name ? `What would you like to do for *${merchant.store_name}*?` : 'What would you like to do?') +
+      (() => {
+        if (!merchant?.subscription_ends_at) return '';
+        const st = getSubscriptionStatus(merchant);
+        if (st.expired) return `\n\n🔴 Your ${st.plan.toUpperCase()} plan expired on ${st.endsAtLabel} — tap *My plan* to renew.`;
+        if (st.expiringSoon) return `\n\n🟠 Your ${st.plan.toUpperCase()} plan ends in ${st.daysLeft} day(s), on ${st.endsAtLabel}.`;
+        return '';
+      })(),
     '📋 Open menu',
     [
       { id: 'LIST', title: '📦 My products', description: 'See everything in your store' },
@@ -154,7 +163,7 @@ async function sendMainMenu(msg: BotMessage, merchant?: { store_name?: string; s
       { id: 'SALES', title: '📊 Sales snapshot', description: 'Revenue & best seller' },
       { id: 'COUPONS', ...lock('coupons', '🏷️ Coupons', 'Discount codes for customers') },
       { id: 'THEMES', ...lock('premium_themes', '🎨 Change theme', 'Restyle your storefront') },
-      { id: 'UPGRADE', title: '🚀 Upgrade plan', description: 'See all plans' },
+      { id: 'MYPLAN', title: '💳 My plan', description: 'Expiry, days left & renew' },
       { id: 'LOGIN', title: '🔐 Web dashboard', description: 'Manage on the web' },
       { id: 'PAUSE', title: '⏸️ Pause store', description: 'Temporarily go offline' },
       { id: 'MORE', title: '⚙️ More tools', description: 'Address, Meta import, QR…' },
@@ -1300,15 +1309,61 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     return;
   }
 
-  if (!isSubscriptionActive(merchant) && command !== 'HELP' && command !== 'STATUS') {
+  const PLAN_CMDS = new Set(['MYPLAN', 'MY PLAN', 'PLAN', 'SUBSCRIPTION', 'EXPIRY', 'RENEW', 'BILLING']);
+  if (!isSubscriptionActive(merchant) && command !== 'HELP' && command !== 'STATUS' && !PLAN_CMDS.has(command)) {
     if (merchant.subscription_plan === 'inactive') {
       await sendReply(`⚠️ *Store Inactive!*\n\nYour store is reserved but not yet active. Please reply with "UPGRADE" to select your plan and complete your payment.`);
     } else {
       await sendPaymentOptions(
         msg,
         merchant.subscription_plan,
-        `⚠️ *Subscription Expired!*\n\nYour subscription has ended. To continue using Maghgo commands and reactivate your store, please renew your plan:`
+        `⚠️ *Subscription Expired!*\n\nYour *${merchant.subscription_plan.toUpperCase()}* plan ended on *${getSubscriptionStatus(merchant).endsAtLabel}* (${Math.abs(getSubscriptionStatus(merchant).daysLeft)} day(s) ago).\n\nYour storefront is offline until you renew. Everything — products, orders, theme — is safe and comes straight back.\n\nRenew your plan:`
       );
+    }
+    return;
+  }
+
+  // ── Plan & expiry ──────────────────────────────────────────────────────────
+  // Reachable even when expired (see PLAN_CMDS above): a merchant whose plan has
+  // lapsed is exactly the person who needs to see the date.
+  if (PLAN_CMDS.has(command)) {
+    const st = getSubscriptionStatus(merchant);
+    const [count, limit] = await Promise.all([
+      getProductCount(merchant.id),
+      getProductLimit(merchant.subscription_plan),
+    ]);
+
+    let headline: string;
+    if (st.plan === 'inactive') {
+      headline = `⚠️ *No active plan*\n\nYour store *${merchant.store_name}* is reserved but not live yet. Pick a plan to switch it on.`;
+    } else if (st.expired) {
+      headline =
+        `🔴 *Your ${st.plan.toUpperCase()} plan has expired*\n\n` +
+        `📅 Ended: *${st.endsAtLabel}* (${Math.abs(st.daysLeft)} day(s) ago)\n` +
+        `🏪 ${merchant.store_name} — storefront is *offline*\n` +
+        `📦 Products: ${count}${limit ? ` / ${limit}` : ''} (all safe)\n\n` +
+        `Renew and your store is back instantly.`;
+    } else {
+      const bar = st.expiringSoon ? '🟠' : '🟢';
+      headline =
+        `${bar} *Your plan: ${st.plan.toUpperCase()}*\n\n` +
+        `📅 Renews/expires: *${st.endsAtLabel}*\n` +
+        `⏳ *${st.daysLeft} day(s) left*\n` +
+        `🏪 ${merchant.store_name} — storefront is *live*\n` +
+        `📦 Products: ${count}${limit ? ` / ${limit}` : ''}\n` +
+        (st.expiringSoon
+          ? `\n⚠️ Renew soon — when a plan lapses your storefront goes offline until it's paid.`
+          : '');
+    }
+
+    if (st.expired || st.plan === 'inactive') {
+      await sendPaymentOptions(msg, st.plan === 'inactive' ? 'basic' : st.plan, headline);
+    } else {
+      await replyButtons(msg, headline, [
+        { id: `UPGRADE ${st.plan}`, title: '🔄 Renew now' },
+        { id: 'UPGRADE', title: '🚀 Change plan' },
+        { id: 'MENU', title: '📋 Menu' },
+      ]);
     }
     return;
   }
@@ -1699,12 +1754,20 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     const storeUrl = `${env.FRONTEND_URL}/${merchant.store_slug}`;
     await replyCta(
       msg,
-      `📊 *Store Status*\n\n🏪 *${merchant.store_name}*\n📦 Products: ${count}\n${count === 0 ? '\nSend a product photo to add your first one!' : ''}`,
+      `📊 *Store Status*\n\n🏪 *${merchant.store_name}*\n📦 Products: ${count}\n` +
+      (() => {
+        const st = getSubscriptionStatus(merchant);
+        if (st.plan === 'inactive') return `💳 Plan: *none yet* — reply MYPLAN\n`;
+        return st.expired
+          ? `💳 Plan: *${st.plan.toUpperCase()}* — 🔴 expired ${st.endsAtLabel}\n`
+          : `💳 Plan: *${st.plan.toUpperCase()}* — ${st.expiringSoon ? '🟠' : '🟢'} ${st.daysLeft} day(s) left (till ${st.endsAtLabel})\n`;
+      })() +
+      `${count === 0 ? '\nSend a product photo to add your first one!' : ''}`,
       '🛍️ View my store',
       storeUrl
     );
     await replyButtons(msg, 'Anything else?', [
-      { id: 'LIST', title: '📦 My products' },
+      { id: 'MYPLAN', title: '💳 My plan' },
       { id: 'ADD', title: '➕ Add product' },
       { id: 'MENU', title: '📋 Menu' },
     ]);
@@ -2200,6 +2263,7 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
       `• SALES — full analytics · COUPONS — discounts\n` +
       `• COUPON CREATE DIWALI20 20% [MIN 999]\n` +
       `• PAYMENTS — connect YOUR Razorpay\n` +
+      `• MYPLAN — plan, expiry date & days left\n` +
       `• UPGRADE — see all plans\n\n` +
       `*🏪 Store*\n` +
       `• THEMES — 60+ designs · QR — printable code\n` +

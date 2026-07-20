@@ -127,6 +127,51 @@ export function isSubscriptionActive(merchant: Merchant): boolean {
   return subEnds > new Date();
 }
 
+/**
+ * How the merchant's subscription stands right now, in the shape the bot and
+ * dashboard both want to show it. Merchants had no way to see this anywhere —
+ * the expiry date existed only in the admin panel, so the first sign a plan had
+ * lapsed was the store going dark.
+ *
+ * `daysLeft` is calendar days, rounded up: an expiry later today reads as
+ * "1 day left", not "0".
+ */
+export interface SubscriptionStatus {
+  plan: string;
+  endsAt: Date | null;
+  daysLeft: number;      // negative once expired
+  expired: boolean;
+  expiringSoon: boolean; // 7 days or fewer remaining
+  endsAtLabel: string;   // e.g. "3 Aug 2026"
+}
+
+export function getSubscriptionStatus(merchant: {
+  subscription_plan?: string | null;
+  subscription_ends_at?: string | null;
+}): SubscriptionStatus {
+  const plan = merchant.subscription_plan || 'inactive';
+  const raw = merchant.subscription_ends_at;
+  const endsAt = raw ? new Date(raw) : null;
+  const valid = endsAt && !isNaN(endsAt.getTime());
+
+  if (!valid) {
+    return { plan, endsAt: null, daysLeft: 0, expired: true, expiringSoon: true, endsAtLabel: '—' };
+  }
+
+  const msLeft = endsAt!.getTime() - Date.now();
+  const daysLeft = Math.ceil(msLeft / (24 * 60 * 60 * 1000));
+  const expired = plan === 'inactive' || msLeft <= 0;
+
+  return {
+    plan,
+    endsAt: endsAt!,
+    daysLeft,
+    expired,
+    expiringSoon: !expired && daysLeft <= 7,
+    endsAtLabel: endsAt!.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+  };
+}
+
 export async function reactivateSubscription(
   channel: Channel,
   senderId: string, 

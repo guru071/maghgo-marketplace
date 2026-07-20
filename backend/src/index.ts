@@ -32,6 +32,7 @@ process.on('uncaughtException', (error) => {
 import { startCleanupJob } from './jobs/cleanup.job';
 import { startDigestJob } from './jobs/digest.job';
 import { startMetaSyncJob } from './jobs/metaSync.job';
+import { startExpiryJob } from './jobs/expiry.job';
 
 const app = express();
 
@@ -58,6 +59,7 @@ if (env.SENTRY_DSN) {
 startCleanupJob();
 startDigestJob();
 startMetaSyncJob();
+startExpiryJob();
 
 // ─── Middleware ──────────────────────────────────────────────────────────────
 
