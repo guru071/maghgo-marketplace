@@ -280,7 +280,11 @@ export function handleTelegramUpdate(req: Request, res: Response): void {
       let text: string | undefined = callback
         ? resolveCallback(String(callback.data ?? ''))
         : message.text || message.caption;
-      if (text === '/start') text = 'HI';
+      // Telegram slash-commands (/start, /register, /add…) map onto our plain
+      // command vocabulary; /start is the universal opener → greeting.
+      if (text?.startsWith('/')) {
+        text = text === '/start' ? 'HI' : text.slice(1).split('@')[0];
+      }
 
       const isPhoto = !callback && Array.isArray(message.photo) && message.photo.length > 0;
 
