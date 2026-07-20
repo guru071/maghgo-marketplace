@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { env } from '../config/env';
 import { WhatsAppWebhookPayload } from '../types/whatsapp';
 import { processBotMessage, BotMessage } from '../services/bot.service';
+import { getMerchantByDedicatedNumber } from '../services/merchant.service';
 import { getMediaUrl, downloadMedia, sendReply as sendWhatsappReply, sendButtons as sendWhatsappButtons, sendList as sendWhatsappList, sendCtaUrl as sendWhatsappCta, sendImage as sendWhatsappImage } from '../services/whatsapp.service';
 import { sendMetaReply, sendMetaQuickReplies, sendMetaCards, downloadMetaMedia, instagramUserFollows } from '../services/meta.service';
 
@@ -26,6 +27,12 @@ function handleWhatsapp(body: WhatsAppWebhookPayload) {
       const messages = change.value.messages;
       if (!messages || messages.length === 0) continue;
 
+      // Which of OUR numbers received this? The platform's shared number, or a
+      // shop's dedicated one (migration 24). Replies must leave from the same
+      // number the customer wrote to.
+      const receivedOn = (change.value as any).metadata?.phone_number_id as string | undefined;
+      const fromId = receivedOn && receivedOn !== env.WHATSAPP_PHONE_NUMBER_ID ? receivedOn : undefined;
+
       for (const message of messages) {
         setImmediate(async () => {
           try {
@@ -35,29 +42,37 @@ function handleWhatsapp(body: WhatsAppWebhookPayload) {
               (message as any).interactive?.button_reply?.id ||
               (message as any).interactive?.list_reply?.id;
 
+            // On a dedicated number, non-owners are auto-scoped to that store.
+            let dedicatedStoreSlug: string | undefined;
+            if (fromId) {
+              const shop = await getMerchantByDedicatedNumber(fromId);
+              if (shop) dedicatedStoreSlug = shop.store_slug;
+            }
+
             const botMsg: BotMessage = {
               channel: 'whatsapp',
               senderId: message.from,
               messageId: message.id,
               type: message.type === 'image' ? 'image' : 'text',
               text: interactiveId || message.text?.body,
+              dedicatedStoreSlug,
               sendReply: async (text: string) => {
-                await sendWhatsappReply(message.from, message.id, text);
+                await sendWhatsappReply(message.from, message.id, text, fromId);
               },
               sendButtons: async (body, buttons) => {
-                await sendWhatsappButtons(message.from, body, buttons);
+                await sendWhatsappButtons(message.from, body, buttons, fromId);
               },
               sendMenu: async (body, buttonLabel, rows, header) => {
-                await sendWhatsappList(message.from, body, buttonLabel, rows, header);
+                await sendWhatsappList(message.from, body, buttonLabel, rows, header, fromId);
               },
               sendCtaUrl: async (body, buttonText, url) => {
-                await sendWhatsappCta(message.from, body, buttonText, url);
+                await sendWhatsappCta(message.from, body, buttonText, url, fromId);
               },
               // WhatsApp has no carousel: render each card as an image + caption.
               sendCards: async (cards) => {
                 for (const c of cards) {
-                  if (c.imageUrl) await sendWhatsappImage(message.from, c.imageUrl, `*${c.title}*${c.subtitle ? `\n${c.subtitle}` : ''}`);
-                  else await sendWhatsappReply(message.from, message.id, `*${c.title}*${c.subtitle ? `\n${c.subtitle}` : ''}`);
+                  if (c.imageUrl) await sendWhatsappImage(message.from, c.imageUrl, `*${c.title}*${c.subtitle ? `\n${c.subtitle}` : ''}`, fromId);
+                  else await sendWhatsappReply(message.from, message.id, `*${c.title}*${c.subtitle ? `\n${c.subtitle}` : ''}`, fromId);
                 }
               },
             };

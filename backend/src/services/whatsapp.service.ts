@@ -128,10 +128,11 @@ export async function sendNotification(to: string, text: string): Promise<void> 
 export async function sendReply(
   to: string,
   messageId: string,
-  text: string
+  text: string,
+  fromId?: string
 ): Promise<void> {
   await axios.post(
-    `${GRAPH_API}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+    `${GRAPH_API}/${fromId || env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
     {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
@@ -152,8 +153,8 @@ export async function sendReply(
 
 // ─── Interactive (GUI) messages ──────────────────────────────────────────────
 
-async function postMessage(payload: any): Promise<void> {
-  await axios.post(`${GRAPH_API}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`, payload, {
+async function postMessage(payload: any, fromId?: string): Promise<void> {
+  await axios.post(`${GRAPH_API}/${fromId || env.WHATSAPP_PHONE_NUMBER_ID}/messages`, payload, {
     headers: { Authorization: `Bearer ${env.WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
     timeout: HTTP_TIMEOUT_MS,
   });
@@ -169,7 +170,7 @@ export interface ReplyButton {
  * WhatsApp sends its `id` back as interactive.button_reply.id, which the
  * controller feeds to the bot exactly like a typed command.
  */
-export async function sendButtons(to: string, body: string, buttons: ReplyButton[]): Promise<void> {
+export async function sendButtons(to: string, body: string, buttons: ReplyButton[], fromId?: string): Promise<void> {
   await postMessage({
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -185,14 +186,14 @@ export async function sendButtons(to: string, body: string, buttons: ReplyButton
         })),
       },
     },
-  });
+  }, fromId);
 }
 
 /**
  * A single "call to action" URL button under a message — e.g. "🛍️ View store".
  * The modern way to surface a link instead of pasting a raw URL in text.
  */
-export async function sendCtaUrl(to: string, body: string, buttonText: string, url: string): Promise<void> {
+export async function sendCtaUrl(to: string, body: string, buttonText: string, url: string, fromId?: string): Promise<void> {
   await postMessage({
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -203,18 +204,18 @@ export async function sendCtaUrl(to: string, body: string, buttonText: string, u
       body: { text: body.slice(0, 1024) },
       action: { name: 'cta_url', parameters: { display_text: buttonText.slice(0, 20), url } },
     },
-  });
+  }, fromId);
 }
 
 /** A plain image with a caption — used to render product cards. */
-export async function sendImage(to: string, imageUrl: string, caption?: string): Promise<void> {
+export async function sendImage(to: string, imageUrl: string, caption?: string, fromId?: string): Promise<void> {
   await postMessage({
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
     to,
     type: 'image',
     image: { link: imageUrl, ...(caption ? { caption: caption.slice(0, 1024) } : {}) },
-  });
+  }, fromId);
 }
 
 /**
@@ -226,6 +227,8 @@ export async function sendImageButtons(
   imageUrl: string,
   body: string,
   buttons: ReplyButton[]
+,
+  fromId?: string
 ): Promise<void> {
   await postMessage({
     messaging_product: 'whatsapp',
@@ -240,7 +243,7 @@ export async function sendImageButtons(
         buttons: buttons.slice(0, 3).map((b) => ({ type: 'reply', reply: { id: b.id, title: b.title.slice(0, 20) } })),
       },
     },
-  });
+  }, fromId);
 }
 
 export interface ListRow {
@@ -259,6 +262,8 @@ export async function sendList(
   buttonLabel: string,
   rows: ListRow[],
   header?: string
+,
+  fromId?: string
 ): Promise<void> {
   await postMessage({
     messaging_product: 'whatsapp',
@@ -283,5 +288,5 @@ export async function sendList(
         ],
       },
     },
-  });
+  }, fromId);
 }

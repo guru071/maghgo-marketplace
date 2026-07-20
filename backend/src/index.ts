@@ -31,6 +31,7 @@ process.on('uncaughtException', (error) => {
 
 import { startCleanupJob } from './jobs/cleanup.job';
 import { startDigestJob } from './jobs/digest.job';
+import { startMetaSyncJob } from './jobs/metaSync.job';
 
 const app = express();
 
@@ -56,6 +57,7 @@ if (env.SENTRY_DSN) {
 // Initialize the daily cleanup cron job
 startCleanupJob();
 startDigestJob();
+startMetaSyncJob();
 
 // ─── Middleware ──────────────────────────────────────────────────────────────
 

@@ -40,6 +40,20 @@ const badge = (t: Theme) => {
  * shows their photo, not the theme's stock one. Deep-cloned so switching themes
  * never mutates the source config. An empty url leaves the theme's own image.
  */
+/**
+ * Owner's background-effect override: '' keeps the theme's own effect,
+ * 'none' removes it, otherwise forces orbs/aurora/particles on ANY theme.
+ */
+function withEffect(config: any, effect: string) {
+  if (!effect) return config;
+  const c = JSON.parse(JSON.stringify(config));
+  c.root = c.root || { props: {} };
+  c.root.props = c.root.props || {};
+  if (effect === 'none') delete c.root.props.bgEffect;
+  else c.root.props.bgEffect = effect;
+  return c;
+}
+
 function withCover(config: any, url: string) {
   const clone = JSON.parse(JSON.stringify(config));
   if (!url || !Array.isArray(clone.content)) return clone;
@@ -68,6 +82,7 @@ export default function ThemesPage() {
   const [query, setQuery] = useState('');
   const [cover, setCover] = useState('');
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [effect, setEffect] = useState('');
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
@@ -98,7 +113,7 @@ export default function ThemesPage() {
 
   const preview = (t: Theme) => {
     setActive(t.id);
-    iframeRef.current?.contentWindow?.postMessage({ type: 'MAGHGO_PREVIEW_THEME', theme: withCover(toPuck(t.config), cover) }, '*');
+    iframeRef.current?.contentWindow?.postMessage({ type: 'MAGHGO_PREVIEW_THEME', theme: withEffect(withCover(toPuck(t.config), cover), effect) }, '*');
   };
 
   const apply = async (t: Theme) => {
@@ -111,7 +126,7 @@ export default function ThemesPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         // theme_id lets the server verify this theme's plan requirement —
         // the disabled button above is UI, not enforcement.
-        body: JSON.stringify({ theme_config: withCover(toPuck(t.config), cover), theme_id: t.id }),
+        body: JSON.stringify({ theme_config: withEffect(withCover(toPuck(t.config), cover), effect), theme_id: t.id }),
       });
       if (!res.ok) throw new Error((await res.json()).error || 'Failed');
       alert(`"${t.name}" applied. Your storefront is updated.`);
@@ -182,6 +197,22 @@ export default function ThemesPage() {
               <button onClick={() => setCover('')} className="text-xs font-medium text-gray-500 hover:text-red-600 px-2">Clear</button>
             )}
           </div>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-xl p-3">
+          <label className="block text-xs font-bold text-gray-700 mb-1">✨ Background animation</label>
+          <p className="text-[11px] text-gray-500 mb-2">Add moving orbs, an aurora glow or floating particles behind ANY theme — or turn a theme&apos;s own effect off. Saved when you apply.</p>
+          <select
+            value={effect}
+            onChange={(e) => setEffect(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value="">Theme default</option>
+            <option value="none">None (no animation)</option>
+            <option value="orbs">🫧 Drifting orbs</option>
+            <option value="aurora">🌌 Aurora glow</option>
+            <option value="particles">✨ Floating particles</option>
+          </select>
         </div>
 
         <div className="flex gap-2 items-center sticky top-0 bg-gray-50 py-2 z-10">

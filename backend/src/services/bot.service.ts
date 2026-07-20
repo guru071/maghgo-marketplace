@@ -31,6 +31,9 @@ export interface BotMessage {
     buffer: Buffer;
     mime_type: string;
   };
+  // Set when the message arrived on a shop's DEDICATED WhatsApp number
+  // (migration 24): customers are auto-scoped to that store, no "SHOP <name>".
+  dedicatedStoreSlug?: string;
   sendReply: (text: string) => Promise<void>;
   // Optional richer senders — implemented for WhatsApp, absent elsewhere. The
   // bot always calls them through replyButtons/replyMenu, which fall back to a
@@ -359,6 +362,16 @@ export async function processBotMessage(msg: BotMessage): Promise<void> {
       }
       await handleImageMessage(msg);
     } else if (msg.type === 'text' && msg.text) {
+      // Dedicated store number: any non-owner texting it is a CUSTOMER of that
+      // one store — open their shopping session automatically.
+      if (msg.dedicatedStoreSlug && !hasSession(msg) && !isShopTrigger(msg.text)) {
+        const owner = await getMerchantByChannel(channel, senderId);
+        if (!owner || owner.store_slug !== msg.dedicatedStoreSlug) {
+          const handled = await handleShopperMessage(msg, `SHOP ${msg.dedicatedStoreSlug}`);
+          if (handled) return;
+        }
+      }
+
       // Customer shopping takes precedence: if they're mid-session or starting
       // one ("SHOP <store>"), handle it as a shopper, not a merchant command.
       if (isShopTrigger(msg.text) || hasSession(msg)) {

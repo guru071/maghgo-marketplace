@@ -326,6 +326,25 @@ export async function setCustomDomain(merchantId: string, raw: string | null): P
   return domain;
 }
 
+/**
+ * Find the shop that owns a dedicated WhatsApp number (migration 24). Returns
+ * null pre-migration or when the number id isn't claimed — the message then
+ * flows through the shared-bot logic unchanged.
+ */
+export async function getMerchantByDedicatedNumber(phoneNumberId: string): Promise<Merchant | null> {
+  try {
+    const { data, error } = await supabase
+      .from('merchants')
+      .select('*')
+      .eq('whatsapp_phone_number_id', phoneNumberId)
+      .maybeSingle();
+    if (error) return null; // column missing pre-migration → shared bot
+    return (data as Merchant) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Set the shopper-facing bot language ('en' | 'ta' | 'hi'). Graceful pre-migration 23. */
 export async function updateBotLanguage(merchantId: string, lang: 'en' | 'ta' | 'hi'): Promise<void> {
   const { error } = await supabase
