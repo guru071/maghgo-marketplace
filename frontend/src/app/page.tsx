@@ -78,9 +78,9 @@ export default async function LandingPage() {
   }));
 
   return (
-    <main className="landing-page">
+    <main className={`landing-page${activeOffer ? ' landing-page--offer' : ''}`}>
       {activeOffer && (
-        <div className="bg-indigo-600 text-white p-3 text-center w-full z-50 sticky top-0 shadow-md flex items-center justify-center gap-4">
+        <div className="bg-indigo-600 text-white text-center w-full shadow-md flex items-center justify-center gap-4 flex-wrap" style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 120, padding: '0.7rem 1rem', minHeight: 52 }}>
           <div>
             <span className="font-bold mr-2 text-lg">{activeOffer.title}</span>
             <span className="text-indigo-100">{activeOffer.subtitle}</span>
@@ -98,7 +98,7 @@ export default async function LandingPage() {
       <HowItWorks />
       <Marketplace shops={liveShops} />
       <ThemesShowcase />
-      <Pricing enabledPlatforms={enabledPlatforms} plans={publicPlans} />
+      <Pricing enabledPlatforms={enabledPlatforms} plans={publicPlans} discountPercent={Number(activeOffer?.discount_percent) || 0} />
       
       <footer className="footer">
         <div className="footer__container">

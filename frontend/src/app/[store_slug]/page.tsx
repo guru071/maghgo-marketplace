@@ -111,11 +111,11 @@ export default async function StorePage({ params }: StorePageProps) {
   // a store never 500s because one migration hasn't run yet.
   let { data: merchant, error: merchantError } = await supabase
     .from('merchants')
-    .select(`${BASE_COLS}, store_address, telegram_bot_username, announcement`)
+    .select(`${BASE_COLS}, store_address, telegram_bot_username, announcement, razorpay_key_id`)
     .eq('store_slug', store_slug)
     .single();
 
-  if (merchantError && /telegram_bot_username|announcement|schema cache|42703/i.test(merchantError.message || '')) {
+  if (merchantError && /telegram_bot_username|announcement|razorpay_key_id|schema cache|42703/i.test(merchantError.message || '')) {
     ({ data: merchant, error: merchantError } = await supabase
       .from('merchants')
       .select(`${BASE_COLS}, store_address`)
@@ -195,5 +195,11 @@ export default async function StorePage({ params }: StorePageProps) {
     }
   } catch { /* no rating */ }
 
-  return <StoreClient merchant={merchant} products={products || []} rating={rating} />;
+  // Online payment is only offered when THIS shop has connected its own
+  // Razorpay — otherwise the button would promise a checkout that can't happen.
+  // Strip the key id: the storefront only needs the boolean.
+  const paymentsEnabled = Boolean((merchant as any).razorpay_key_id);
+  const { razorpay_key_id: _hidden, ...safeMerchant } = merchant as any;
+
+  return <StoreClient merchant={safeMerchant} products={products || []} rating={rating} paymentsEnabled={paymentsEnabled} />;
 }

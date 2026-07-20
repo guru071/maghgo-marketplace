@@ -8,6 +8,10 @@ import { createPaymentLink } from '../services/payment.service';
 import { listCoupons, createCoupon, deleteCoupon } from '../services/coupon.service';
 import { encryptSecret } from '../utils/crypto';
 import { connectMetaCatalog, importMetaCatalog, disconnectMetaCatalog } from '../services/metaCatalog.service';
+import { validateBotToken, setShopWebhook, deleteShopWebhook } from '../services/telegram.service';
+import { setShopTelegramBot, clearShopTelegramBot } from '../services/merchant.service';
+import { decryptSecret } from '../utils/crypto';
+import { env } from '../config/env';
 
 // Normalise buyer-selectable options: [{name, values:[...]}], trimmed & capped.
 function sanitizeVariants(raw: any): { name: string; values: string[] }[] | undefined {
@@ -129,7 +133,18 @@ router.get('/store', async (req: AuthRequest, res) => {
       meta_catalog_last_sync = mc?.meta_catalog_last_sync ?? null;
     } catch { /* pre-migration 20 → not connected */ }
 
-    res.json({ ...(data as Record<string, any>), razorpay_connected, meta_catalog_id, meta_catalog_last_sync });
+    // The shop's own Telegram bot (username only — never the token).
+    let telegram_bot_username: string | null = null;
+    try {
+      const { data: tb } = await supabase
+        .from('merchants')
+        .select('telegram_bot_username')
+        .eq('id', req.merchantId)
+        .maybeSingle();
+      telegram_bot_username = tb?.telegram_bot_username ?? null;
+    } catch { /* pre-migration 27 → not connected */ }
+
+    res.json({ ...(data as Record<string, any>), razorpay_connected, meta_catalog_id, meta_catalog_last_sync, telegram_bot_username });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -192,6 +207,44 @@ router.post('/upload-image', upload.single('image'), async (req: AuthRequest, re
     res.json({ url });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── The shop's own Telegram bot ─────────────────────────────────────────────
+
+// Connect a bot created by the owner at @BotFather. We validate the token,
+// store it ENCRYPTED, and point its webhook at us — same flow as the bot's
+// CONNECT TELEGRAM wizard, for owners who prefer the web.
+router.put('/telegram-bot', async (req: AuthRequest, res) => {
+  try {
+    if (!(await requireFeature(req, res, 'own_telegram_bot'))) return;
+    const token = (req.body?.bot_token ?? '').toString().trim();
+
+    if (!token) {
+      // Empty → disconnect.
+      const { data: m } = await supabase
+        .from('merchants').select('telegram_bot_token').eq('id', req.merchantId).maybeSingle();
+      const existing = decryptSecret((m as any)?.telegram_bot_token);
+      if (existing) await deleteShopWebhook(existing);
+      await clearShopTelegramBot(req.merchantId!);
+      return res.json({ success: true, telegram_bot_username: null });
+    }
+
+    if (!/^\d{6,}:[A-Za-z0-9_-]{30,}$/.test(token)) {
+      return res.status(400).json({ error: 'That doesn\'t look like a bot token (format 123456789:AAAA…). Copy it from @BotFather.' });
+    }
+    if (!env.BACKEND_PUBLIC_URL) {
+      return res.status(400).json({ error: 'The platform admin must set BACKEND_PUBLIC_URL on the server first.' });
+    }
+
+    const username = await validateBotToken(token);
+    const secret = crypto.randomBytes(16).toString('hex');
+    await setShopTelegramBot(req.merchantId!, encryptSecret(token), username, secret);
+    await setShopWebhook(token, req.merchantId!, secret, env.BACKEND_PUBLIC_URL);
+
+    res.json({ success: true, telegram_bot_username: username });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
   }
 });
 
@@ -270,7 +323,7 @@ router.post('/change-password', async (req: AuthRequest, res) => {
 // Update Store Details
 router.put('/store', async (req: AuthRequest, res) => {
   try {
-    const { store_name, store_description, is_active, theme_config, store_category, announcement } = req.body;
+    const { store_name, store_description, is_active, theme_config, store_category, announcement, store_logo_url } = req.body;
 
     let updates: any = {};
     if (store_name !== undefined) updates.store_name = store_name;
@@ -279,6 +332,12 @@ router.put('/store', async (req: AuthRequest, res) => {
     if (theme_config !== undefined) updates.theme_config = theme_config;
     if (store_category !== undefined) updates.store_category = store_category ? String(store_category).trim().slice(0, 60) : null;
     if (announcement !== undefined) updates.announcement = announcement ? String(announcement).trim().slice(0, 200) : null;
+    if (store_logo_url !== undefined) {
+      const url = String(store_logo_url || '').trim();
+      // Only http(s) — a data:/javascript: URL here would be rendered straight
+      // into every storefront header.
+      updates.store_logo_url = /^https?:\/\//i.test(url) ? url.slice(0, 500) : null;
+    }
 
     let { data: merchant, error } = await supabase
       .from('merchants')
@@ -567,13 +626,26 @@ router.get('/themes', async (req: AuthRequest, res) => {
     if (error) throw error;
 
     const plan = merchant?.subscription_plan ?? 'basic';
-    const themes = (data ?? []).map((t: any) => ({
-      ...t,
-      // A theme carrying a Puck content[] is one of the premium, full-layout
-      // designs; the rest are the older colour-only configs.
-      premium: Array.isArray(t.config?.content) && t.config.content.length > 0,
-      locked: !hasAccess(t.plan_required, plan),
-    }));
+
+    // Collections, newest/most-designed first. Plain alphabetical ordering
+    // buried every new template behind the older generated ones.
+    const collectionOf = (name: string) =>
+      name.startsWith('Store ·') ? 'Shop Styles'
+      : name.startsWith('Luxe ·') ? 'Luxe'
+      : 'Classic';
+    const RANK: Record<string, number> = { 'Shop Styles': 0, Luxe: 1, Classic: 2 };
+
+    const themes = (data ?? [])
+      .map((t: any) => ({
+        ...t,
+        collection: collectionOf(t.name),
+        // A theme carrying a Puck content[] is one of the premium, full-layout
+        // designs; the rest are the older colour-only configs.
+        premium: Array.isArray(t.config?.content) && t.config.content.length > 0,
+        locked: !hasAccess(t.plan_required, plan),
+      }))
+      .sort((a: any, b: any) =>
+        RANK[a.collection] - RANK[b.collection] || a.name.localeCompare(b.name));
 
     res.json({ plan, themes });
   } catch (err: any) {

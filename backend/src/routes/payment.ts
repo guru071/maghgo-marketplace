@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { env } from '../config/env';
-import { getPlanFromAmount, getAmountFromPlan } from '../services/payment.service';
+import { getPlanFromAmount, getAmountFromPlan, getActiveOfferDiscount, applyDiscount } from '../services/payment.service';
 import { normalizePhone } from '../utils/phone';
 import { sendNotification } from '../services/whatsapp.service';
 import { supabase } from '../db/supabase';
@@ -62,14 +62,35 @@ router.post('/razorpay', async (req: Request, res: Response) => {
       const amountPaid = paymentLink.amount_paid; // in paise
       const status = paymentLink.status; // e.g., 'paid'
 
-      const plan = await getPlanFromAmount(amountPaid / 100);
+      const paidRupees = amountPaid / 100;
+
+      // Resolve the plan from EITHER the list price or a discounted price, so a
+      // promo payment still maps to the right plan.
+      const discount = await getActiveOfferDiscount();
+      let plan = await getPlanFromAmount(paidRupees);
+      if (discount > 0) {
+        const { data: allPlans } = await supabase.from('plans').select('slug, monthly_price, yearly_price');
+        const match = (allPlans ?? []).find((p: any) =>
+          applyDiscount(p.monthly_price, discount) === paidRupees ||
+          applyDiscount(p.yearly_price, discount) === paidRupees);
+        if (match) plan = match.slug;
+      }
+
+      // getAmountFromPlan already returns the discounted price when an offer is
+      // live; also accept the undiscounted list price (a link created before the
+      // offer started must still activate).
       const monthlyAmount = await getAmountFromPlan(plan, false);
       const yearlyAmount = await getAmountFromPlan(plan, true);
-      const isYearly = (amountPaid / 100) === yearlyAmount;
+      const { data: listRow } = await supabase
+        .from('plans').select('monthly_price, yearly_price').eq('slug', plan).maybeSingle();
+      const validAmounts = [monthlyAmount, yearlyAmount, listRow?.monthly_price, listRow?.yearly_price]
+        .filter((n): n is number => typeof n === 'number');
+      const isYearly = paidRupees === yearlyAmount || paidRupees === listRow?.yearly_price;
 
-      // Strict validation: amount must exactly match either the monthly or yearly price of the detected plan
-      if (status !== 'paid' || !plan || ((amountPaid / 100) !== monthlyAmount && (amountPaid / 100) !== yearlyAmount)) {
-        console.warn(`⚠️ Payment verification failed for ${senderId}: Status=${status}, AmountPaid=${amountPaid} is invalid for Plan=${plan}`);
+      // Strict validation: the amount must match one of this plan's valid prices
+      // (list or promo). Anything else is refused — no plan without a real charge.
+      if (status !== 'paid' || !plan || !validAmounts.includes(paidRupees)) {
+        console.warn(`⚠️ Payment verification failed for ${senderId}: Status=${status}, AmountPaid=${paidRupees} not in [${validAmounts.join(', ')}] for Plan=${plan}`);
         res.status(400).send('Invalid payment amount for plan');
         return; // Halt and do NOT reactivate
       }

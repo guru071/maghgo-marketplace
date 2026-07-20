@@ -12,9 +12,10 @@ interface CartDrawerProps {
   storeName: string;
   currency?: string;
   instagramHandle?: string;
+  paymentsEnabled?: boolean;
 }
 
-export default function CartDrawer({ phone, storeName, currency = 'INR', instagramHandle }: CartDrawerProps) {
+export default function CartDrawer({ phone, storeName, currency = 'INR', instagramHandle, paymentsEnabled }: CartDrawerProps) {
   const params = useParams();
   const storeSlug = params.store_slug as string;
   const { isOpen, closeCart, updateQuantity, removeItem, getTotal, getItems } = useCartStore();
@@ -203,7 +204,7 @@ export default function CartDrawer({ phone, storeName, currency = 'INR', instagr
                 {formatPrice(Math.max(0, total - (applied?.discount ?? 0)), currency)}
               </span>
             </div>
-            <CheckoutButton phone={phone} storeName={storeName} storeSlug={storeSlug} items={items} instagramHandle={instagramHandle} couponCode={applied?.code ?? null} deliveryAddress={deliveryAddress} />
+            <CheckoutButton phone={phone} storeName={storeName} storeSlug={storeSlug} items={items} instagramHandle={instagramHandle} couponCode={applied?.code ?? null} deliveryAddress={deliveryAddress} paymentsEnabled={paymentsEnabled} />
           </div>
         )}
       </aside>

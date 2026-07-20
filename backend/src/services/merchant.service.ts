@@ -289,6 +289,19 @@ export async function updateMerchantSocial(merchantId: string, platform: 'instag
  * used for the shopper bot's Directions button). Graceful if migration 15
  * hasn't added the column yet.
  */
+/**
+ * The shop's logo — shown on the storefront header, the marketplace card and
+ * the store's social/OG preview. store_logo_url has existed since the first
+ * schema but nothing ever wrote to it, so every shop showed a blank crest.
+ */
+export async function updateStoreLogo(merchantId: string, logoUrl: string | null): Promise<void> {
+  const { error } = await supabase
+    .from('merchants')
+    .update({ store_logo_url: logoUrl || null })
+    .eq('id', merchantId);
+  if (error) throw new Error(`Failed to save logo: ${error.message}`);
+}
+
 export async function updateStoreAddress(merchantId: string, address: string): Promise<void> {
   const value = (address || '').trim().slice(0, 300) || null;
   const { error } = await supabase

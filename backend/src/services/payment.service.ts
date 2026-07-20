@@ -44,6 +44,32 @@ export async function getAllPlans(): Promise<PlanRow[]> {
   return data as PlanRow[];
 }
 
+/**
+ * The active promo discount (0–90%). Returns 0 when there's no live offer or
+ * the column doesn't exist yet (migration 29) — i.e. full price, as before.
+ */
+export async function getActiveOfferDiscount(): Promise<number> {
+  try {
+    const { data, error } = await supabase
+      .from('offers')
+      .select('discount_percent')
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return 0;
+    const pct = Number((data as any).discount_percent) || 0;
+    return Math.min(90, Math.max(0, pct));
+  } catch {
+    return 0;
+  }
+}
+
+/** Apply the live offer to a price (rounded to whole rupees, never below ₹1). */
+export function applyDiscount(amount: number, percent: number): number {
+  if (!percent) return amount;
+  return Math.max(1, Math.round(amount * (1 - percent / 100)));
+}
+
 export async function getAmountFromPlan(plan: string, isYearly = false): Promise<number> {
   const { data, error } = await supabase
     .from('plans')
@@ -55,7 +81,10 @@ export async function getAmountFromPlan(plan: string, isYearly = false): Promise
     return isYearly ? 1010 : 99; // fallback
   }
 
-  return isYearly ? data.yearly_price : data.monthly_price;
+  const base = isYearly ? data.yearly_price : data.monthly_price;
+  // A live promo must actually change what the merchant pays — otherwise the
+  // banner is a lie. The webhook accepts this discounted amount too.
+  return applyDiscount(base, await getActiveOfferDiscount());
 }
 
 /**

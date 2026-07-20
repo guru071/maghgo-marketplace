@@ -10,6 +10,7 @@ interface Theme {
   config: any;
   premium: boolean;
   locked: boolean;
+  collection?: string;
 }
 
 /**
@@ -80,6 +81,7 @@ export default function ThemesPage() {
   const [active, setActive] = useState<string>('');
   const [onlyPremium, setOnlyPremium] = useState(true);
   const [query, setQuery] = useState('');
+  const [collection, setCollection] = useState('all');
   const [cover, setCover] = useState('');
   const [uploadingCover, setUploadingCover] = useState(false);
   const [effect, setEffect] = useState('');
@@ -106,10 +108,18 @@ export default function ThemesPage() {
       .finally(() => setLoading(false));
   }, [apiUrl]);
 
+  const collections = useMemo(
+    () => ['all', ...Array.from(new Set(themes.map((t) => t.collection).filter(Boolean) as string[]))],
+    [themes]
+  );
+
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return themes.filter((t) => (!onlyPremium || t.premium) && (!q || t.name.toLowerCase().includes(q)));
-  }, [themes, onlyPremium, query]);
+    return themes.filter((t) =>
+      (!onlyPremium || t.premium) &&
+      (collection === 'all' || t.collection === collection) &&
+      (!q || t.name.toLowerCase().includes(q)));
+  }, [themes, onlyPremium, query, collection]);
 
   const preview = (t: Theme) => {
     setActive(t.id);
@@ -214,6 +224,20 @@ export default function ThemesPage() {
             <option value="particles">✨ Floating particles</option>
           </select>
         </div>
+
+        {collections.length > 2 && (
+          <div className="flex gap-2 flex-wrap">
+            {collections.map((c) => (
+              <button
+                key={c}
+                onClick={() => setCollection(c)}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${collection === c ? 'bg-accent text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+              >
+                {c === 'all' ? `All (${themes.length})` : `${c} (${themes.filter((t) => t.collection === c).length})`}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="flex gap-2 items-center sticky top-0 bg-gray-50 py-2 z-10">
           <input

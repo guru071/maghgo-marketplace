@@ -26,6 +26,7 @@ export default function OffersAdminPage() {
       title: formData.get('title'),
       subtitle: formData.get('subtitle'),
       poster_url: formData.get('poster_url') || null,
+      discount_percent: Number(formData.get('discount_percent')) || 0,
       is_active: false
     };
 
@@ -68,6 +69,10 @@ export default function OffersAdminPage() {
           <div className="md:col-span-2">
             <label className="block text-sm text-gray-500 mb-1">Poster Image URL (Optional)</label>
             <input name="poster_url" type="url" placeholder="https://..." className="w-full border rounded-lg p-2" />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-500 mb-1">Discount % — REAL: applied to plan prices and the Razorpay link</label>
+            <input name="discount_percent" type="number" min="0" max="90" defaultValue={0} placeholder="e.g. 20" className="w-full border rounded-lg p-2" />
           </div>
           <div className="md:col-span-2">
             <Button type="submit" disabled={isPending}>{isPending ? 'Saving...' : 'Create Offer'}</Button>

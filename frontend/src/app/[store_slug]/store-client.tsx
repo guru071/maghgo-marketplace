@@ -21,6 +21,7 @@ interface StoreClientProps {
   merchant: Merchant;
   products: Product[];
   rating?: { average: number; count: number } | null;
+  paymentsEnabled?: boolean;
 }
 
 import { Render } from "@puckeditor/core";
@@ -29,7 +30,7 @@ import { config } from "@/puck.config";
 import { StoreContext } from '@/components/store/StoreContext';
 import { showsPoweredByFooter } from '@/lib/plans';
 
-export function StoreClient({ merchant, products, rating }: StoreClientProps) {
+export function StoreClient({ merchant, products, rating, paymentsEnabled }: StoreClientProps) {
   const { addItem } = useCartStore();
 
   // Traditional shop chrome: live search + sort, applied BEFORE rendering so
@@ -193,7 +194,7 @@ export function StoreClient({ merchant, products, rating }: StoreClientProps) {
         showPoweredBy={showsPoweredByFooter(merchant.subscription_plan)}
       />
 
-      <CartDrawer storeName={merchant.store_name} phone={merchant.phone_number} instagramHandle={merchant.instagram_handle} />
+      <CartDrawer storeName={merchant.store_name} phone={merchant.phone_number} instagramHandle={merchant.instagram_handle} paymentsEnabled={paymentsEnabled} />
       <FloatingCartButton />
       <BackToTop />
       </div>

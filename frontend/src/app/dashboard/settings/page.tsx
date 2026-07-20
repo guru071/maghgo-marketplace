@@ -14,6 +14,7 @@ export default function DashboardSettings() {
   const [storeAddress, setStoreAddress] = useState('');
   const [storeCategory, setStoreCategory] = useState('');
   const [announcement, setAnnouncement] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
   const [isActive, setIsActive] = useState(true);
 
   // Payments (own Razorpay)
@@ -24,6 +25,34 @@ export default function DashboardSettings() {
   const [rzpMsg, setRzpMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const apiBase = () => process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+
+  // The shop's own Telegram bot
+  const [tgUsername, setTgUsername] = useState<string | null>(null);
+  const [tgToken, setTgToken] = useState('');
+  const [tgSaving, setTgSaving] = useState(false);
+  const [tgMsg, setTgMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const saveTelegramBot = async (disconnect = false) => {
+    setTgSaving(true);
+    setTgMsg(null);
+    try {
+      const token = localStorage.getItem('maghgo_merchant_token');
+      const res = await fetch(`${apiBase()}/api/dashboard/telegram-bot`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ bot_token: disconnect ? '' : tgToken }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Could not save');
+      setTgUsername(d.telegram_bot_username);
+      setTgToken('');
+      setTgMsg({ ok: true, text: disconnect ? 'Telegram bot disconnected.' : `Live! Your customers can now shop at t.me/${d.telegram_bot_username}` });
+    } catch (e: any) {
+      setTgMsg({ ok: false, text: e.message });
+    } finally {
+      setTgSaving(false);
+    }
+  };
 
   // Change password
   const [pwCurrent, setPwCurrent] = useState('');
@@ -89,8 +118,10 @@ export default function DashboardSettings() {
         setStoreAddress(data.store_address || '');
         setStoreCategory(data.store_category || '');
         setAnnouncement(data.announcement || '');
+        setLogoUrl(data.store_logo_url || '');
         setIsActive(data.is_active);
         setRzpConnected(!!data.razorpay_connected);
+        setTgUsername(data.telegram_bot_username ?? null);
       }
     } catch (err) {
       console.error(err);
@@ -128,6 +159,7 @@ export default function DashboardSettings() {
           store_description: storeDescription,
           store_category: storeCategory,
           announcement,
+          store_logo_url: logoUrl,
           is_active: isActive
         })
       });
@@ -180,6 +212,24 @@ export default function DashboardSettings() {
               placeholder="E.g. We sell the best quality shoes in Mumbai. Free shipping on all orders!"
             />
             <p className="text-xs text-gray-500 mt-2">A short bio to tell customers about your business.</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-900 mb-2">Shop logo <span className="font-normal text-gray-400">(optional)</span></label>
+            <div className="flex items-center gap-3">
+              {/^https?:\/\//i.test(logoUrl) && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={logoUrl} alt="" className="w-14 h-14 rounded-full object-cover border border-gray-200 flex-shrink-0" />
+              )}
+              <input
+                type="url"
+                value={logoUrl}
+                onChange={e => setLogoUrl(e.target.value)}
+                placeholder="https://... (paste an image link)"
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-accent focus:border-accent"
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-2">Shown on your storefront header, WhatsApp/social share previews and the marketplace. In the bot, send a photo after <strong>SET LOGO</strong>.</p>
           </div>
 
           <div>
@@ -309,6 +359,54 @@ export default function DashboardSettings() {
         {rzpMsg && (
           <p className={`text-sm mt-4 ${rzpMsg.ok ? 'text-green-600' : 'text-red-600'}`}>{rzpMsg.text}</p>
         )}
+      </div>
+
+      {/* The shop's own Telegram bot */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 mt-8">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-xl font-bold text-gray-900">✈️ Your own Telegram bot</h2>
+          <span className={`text-xs font-bold px-3 py-1 rounded-full ${tgUsername ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+            {tgUsername ? '● Live' : 'Not connected'}
+          </span>
+        </div>
+        <p className="text-sm text-gray-500 mb-5">
+          Get a bot with <strong>your shop&apos;s name</strong>. Customers who message it browse and buy from your store directly —
+          no store name needed. Free, takes 2 minutes, no approval.
+        </p>
+
+        {tgUsername ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <a href={`https://t.me/${tgUsername}`} target="_blank" rel="noopener noreferrer" className="font-mono text-sm bg-sky-50 text-sky-700 px-3 py-2 rounded-lg hover:underline">
+              t.me/{tgUsername}
+            </a>
+            <button onClick={() => saveTelegramBot(true)} disabled={tgSaving}
+              className="text-sm font-medium text-red-600 hover:text-red-700 border border-red-200 rounded-full px-4 py-2 disabled:opacity-50">
+              {tgSaving ? 'Working…' : 'Disconnect'}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <ol className="text-sm text-gray-600 list-decimal list-inside space-y-1">
+              <li>Open <strong>@BotFather</strong> in Telegram</li>
+              <li>Send <code className="bg-gray-100 px-1 rounded">/newbot</code> → pick your shop&apos;s name + a username ending in &ldquo;bot&rdquo;</li>
+              <li>Paste the token it gives you here</li>
+            </ol>
+            <input
+              type="password"
+              value={tgToken}
+              onChange={(e) => setTgToken(e.target.value.trim())}
+              placeholder="123456789:AAExample-BotFatherTokenHere"
+              autoComplete="off"
+              className="w-full border border-gray-300 rounded-lg px-4 py-3 font-mono text-sm focus:ring-accent focus:border-accent"
+            />
+            <p className="text-xs text-gray-500">🔒 Stored encrypted on the server and never shown again.</p>
+            <button onClick={() => saveTelegramBot(false)} disabled={tgSaving || !tgToken}
+              className="bg-accent text-white px-8 py-3 rounded-full font-medium hover:bg-black disabled:opacity-50 transition-colors">
+              {tgSaving ? 'Connecting…' : 'Connect my bot'}
+            </button>
+          </div>
+        )}
+        {tgMsg && <p className={`text-sm mt-4 ${tgMsg.ok ? 'text-green-600' : 'text-red-600'}`}>{tgMsg.text}</p>}
       </div>
 
       {/* Change password */}

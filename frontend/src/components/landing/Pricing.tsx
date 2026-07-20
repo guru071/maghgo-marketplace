@@ -12,22 +12,29 @@ export function Pricing({
     messenger_enabled: true,
     sms_enabled: true
   },
-  plans = []
+  plans = [],
+  discountPercent = 0
 }: { 
   enabledPlatforms?: any,
-  plans?: any[]
+  plans?: any[],
+  discountPercent?: number
 }) {
   const [isYearly, setIsYearly] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
 
-  // Helper to calculate yearly price (15% off)
-  const getPrice = (monthlyPrice: number) => {
-    if (monthlyPrice === 0) return '₹0';
-    if (isYearly) {
-      return `₹${Math.round(monthlyPrice * 0.85 * 12)}`;
-    }
-    return `₹${monthlyPrice}`;
+  // List price (before any promo).
+  const listPrice = (monthlyPrice: number) => {
+    if (monthlyPrice === 0) return 0;
+    return isYearly ? Math.round(monthlyPrice * 0.85 * 12) : monthlyPrice;
   };
+  // What the merchant ACTUALLY pays — the live promo is applied here and on the
+  // Razorpay link identically, so the banner can't advertise a fiction.
+  const payPrice = (monthlyPrice: number) => {
+    const base = listPrice(monthlyPrice);
+    if (!discountPercent || base === 0) return base;
+    return Math.max(1, Math.round(base * (1 - discountPercent / 100)));
+  };
+  const getPrice = (monthlyPrice: number) => `₹${payPrice(monthlyPrice)}`;
 
   const period = isYearly ? '/yr' : '/mo';
 
@@ -76,6 +83,12 @@ export function Pricing({
               <div className="pricing__card-price">
                 {plan.is_custom ? 'Let\'s Talk' : getPrice(plan.monthly_price)}
                 {!plan.is_custom && <span>{period}</span>}
+                {!plan.is_custom && discountPercent > 0 && plan.monthly_price > 0 && (
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600, marginTop: 2 }}>
+                    <span style={{ textDecoration: 'line-through', color: '#9ca3af' }}>₹{listPrice(plan.monthly_price)}</span>
+                    <span style={{ color: 'var(--success, #16a34a)', marginLeft: 6 }}>{discountPercent}% OFF</span>
+                  </div>
+                )}
               </div>
               <p className="pricing__card-desc">{plan.description}</p>
               

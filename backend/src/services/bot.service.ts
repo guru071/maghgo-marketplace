@@ -1,4 +1,4 @@
-import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, updateStoreAddress, updateStoreCategory, updateAnnouncement, updateBotLanguage, setCustomDomain, toggleStoreStatus, updateMerchantSocial, listThemes, applyThemeById, hasRazorpayKeys, setRazorpayKeys, clearRazorpayKeys, setShopTelegramBot, clearShopTelegramBot, Channel } from './merchant.service';
+import { getMerchantByChannel, isSubscriptionActive, createMerchant, getProductLimit, generateLinkCode, linkChannelToMerchant, updateStoreDescription, updateStoreAddress, updateStoreLogo, updateStoreCategory, updateAnnouncement, updateBotLanguage, setCustomDomain, toggleStoreStatus, updateMerchantSocial, listThemes, applyThemeById, hasRazorpayKeys, setRazorpayKeys, clearRazorpayKeys, setShopTelegramBot, clearShopTelegramBot, Channel } from './merchant.service';
 import { encryptSecret, decryptSecret } from '../utils/crypto';
 import { parseCaption } from './parser.service';
 import { removeBackground } from './media.service';
@@ -178,13 +178,33 @@ async function sendMoreMenu(msg: BotMessage, merchant?: { subscription_plan?: st
       metaLocked
         ? { id: 'IMPORT META', title: '🔒 Import Meta Shop', description: 'Needs PRO plan — tap to see' }
         : { id: 'IMPORT META', title: '📷 Import Meta Shop', description: 'Pull your FB/Insta catalog in' },
+      { id: 'CONNECT TELEGRAM', title: '✈️ My Telegram bot', description: 'Your own branded shop bot' },
+      { id: 'SET LOGO', title: '🖼 Shop logo', description: 'Send a photo — shows on your store' },
       { id: 'RESUME', title: '▶️ Resume store', description: 'Go back online' },
       { id: 'LINK', title: '🔗 Link channels', description: 'Manage from Insta/Messenger too' },
+      { id: 'MORE2', title: '➡️ More tools (2/2)', description: 'Address, socials, products, coupons' },
+      { id: 'MENU', title: '⬅️ Back', description: 'Main menu' },
+    ],
+    'More Tools'
+  );
+}
+
+// Page 2 of the tools list.
+async function sendMoreMenu2(msg: BotMessage): Promise<void> {
+  await replyMenu(
+    msg,
+    'More store tools (2 of 2):',
+    '⚙️ Tools',
+    [
       { id: 'HELP ADDRESS', title: '📍 Shop address', description: 'Show "Visit us" + directions' },
       { id: 'HELP SOCIALS', title: '📱 Social links', description: 'Set Instagram/Facebook/WhatsApp' },
       { id: 'HELP PRODUCT', title: '📝 Product tools', description: 'Details, options, stock, view' },
       { id: 'HELP COUPON', title: '🏷️ Coupon help', description: 'Create & delete discount codes' },
-      { id: 'MENU', title: '⬅️ Back', description: 'Main menu' },
+      { id: 'DESCRIBE', title: '✍️ Shop description', description: 'The blurb on your storefront' },
+      { id: 'ANNOUNCE', title: '📢 Announcement bar', description: 'Scrolling notice on your store' },
+      { id: 'DOMAIN', title: '🌐 Custom domain', description: 'Use your own web address' },
+      { id: 'MORE', title: '⬅️ Back', description: 'Tools page 1' },
+      { id: 'MENU', title: '🏠 Main menu', description: 'Start over' },
     ],
     'More Tools'
   );
@@ -207,12 +227,16 @@ const GREETINGS = new Set(['HI', 'HELLO', 'HEY', 'MENU', 'START', 'MAGHGO', 'HII
 // flow. (For multi-instance scaling, back this with Redis.)
 interface RegisterFlow {
   kind: 'register';
-  step: 'name' | 'category' | 'contact' | 'address' | 'instagram' | 'plan';
+  step: 'name' | 'category' | 'contact' | 'address' | 'instagram' | 'logo' | 'plan';
   storeName?: string;
   category?: string;
   contact?: string;
   address?: string;
   instagram?: string;
+  // Held in memory until the merchant row exists (created at the plan step),
+  // then uploaded — we have nowhere to put the file before that.
+  logo?: { buffer: Buffer; mime_type: string };
+  logoUrl?: string;
 }
 interface ProductFlow {
   kind: 'product';
@@ -229,7 +253,9 @@ interface MetaCatFlow { kind: 'metacat'; step: 'catalogid' | 'token'; catalogId?
 // The shop's own branded Telegram bot: paste the BotFather token → we verify,
 // encrypt, store, and point its webhook at us automatically.
 interface ShopBotFlow { kind: 'shopbot'; step: 'token' }
-type Flow = (RegisterFlow | ProductFlow | PaymentsFlow | MetaCatFlow | ShopBotFlow) & { ts: number };
+// Change the shop logo later: send a photo (or a link, or REMOVE).
+interface LogoFlow { kind: 'logo'; step: 'image' }
+type Flow = (RegisterFlow | ProductFlow | PaymentsFlow | MetaCatFlow | ShopBotFlow | LogoFlow) & { ts: number };
 
 const SHOP_CATEGORIES = [
   '👕 Clothing & Fashion', '👟 Footwear', '📱 Electronics', '🛒 Grocery & Daily',
@@ -612,7 +638,8 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
 
   // ── Register wizard ────────────────────────────────────────────────────────
   if (flow.kind === 'register') {
-    if (msg.type !== 'text' || !text) {
+    // The logo step is the one place a photo is the expected answer.
+    if (flow.step !== 'logo' && (msg.type !== 'text' || !text)) {
       await msg.sendReply('✍️ Please reply with text (or CANCEL to stop).');
       return true;
     }
@@ -627,7 +654,7 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
       flow.step = 'category';
       await replyMenu(
         msg,
-        `Nice — *${text}* it is! 🏪\n\n*Step 2 of 6 — what do you sell?* (tap one, or type your own)`,
+        `Nice — *${text}* it is! 🏪\n\n*Step 2 of 7 — what do you sell?* (tap one, or type your own)`,
         '🗂 Choose',
         SHOP_CATEGORIES.map((c) => ({ id: c, title: c.slice(0, 24) })),
         'Shop Category'
@@ -641,7 +668,7 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
       const isWa = msg.channel === 'whatsapp';
       await replyButtons(
         msg,
-        `*Step 3 of 6 — contact number for customers* 📞\n\nThis shows on your storefront's WhatsApp/Call buttons.${isWa ? '\n\nTap below to use this number, or type another.' : '\n\nType the number (e.g. 9198xxxxxxx), or SKIP.'}`,
+        `*Step 3 of 7 — contact number for customers* 📞\n\nThis shows on your storefront's WhatsApp/Call buttons.${isWa ? '\n\nTap below to use this number, or type another.' : '\n\nType the number (e.g. 9198xxxxxxx), or SKIP.'}`,
         isWa
           ? [{ id: 'USE THIS NUMBER', title: '✅ Use this number' }, { id: 'SKIP', title: '⏭ Skip' }]
           : [{ id: 'SKIP', title: '⏭ Skip' }]
@@ -660,7 +687,7 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
         flow.contact = digits;
       }
       flow.step = 'address';
-      await replyButtons(msg, '*Step 4 of 6 — shop address* 📍\n\nCustomers see "Visit us" with a directions button.\n\nType it (e.g. 12 MG Road, Villupuram), or SKIP.', [
+      await replyButtons(msg, '*Step 4 of 7 — shop address* 📍\n\nCustomers see "Visit us" with a directions button.\n\nType it (e.g. 12 MG Road, Villupuram), or SKIP.', [
         { id: 'SKIP', title: '⏭ Skip' },
       ]);
       return true;
@@ -669,7 +696,7 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
     if (flow.step === 'address') {
       if (upper !== 'SKIP') flow.address = text.slice(0, 300);
       flow.step = 'instagram';
-      await replyButtons(msg, '*Step 5 of 6 — Instagram handle* 📸\n\nShown as a button on your storefront.\n\nType it (e.g. mystore), or SKIP.', [
+      await replyButtons(msg, '*Step 5 of 7 — Instagram handle* 📸\n\nShown as a button on your storefront.\n\nType it (e.g. mystore), or SKIP.', [
         { id: 'SKIP', title: '⏭ Skip' },
       ]);
       return true;
@@ -677,8 +704,28 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
 
     if (flow.step === 'instagram') {
       if (upper !== 'SKIP') flow.instagram = text.replace(/^@/, '').trim().slice(0, 60);
+      flow.step = 'logo';
+      await replyButtons(msg, '*Step 6 of 7 — your shop logo* 🖼\n\nSend it as a *photo* now, or paste an image link. It appears on your storefront, your share previews and the marketplace.\n\nNo logo yet? Tap Skip — you can add it later with *SET LOGO*.', [
+        { id: 'SKIP', title: '⏭ Skip' },
+      ]);
+      return true;
+    }
+
+    if (flow.step === 'logo') {
+      if (msg.type === 'image' && msg.image) {
+        flow.logo = { buffer: msg.image.buffer, mime_type: msg.image.mime_type };
+      } else if (upper !== 'SKIP') {
+        // A pasted link is fine too; anything else, ask again rather than
+        // silently dropping their logo.
+        if (/^https?:\/\/\S+$/i.test(text)) {
+          flow.logoUrl = text.trim().slice(0, 500);
+        } else {
+          await msg.sendReply('🖼 Send the logo as a *photo*, paste an image link, or reply SKIP.');
+          return true;
+        }
+      }
       flow.step = 'plan';
-      await sendPlanMenu(msg, `Almost done! 🎯\n\n*Step 6 of 6 — pick your plan:*\n(Reply with a plan name, or CANCEL to stop.)`);
+      await sendPlanMenu(msg, `Almost done! 🎯\n\n*Step 7 of 7 — pick your plan:*\n(Reply with a plan name, or CANCEL to stop.)`);
       return true;
     }
 
@@ -723,6 +770,15 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
         if (flow.contact) { await updateMerchantSocial(newMerchant.id, 'phone_number', flow.contact).then(() => applied.push('📞 contact'), () => {}); }
         if (flow.address) { await updateStoreAddress(newMerchant.id, flow.address).then(() => applied.push('📍 address'), () => {}); }
         if (flow.instagram) { await updateMerchantSocial(newMerchant.id, 'instagram_handle', flow.instagram).then(() => applied.push('📸 @' + flow.instagram), () => {}); }
+        if (flow.logo || flow.logoUrl) {
+          try {
+            const url = flow.logo
+              ? await uploadImage(newMerchant.id, 'store-logo', flow.logo.buffer, flow.logo.mime_type)
+              : flow.logoUrl!;
+            await updateStoreLogo(newMerchant.id, url);
+            applied.push('🖼 logo');
+          } catch { /* a logo must never fail a registration */ }
+        }
         if (applied.length) {
           await msg.sendReply(`✅ Saved your shop details: ${applied.join(' · ')}`).catch(() => {});
         }
@@ -741,6 +797,36 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
       }
       return true;
     }
+  }
+
+  // ── Change shop logo ───────────────────────────────────────────────────────
+  if (flow.kind === 'logo') {
+    const merchant = await getMerchantByChannel(msg.channel, msg.senderId);
+    if (!merchant) { flows.delete(flowKey); await msg.sendReply('⚠️ Please register first — reply *REGISTER*.'); return true; }
+    try {
+      if (msg.type === 'image' && msg.image) {
+        const url = await uploadImage(merchant.id, 'store-logo', msg.image.buffer, msg.image.mime_type);
+        await updateStoreLogo(merchant.id, url);
+      } else if (upper === 'REMOVE' || upper === 'OFF') {
+        await updateStoreLogo(merchant.id, null);
+        flows.delete(flowKey);
+        await msg.sendReply('🖼 Logo removed from your storefront.');
+        await triggerRevalidation(merchant.store_slug);
+        return true;
+      } else if (/^https?:\/\/\S+$/i.test(text)) {
+        await updateStoreLogo(merchant.id, text.trim().slice(0, 500));
+      } else {
+        await msg.sendReply('🖼 Send your logo as a *photo*, paste an image link, reply REMOVE to clear it, or CANCEL.');
+        return true;
+      }
+      flows.delete(flowKey);
+      await msg.sendReply(`🖼 *Logo saved!*\n\nIt now shows on your storefront, share previews and the Maghgo marketplace.\n\n🔗 ${env.FRONTEND_URL}/${merchant.store_slug}`);
+      await triggerRevalidation(merchant.store_slug);
+    } catch (err: any) {
+      flows.delete(flowKey);
+      await msg.sendReply(`❌ ${err.message || 'Could not save the logo.'}`);
+    }
+    return true;
   }
 
   // ── Add-product wizard ─────────────────────────────────────────────────────
@@ -1696,6 +1782,10 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     await sendMoreMenu(msg, merchant);
     return;
   }
+  if (command === 'MORE2' || command === 'MORE 2') {
+    await sendMoreMenu2(msg);
+    return;
+  }
 
   // Topic help — tapped from the More menu or typed directly.
   if (command.startsWith('HELP ')) {
@@ -1790,6 +1880,16 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     }
     await deleteCoupon(merchant.id, found.id);
     await sendReply(`🗑️ Coupon *${found.code}* deleted. Customers can no longer use it.`);
+    return;
+  }
+
+  // ── Shop logo ──────────────────────────────────────────────────────────────
+  if (command === 'LOGO' || command === 'SET LOGO' || command === 'SETLOGO') {
+    flows.set(`${msg.channel}:${msg.senderId}`, { kind: 'logo', step: 'image', ts: Date.now() });
+    await replyButtons(msg, '🖼 *Shop logo*\n\nSend your logo as a *photo* now, or paste an image link.\n\nIt appears on your storefront header, WhatsApp/social share previews and the Maghgo marketplace. Square images look best.', [
+      { id: 'REMOVE', title: '🗑 Remove logo' },
+      { id: 'CANCEL', title: '❎ Cancel' },
+    ]);
     return;
   }
 
@@ -2102,7 +2202,8 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
       `• PAYMENTS — connect YOUR Razorpay\n` +
       `• UPGRADE — see all plans\n\n` +
       `*🏪 Store*\n` +
-      `• THEMES — 46 designs · QR — printable code\n` +
+      `• THEMES — 60+ designs · QR — printable code\n` +
+      `• SET LOGO — send a photo, it's your shop logo\n` +
       `• DESCRIBE text · ADDRESS your address\n` +
       `• SET CATEGORY type · SET INSTAGRAM handle\n` +
       `• SET FACEBOOK url · SET WHATSAPP number\n` +

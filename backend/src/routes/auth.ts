@@ -20,7 +20,7 @@ router.use(authLimiter);
 // Register a new merchant directly via website
 router.post('/register', async (req, res) => {
   try {
-    const { phone_number, store_name, password, store_address, instagram_handle, store_category } = req.body;
+    const { phone_number, store_name, password, store_address, instagram_handle, store_category, store_logo_url } = req.body;
 
     if (!phone_number || !store_name || !password) {
       return res.status(400).json({ error: 'Phone number, store name, and password are required' });
@@ -85,6 +85,11 @@ router.post('/register', async (req, res) => {
       is_active: true,
       subscription_ends_at: subEndsAt.toISOString(),
       instagram_handle: igHandle,
+      // store_logo_url has always existed on merchants but nothing wrote to it,
+      // so every new store rendered a blank crest until now.
+      store_logo_url: typeof store_logo_url === 'string' && /^https?:\/\//i.test(store_logo_url.trim())
+        ? store_logo_url.trim().slice(0, 500)
+        : null,
     };
 
     // store_address / store_category may not exist yet (migrations 15/22). Try

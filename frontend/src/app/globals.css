@@ -1073,6 +1073,11 @@ p {
 }
 
 /* ── Header ─────────────────────────────────────────────────── */
+/* When a promo offer is live, the fixed header must sit BELOW the offer bar
+   instead of covering it (the bar owns the very top of the viewport). */
+.landing-page--offer .header { top: 72px; }
+.landing-page--offer { padding-top: 52px; }
+
 .header {
   position: fixed;
   top: 16px;

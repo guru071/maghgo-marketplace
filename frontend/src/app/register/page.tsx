@@ -11,6 +11,7 @@ export default function RegisterPage() {
   const [storeCategory, setStoreCategory] = useState('');
   const [storeAddress, setStoreAddress] = useState('');
   const [instagram, setInstagram] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -38,6 +39,7 @@ export default function RegisterPage() {
           store_category: storeCategory || undefined,
           store_address: storeAddress || undefined,
           instagram_handle: instagram || undefined,
+          store_logo_url: logoUrl || undefined,
         })
       });
       
@@ -179,6 +181,25 @@ export default function RegisterPage() {
                 className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-accent focus:border-accent"
               />
               <p className="text-xs text-gray-400 mt-1">Adds an Instagram button to your store&apos;s contact section.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Shop logo <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <div className="flex items-center gap-3">
+                {logoUrl && /^https?:\/\//i.test(logoUrl) && (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={logoUrl} alt="" className="w-12 h-12 rounded-full object-cover border border-gray-200 flex-shrink-0" />
+                )}
+                <input
+                  type="url"
+                  value={logoUrl}
+                  onChange={e => setLogoUrl(e.target.value)}
+                  placeholder="https://... (paste an image link)"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-accent focus:border-accent"
+                />
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Shown on your storefront header, share previews and the marketplace. You can also send it to the bot later with <strong>SET LOGO</strong>.</p>
             </div>
             <button 
               type="submit" 

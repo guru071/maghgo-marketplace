@@ -13,6 +13,8 @@ interface CheckoutButtonProps {
   instagramHandle?: string;
   couponCode?: string | null;
   deliveryAddress?: string;
+  // Only true when THIS shop has connected its own Razorpay.
+  paymentsEnabled?: boolean;
 }
 
 /** WhatsApp SVG icon */
@@ -24,7 +26,7 @@ function WhatsAppIcon() {
   );
 }
 
-export default function CheckoutButton({ phone, storeName, storeSlug, items, instagramHandle, couponCode, deliveryAddress }: CheckoutButtonProps) {
+export default function CheckoutButton({ phone, storeName, storeSlug, items, instagramHandle, couponCode, deliveryAddress, paymentsEnabled }: CheckoutButtonProps) {
   // One cart = one recorded order, however many times the shopper taps a
   // channel button (they often try WhatsApp, then SMS). The recording promise is
   // memoised so "Pay online" and "WhatsApp" both reuse the same server order.
@@ -91,15 +93,17 @@ export default function CheckoutButton({ phone, storeName, storeSlug, items, ins
 
   return (
     <div className="flex flex-col gap-3">
-      <button
-        onClick={payOnline}
-        disabled={paying}
-        className="btn btn--primary btn--full"
-        aria-label="Pay online now"
-      >
-        {paying ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <CreditCard className="w-5 h-5 mr-2" />}
-        {paying ? 'Opening secure payment…' : 'Pay Online Now'}
-      </button>
+      {paymentsEnabled && (
+        <button
+          onClick={payOnline}
+          disabled={paying}
+          className="btn btn--primary btn--full"
+          aria-label="Pay online now"
+        >
+          {paying ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <CreditCard className="w-5 h-5 mr-2" />}
+          {paying ? 'Opening secure payment…' : 'Pay Online Now'}
+        </button>
+      )}
 
       <a
         href={waLink}
