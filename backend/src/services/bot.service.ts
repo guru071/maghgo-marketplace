@@ -135,7 +135,7 @@ async function replyMenu(
 }
 
 // The main GUI menu — a tappable list mapping to existing commands.
-async function sendMainMenu(msg: BotMessage, merchant?: { store_name?: string; subscription_plan?: string; subscription_ends_at?: string }): Promise<void> {
+async function sendMainMenu(msg: BotMessage, merchant?: { store_name?: string; subscription_plan?: string; subscription_ends_at?: string | null }): Promise<void> {
   const plan = merchant?.subscription_plan ?? 'basic';
   // Locked rows stay visible with a 🔒 so the merchant can SEE what upgrading
   // unlocks — tapping one gets the friendly upgrade prompt, never the feature.

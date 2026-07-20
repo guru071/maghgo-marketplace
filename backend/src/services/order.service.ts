@@ -104,8 +104,12 @@ export async function createOrder(
   if (merchantError || !merchant) return null;
 
   // Don't take orders for a store the storefront itself would refuse to show.
-  const subEnds = new Date(merchant.subscription_ends_at);
-  if (!merchant.is_active || subEnds < new Date()) return null;
+  // Guard NULL/invalid dates: new Date(null) = epoch (1970) which is always < now,
+  // so a legacy merchant with no subscription_ends_at would silently block all orders.
+  const subEndsRaw = merchant.subscription_ends_at;
+  const subEnds = subEndsRaw ? new Date(subEndsRaw) : null;
+  const subExpired = subEnds && !isNaN(subEnds.getTime()) ? subEnds < new Date() : false;
+  if (!merchant.is_active || subExpired) return null;
 
   // Authoritative prices — scoped to this merchant so a product id from another
   // store cannot be smuggled into the cart. `stock` is read where the column

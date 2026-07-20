@@ -128,9 +128,14 @@ router.post('/razorpay', async (req: Request, res: Response) => {
             return;
           }
 
-          const currentExpiry = new Date(merchant.subscription_ends_at || new Date(0));
-          const newExpiry = (merchant.is_active && currentExpiry > now) 
-            ? new Date(currentExpiry.getTime() + daysToAdd * 24 * 60 * 60 * 1000)
+          // Use the subscription date itself to judge whether to extend vs. reset
+          // NOT is_active (the merchant's pause toggle). is_active=false means paused,
+          // not expired — charging from TODAY for a paused merchant loses their paid days.
+          // Guard NULL: new Date(null||new Date(0)) still gives epoch 1970.
+          const currentExpiry = merchant.subscription_ends_at ? new Date(merchant.subscription_ends_at) : null;
+          const subIsCurrentlyValid = currentExpiry && !isNaN(currentExpiry.getTime()) && currentExpiry > now;
+          const newExpiry = subIsCurrentlyValid
+            ? new Date(currentExpiry!.getTime() + daysToAdd * 24 * 60 * 60 * 1000)
             : new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
 
           // Track the payment in audit log

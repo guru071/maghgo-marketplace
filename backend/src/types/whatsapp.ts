@@ -71,7 +71,7 @@ export interface Merchant {
   store_slug: string;
   is_active: boolean;
   subscription_plan: string;
-  subscription_ends_at: string;
+  subscription_ends_at: string | null;
   created_at: string;
   // The shop's own Razorpay credentials (migration 17). Optional; when present,
   // order payments settle into the shop's account. Never sent to the browser.
