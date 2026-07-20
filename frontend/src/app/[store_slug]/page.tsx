@@ -137,8 +137,13 @@ export default async function StorePage({ params }: StorePageProps) {
     notFound();
   }
 
-  const trialEnds = new Date(merchant.subscription_ends_at);
-  if (trialEnds < new Date() || !merchant.is_active) {
+  // Guard against NULL / invalid dates: new Date(null) returns epoch (1970)
+  // which is always < now, so a legacy merchant with no subscription_ends_at
+  // would permanently see "Store Unavailable" despite is_active being true.
+  const rawEnds = merchant.subscription_ends_at;
+  const trialEnds = rawEnds ? new Date(rawEnds) : null;
+  const isExpired = trialEnds && !isNaN(trialEnds.getTime()) ? trialEnds < new Date() : false;
+  if (isExpired || !merchant.is_active) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">

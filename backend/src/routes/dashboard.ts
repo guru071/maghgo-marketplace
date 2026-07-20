@@ -6,11 +6,10 @@ import { updateStoreDescription, toggleStoreStatus, getProductLimit } from '../s
 import { getOrders, updateOrderStatus, getAnalytics } from '../services/order.service';
 import { createPaymentLink } from '../services/payment.service';
 import { listCoupons, createCoupon, deleteCoupon } from '../services/coupon.service';
-import { encryptSecret } from '../utils/crypto';
+import { encryptSecret, decryptSecret } from '../utils/crypto';
 import { connectMetaCatalog, importMetaCatalog, disconnectMetaCatalog } from '../services/metaCatalog.service';
 import { validateBotToken, setShopWebhook, deleteShopWebhook } from '../services/telegram.service';
 import { setShopTelegramBot, clearShopTelegramBot } from '../services/merchant.service';
-import { decryptSecret } from '../utils/crypto';
 import { env, publicBaseUrl } from '../config/env';
 
 // Normalise buyer-selectable options: [{name, values:[...]}], trimmed & capped.

@@ -20,6 +20,7 @@ import { buildStoreSlug } from '../utils/slug';
 import { canUseChannel, minPlanForChannel, channelLabel, hasAccess, canUseFeature, featureLockedMessage, FEATURE_MIN_PLAN } from '../utils/plans';
 import { isShopTrigger, hasSession, handleShopperMessage } from './shopper.service';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 
 export interface BotMessage {
   channel: Channel;
@@ -599,7 +600,6 @@ async function finishProductCreation(
     }
   }
 
-  const crypto = require('crypto');
   const productId = crypto.randomUUID();
 
   const [originalUrl, processedUrl] = await Promise.all([
@@ -1336,8 +1336,11 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
 
   // Channel access. Deliberately placed AFTER the UPGRADE handler above, so a
   // merchant on the wrong plan can always reach the thing that fixes it, and
-  // HELP/STATUS stay available so they are never left without an explanation.
-  if (!canUseChannel(merchant.subscription_plan, channel) && command !== 'HELP' && command !== 'STATUS') {
+  // HELP/STATUS/RESUME/PAUSE/LOGIN stay available so they are never left without
+  // an explanation or a way out.
+  if (!canUseChannel(merchant.subscription_plan, channel)
+      && command !== 'HELP' && command !== 'STATUS'
+      && command !== 'RESUME' && command !== 'PAUSE' && command !== 'LOGIN') {
     const needed = minPlanForChannel(channel);
     await sendReply(
       `⚠️ *${channelLabel(channel)} needs the ${needed.toUpperCase()} plan*\n\n` +
@@ -1347,7 +1350,11 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
     return;
   }
 
-  const PLAN_CMDS = new Set(['MYPLAN', 'MY PLAN', 'PLAN', 'SUBSCRIPTION', 'EXPIRY', 'RENEW', 'BILLING']);
+  // PAUSE and RESUME are operational store toggles — they must remain available
+  // regardless of subscription status so a merchant is never permanently locked
+  // out of their own pause switch. LOGIN is similarly always reachable so the
+  // merchant can access the web dashboard to renew from there.
+  const PLAN_CMDS = new Set(['MYPLAN', 'MY PLAN', 'PLAN', 'SUBSCRIPTION', 'EXPIRY', 'RENEW', 'BILLING', 'RESUME', 'PAUSE', 'LOGIN']);
   if (!isSubscriptionActive(merchant) && command !== 'HELP' && command !== 'STATUS' && !PLAN_CMDS.has(command)) {
     if (merchant.subscription_plan === 'inactive') {
       await sendReply(`⚠️ *Store Inactive!*\n\nYour store is reserved but not yet active. Please reply with "UPGRADE" to select your plan and complete your payment.`);

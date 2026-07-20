@@ -123,7 +123,12 @@ export async function getProductLimit(plan: string): Promise<number> {
  */
 export function isSubscriptionActive(merchant: Merchant): boolean {
   if (merchant.subscription_plan === 'inactive') return false;
+  // NULL or undefined subscription_ends_at → new Date(null|undefined) gives the
+  // epoch (Jan 1, 1970), which is always < now → the merchant appears expired.
+  // Guard it explicitly so legacy accounts without a date aren't silently locked.
+  if (!merchant.subscription_ends_at) return false;
   const subEnds = new Date(merchant.subscription_ends_at);
+  if (isNaN(subEnds.getTime())) return false; // invalid date string
   return subEnds > new Date();
 }
 
@@ -193,8 +198,14 @@ export async function reactivateSubscription(
   const now = new Date();
   const currentExpiry = new Date(merchant.subscription_ends_at);
   const daysToAdd = isYearly ? 365 : 30;
-  
-  const newExpiry = (merchant.is_active && currentExpiry > now) 
+
+  // Use the subscription date itself to judge whether to extend vs. reset —
+  // NOT is_active (the merchant's pause toggle). is_active=false just means the
+  // store is paused, not that the subscription has lapsed; using it here would
+  // charge a paused merchant from TODAY instead of extending from their existing
+  // paid-to date.
+  const subIsCurrentlyValid = !isNaN(currentExpiry.getTime()) && currentExpiry > now;
+  const newExpiry = subIsCurrentlyValid
     ? new Date(currentExpiry.getTime() + daysToAdd * 24 * 60 * 60 * 1000)
     : new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
 
