@@ -10,6 +10,8 @@ import { useCartStore } from '@/stores/cart';
 import EmptyStore from '@/components/store/EmptyStore';
 import StoreContact from '@/components/store/StoreContact';
 import AnimatedBg from '@/components/store/AnimatedBg';
+import StoreNav, { SortMode } from '@/components/store/StoreNav';
+import StoreFooter from '@/components/store/StoreFooter';
 
 interface StoreClientProps {
   merchant: Merchant;
@@ -25,6 +27,28 @@ import { showsPoweredByFooter } from '@/lib/plans';
 
 export function StoreClient({ merchant, products, rating }: StoreClientProps) {
   const { addItem } = useCartStore();
+
+  // Traditional shop chrome: live search + sort, applied BEFORE rendering so
+  // it works identically on the default grid and on themed (Puck) stores —
+  // both read the filtered list.
+  const [query, setQuery] = React.useState('');
+  const [sort, setSort] = React.useState<SortMode>('newest');
+  const visibleProducts = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    let list = q
+      ? products.filter((p) =>
+          p.title.toLowerCase().includes(q) ||
+          (p.description ?? '').toLowerCase().includes(q) ||
+          (p.category ?? '').toLowerCase().includes(q))
+      : [...products];
+    switch (sort) {
+      case 'price_asc': list.sort((a, b) => a.price - b.price); break;
+      case 'price_desc': list.sort((a, b) => b.price - a.price); break;
+      case 'name': list.sort((a, b) => a.title.localeCompare(b.title)); break;
+      default: list.sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+    }
+    return list;
+  }, [products, query, sort]);
   const [activeTheme, setActiveTheme] = React.useState<any>(() => {
     const dbTheme = merchant.theme_config as any;
     if (!dbTheme) return null;
@@ -125,31 +149,38 @@ export function StoreClient({ merchant, products, rating }: StoreClientProps) {
     >
       {themeEffect && <AnimatedBg effect={themeEffect} accent={themeAccent} />}
       <div style={{ position: 'relative', zIndex: 1 }}>
+      <StoreNav
+        storeName={merchant.store_name}
+        storeSlug={merchant.store_slug}
+        logoUrl={merchant.store_logo_url}
+        query={query}
+        onQuery={setQuery}
+        sort={sort}
+        onSort={setSort}
+      />
       {activeTheme ? (
-        <StoreContext.Provider value={{ products, onAddToCart: handleAddToCart, storeName: merchant.store_name, storeDescription: merchant.store_description }}>
+        <StoreContext.Provider value={{ products: visibleProducts, onAddToCart: handleAddToCart, storeName: merchant.store_name, storeDescription: merchant.store_description }}>
           <Render config={config} data={activeTheme} />
         </StoreContext.Provider>
       ) : (
         <>
           <StoreHeader merchant={merchant} />
           <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
-            <ProductGrid products={products} onAddToCart={handleAddToCart} />
+            <ProductGrid products={visibleProducts} onAddToCart={handleAddToCart} />
           </main>
         </>
       )}
       
       <StoreContact merchant={merchant} rating={rating} />
 
-      {/* Gated through the shared helper: this list was previously hardcoded here
-          and omitted `business`, so Business merchants paid for white-label and
-          still shipped our footer. */}
-      {showsPoweredByFooter(merchant.subscription_plan) && (
-        <footer className="w-full py-6 mt-12 text-center border-t border-gray-200">
-          <p className="text-gray-500 text-sm">
-            Powered by <a href="https://goatech.tech" target="_blank" rel="noopener noreferrer" className="font-bold text-gray-800 hover:text-accent transition-colors">GOAT'ECH</a>
-          </p>
-        </footer>
-      )}
+      {/* Traditional e-commerce footer. White-label plans drop the powered-by
+          line via the shared helper (see lib/plans). */}
+      <StoreFooter
+        merchant={merchant}
+        productTitles={products}
+        rating={rating}
+        showPoweredBy={showsPoweredByFooter(merchant.subscription_plan)}
+      />
 
       <CartDrawer storeName={merchant.store_name} phone={merchant.phone_number} instagramHandle={merchant.instagram_handle} />
       <FloatingCartButton />
