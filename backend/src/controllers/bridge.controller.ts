@@ -29,10 +29,14 @@ import { processBotMessage, BotMessage, BotCard } from '../services/bot.service'
 
 const BRIDGE_CHANNELS = new Set(['instagram', 'messenger']);
 
-/** Pull a value from the first matching key — partners name fields differently. */
-function pick(body: any, keys: string[]): string | undefined {
+/**
+ * Pull a value from the first matching key. Partners name fields differently
+ * AND deliver them differently — ManyChat POSTs a JSON body, Chatfuel's JSON-API
+ * plugin passes attributes as URL query params — so we look in both.
+ */
+function pick(src: any, keys: string[]): string | undefined {
   for (const k of keys) {
-    const v = body?.[k];
+    const v = src?.[k];
     if (typeof v === 'string' && v.trim()) return v.trim();
     if (typeof v === 'number') return String(v);
   }
@@ -46,10 +50,14 @@ export async function handleBridgeMessage(req: Request, res: Response): Promise<
     res.status(503).json({ error: 'Bridge not configured.' });
     return;
   }
+  // Query params (Chatfuel) and JSON body (ManyChat) are both accepted; merge
+  // them into one source so the rest of the handler is delivery-agnostic. Body
+  // wins on a key collision (a partner that sends both meant the body value).
+  const src = { ...(req.query as any), ...(req.body as any) };
+
   const provided =
     (req.headers['x-bridge-secret'] as string | undefined) ||
-    (typeof req.query.secret === 'string' ? req.query.secret : undefined) ||
-    pick(req.body, ['secret', 'bridge_secret']);
+    pick(src, ['secret', 'bridge_secret']);
 
   // Constant-time compare so a wrong secret can't be guessed by timing.
   const a = Buffer.from(String(provided ?? ''), 'utf8');
@@ -70,18 +78,20 @@ export async function handleBridgeMessage(req: Request, res: Response): Promise<
   // The subscriber id is the person's id inside the partner platform. It's
   // stable per user, which is exactly what the bot needs to key their session —
   // and replies go back through the partner, so we never need the raw Meta id.
-  const senderId = pick(req.body, [
+  const senderId = pick(src, [
     'subscriber_id', 'sender_id', 'user_id', 'psid', 'ig_id', 'id', 'contact_id',
+    'chatfuel user id', 'chatfuel_user_id', 'messenger user id',
   ]);
   if (!senderId) {
     res.status(400).json({ error: 'Missing subscriber_id.' });
     return;
   }
 
-  const text = pick(req.body, [
+  const text = pick(src, [
     'text', 'message', 'last_input_text', 'last_text_input', 'query', 'body',
+    'last user freeform input', 'last_user_freeform_input',
   ]);
-  const imageUrl = pick(req.body, [
+  const imageUrl = pick(src, [
     'image_url', 'attachment_url', 'last_input_attachment', 'media_url',
   ]);
 
@@ -101,7 +111,7 @@ export async function handleBridgeMessage(req: Request, res: Response): Promise<
     senderId,
     // A partner may retry a delivery; a fresh id per call avoids the dedup guard
     // eating a real repeat message, while a partner-supplied id (if any) dedupes.
-    messageId: pick(req.body, ['message_id', 'mid', 'event_id']) || `bridge-${senderId}-${Date.now()}`,
+    messageId: pick(src, ['message_id', 'mid', 'event_id']) || `bridge-${senderId}-${Date.now()}`,
     type: imageUrl ? 'image' : 'text',
     text: imageUrl ? undefined : text,
     sendReply: async (t) => push(t),
