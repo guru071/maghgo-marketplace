@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { supabase } from '../db/supabase';
+import { deleteMerchantImageFolder } from '../services/storage.service';
 
 /**
  * Cleanup job that runs every day at midnight (00:00).
@@ -24,7 +25,7 @@ export function startCleanupJob() {
         .delete()
         .in('subscription_plan', ['inactive'])
         .lt('subscription_ends_at', tenDaysAgo.toISOString())
-        .select('phone_number, store_name'); // Return deleted rows for logging
+        .select('id, phone_number, store_name'); // Return deleted rows for logging + storage cleanup
 
       if (error) {
         console.error('❌ Error during cleanup job:', error);
@@ -32,7 +33,16 @@ export function startCleanupJob() {
       }
 
       if (data && data.length > 0) {
-        console.log(`✅ Successfully deleted ${data.length} expired merchants (and their products) after 10 days of no response.`);
+        // DB cascade removed the product ROWS, but the image FILES in storage
+        // (product images + the shop logo + the QR) are not touched by a row
+        // delete — they'd orphan in the bucket forever. Clear each merchant's
+        // whole image folder. Best-effort: a storage failure must not fail the
+        // run or re-delete anything.
+        for (const m of data) {
+          await deleteMerchantImageFolder(m.id).catch((e: any) =>
+            console.warn(`⚠️ Could not clear images for ${m.store_name}:`, e?.message || e));
+        }
+        console.log(`✅ Successfully deleted ${data.length} expired merchants (rows, products & images) after 10 days of no response.`);
         data.forEach((m) => console.log(`   - Deleted: ${m.store_name} (${m.phone_number})`));
       } else {
         console.log('✅ Cleanup finished: No merchants have been expired for 10+ days.');

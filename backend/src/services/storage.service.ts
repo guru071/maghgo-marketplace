@@ -24,13 +24,29 @@ export async function deleteImagesByUrl(urls: (string | null | undefined)[]): Pr
   if (error) console.warn('⚠️ Could not remove product images from storage:', error.message);
 }
 
-/** Remove every file under a merchant's product-images folder (Clear Catalog). */
+/**
+ * Remove every file under a merchant's product-images folder — used by Clear
+ * Catalog and on merchant deletion (product images + logo + QR all live here).
+ *
+ * Pages through the listing: `.list()` caps at 1000 entries, so a merchant with
+ * more than 1000 images would otherwise keep everything past the first page.
+ */
 export async function deleteMerchantImageFolder(merchantId: string): Promise<void> {
-  const { data: files } = await supabase.storage.from(BUCKET).list(merchantId, { limit: 1000 });
-  if (!files || files.length === 0) return;
-  const paths = files.map((f) => `${merchantId}/${f.name}`);
-  const { error } = await supabase.storage.from(BUCKET).remove(paths);
-  if (error) console.warn('⚠️ Could not clear merchant image folder:', error.message);
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data: files, error: listErr } = await supabase.storage
+      .from(BUCKET)
+      .list(merchantId, { limit: PAGE, offset });
+    if (listErr) {
+      console.warn('⚠️ Could not list merchant image folder:', listErr.message);
+      return;
+    }
+    if (!files || files.length === 0) return;
+    const paths = files.map((f) => `${merchantId}/${f.name}`);
+    const { error } = await supabase.storage.from(BUCKET).remove(paths);
+    if (error) console.warn('⚠️ Could not clear merchant image folder:', error.message);
+    if (files.length < PAGE) return; // last page
+  }
 }
 
 /**

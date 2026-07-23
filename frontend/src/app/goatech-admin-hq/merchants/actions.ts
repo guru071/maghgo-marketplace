@@ -56,14 +56,42 @@ export async function setMerchantActive(merchantId: string, active: boolean) {
 }
 
 /**
+ * Remove every file under a merchant's image folder in Storage. The DB cascade
+ * that fires on a merchant delete only removes product ROWS — the image FILES
+ * (product photos + the shop logo + the QR) live in the storage bucket and are
+ * not touched by a row delete, so without this they orphan forever. Best-effort:
+ * a storage failure must never block the merchant delete.
+ */
+async function purgeMerchantImages(
+  supabase: ReturnType<typeof createAdminSupabaseClient>,
+  merchantId: string,
+) {
+  const BUCKET = 'product-images';
+  try {
+    const { data: files } = await supabase.storage.from(BUCKET).list(merchantId, { limit: 1000 });
+    if (!files || files.length === 0) return;
+    const paths = files.map((f) => `${merchantId}/${f.name}`);
+    const { error } = await supabase.storage.from(BUCKET).remove(paths);
+    if (error) console.warn('⚠️ Could not clear merchant images:', error.message);
+  } catch (e: any) {
+    console.warn('⚠️ Could not clear merchant images:', e?.message || e);
+  }
+}
+
+/**
  * Permanently delete a merchant. Products, orders, coupons and reviews go with
- * it via FK cascade. Irreversible — the UI double-confirms before calling this.
+ * it via FK cascade; the image files are cleared from Storage separately (the
+ * cascade doesn't reach them). Irreversible — the UI double-confirms first.
  */
 export async function deleteMerchant(merchantId: string) {
   const supabase = createAdminSupabaseClient();
+  // Clear images BEFORE the row is gone — same result either way (the folder is
+  // keyed by id, not by the row), but doing it first means a later DB failure
+  // doesn't leave us having deleted a live shop's images.
+  await purgeMerchantImages(supabase, merchantId);
   const { error } = await supabase.from('merchants').delete().eq('id', merchantId);
   if (error) return done(false, error.message);
-  return done(true, 'Merchant permanently deleted');
+  return done(true, 'Merchant permanently deleted (data + images)');
 }
 
 /**
