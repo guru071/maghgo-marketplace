@@ -1090,7 +1090,17 @@ async function handleFlowMessage(msg: BotMessage, flow: Flow, flowKey: string): 
       }
       flow.catalogId = id;
       flow.step = 'token';
-      await msg.sendReply('🔑 Got it.\n\n*Step 2 of 2 — paste your Meta access token* (Business Settings → System Users → generate with catalogue access).\n\n🔒 Stored encrypted. Delete your message after I confirm.');
+      await msg.sendReply(
+        '🔑 Got it!\n\n' +
+        '*Step 2 of 2 — your access token:*\n' +
+        '1. *business.facebook.com* → *Settings* → *Users → System Users*\n' +
+        '2. *Add* a user (name it "Maghgo"), role *Admin*\n' +
+        '3. *Assign Assets* → your *Catalog* → full control\n' +
+        '4. *Generate token* → tick *catalog_management* → Generate\n' +
+        '5. Copy the token (starts with *EAA…*) and paste it here\n\n' +
+        '🔒 Stored encrypted — and *delete your message* after I confirm.\n\n' +
+        'Stuck? Reply CANCEL and ask us to set it up for you.'
+      );
       return true;
     }
 
@@ -1741,7 +1751,15 @@ async function handleTextCommand(msg: BotMessage, text: string): Promise<void> {
       return;
     }
     flows.set(`${channel}:${senderId}`, { kind: 'metacat', step: 'catalogid', ts: Date.now() });
-    await sendReply('📷 *Connect your Meta Shop! — Step 1 of 2*\n\nOpen *Meta Commerce Manager* → your catalogue → its settings show the *Catalog ID* (a long number). Paste it here.\n\n(Reply CANCEL to stop.)');
+    await sendReply(
+      '📷 *Import your Facebook / Instagram Shop*\n\n' +
+      'No Meta app approval needed — you connect your *own* catalogue with your *own* token. 2 steps.\n\n' +
+      '*Step 1 of 2 — your Catalog ID:*\n' +
+      '1. Open *business.facebook.com* → *Commerce Manager*\n' +
+      '2. Pick your catalogue (or Create catalog → Products)\n' +
+      '3. Open *Settings* — the *Catalog ID* is a long number\n\n' +
+      'Paste that number here. (Reply CANCEL to stop.)'
+    );
     return;
   }
 
