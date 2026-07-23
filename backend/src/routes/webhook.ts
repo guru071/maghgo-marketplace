@@ -3,6 +3,7 @@ import { env } from '../config/env';
 import { verifyWebhookSignature, verifyTwilioWebhookSignature } from '../middleware/webhook-verify';
 import { handleIncomingMessage, handleTelegramUpdate, handleShopTelegramUpdate } from '../controllers/message.controller';
 import { handleIncomingSms } from '../controllers/sms.controller';
+import { handleBridgeMessage } from '../controllers/bridge.controller';
 import express from 'express';
 
 // ─── Webhook Routes ──────────────────────────────────────────────────────────
@@ -42,6 +43,14 @@ router.post('/', verifyWebhookSignature, handleIncomingMessage);
  */
 router.post('/telegram', handleTelegramUpdate);
 router.post('/telegram/shop/:merchantId', handleShopTelegramUpdate);
+
+/**
+ * POST /webhook/bridge/:channel  (channel = instagram | messenger)
+ * Third-party bridge — a Meta Tech Partner (ManyChat/Chatfuel) forwards a DM
+ * here and renders our reply, so we reach Instagram/Messenger users without
+ * Meta App Review. Auth is the BRIDGE_SECRET shared secret (see the controller).
+ */
+router.post('/bridge/:channel', handleBridgeMessage);
 
 router.post('/sms', express.urlencoded({ extended: true }), verifyTwilioWebhookSignature, handleIncomingSms);
 

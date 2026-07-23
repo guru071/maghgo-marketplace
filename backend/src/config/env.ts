@@ -71,6 +71,13 @@ const envSchema = z.object({
   BACKEND_PUBLIC_URL: z.string().optional(),
   // Set automatically by Render for every web service. Never set this by hand.
   RENDER_EXTERNAL_URL: z.string().optional(),
+
+  // Shared secret for the Instagram/Messenger third-party bridge (ManyChat /
+  // Chatfuel etc. forward DMs here so we skip Meta App Review — the partner's
+  // app is already approved). The partner must send this secret on every
+  // request. If unset, the bridge endpoint is DISABLED (fail-closed) — an open
+  // endpoint that drives the bot with an arbitrary sender id is abusable.
+  BRIDGE_SECRET: z.string().optional(),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
 
