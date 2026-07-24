@@ -48,6 +48,10 @@ interface Session {
   awaitingAddress?: boolean;
   deliveryAddress?: string;
   addressAsked?: boolean;
+  // Set once the cart is confirmed and we've asked how they want to pay, so the
+  // next reply is read as the payment choice rather than a browse command.
+  awaitingPayChoice?: boolean;
+  payMethod?: 'online' | 'shop';
   nudged?: boolean;
   // Current browse view: search text, category, price band, sort and page.
   // Persisted on the session so FILTER choices compose (e.g. a category AND a
@@ -93,6 +97,11 @@ const TR: Record<string, Record<'en' | 'ta' | 'hi', (...a: any[]) => string>> = 
     en: () => '📍 *Where should we deliver?*\n\nPlease send your full delivery address (or SKIP to arrange it with the shop).',
     ta: () => '📍 *எங்கு டெலிவரி செய்ய வேண்டும்?*\n\nஉங்கள் முழு முகவரியை அனுப்புங்கள் (அல்லது SKIP).',
     hi: () => '📍 *डिलीवरी कहाँ करनी है?*\n\nअपना पूरा पता भेजें (या SKIP)।',
+  },
+  askPayMethod: {
+    en: () => '💰 *How would you like to pay?*\n\nPay securely online now, or settle directly with the shop (cash / UPI on delivery).',
+    ta: () => '💰 *எப்படி பணம் செலுத்த விரும்புகிறீர்கள்?*\n\nஇப்போது ஆன்லைனில் பணம் செலுத்துங்கள், அல்லது கடையில் நேரடியாக செலுத்துங்கள்.',
+    hi: () => '💰 *आप भुगतान कैसे करना चाहेंगे?*\n\nअभी ऑनलाइन सुरक्षित भुगतान करें, या दुकान को सीधे भुगतान करें (कैश / UPI)।',
   },
   orderPlaced: {
     en: (store, total) => `✅ *Order placed!*\n\nYour order at *${store}* for *${total}* has been sent to the shop. They'll confirm payment & delivery with you shortly. 🙏`,
@@ -473,6 +482,26 @@ async function checkout(msg: BotMessage, s: Session): Promise<void> {
     return;
   }
 
+  // Ask how they want to pay before placing the order. Previously we always
+  // pushed a payment link, which reads as "pay now or nothing" — plenty of
+  // shoppers here expect to settle with the shop directly (cash on delivery or
+  // over chat), and were dropping off at that step.
+  const shopForPay = await getMerchantBySlug(s.storeSlug);
+  const canPayOnline = Boolean(shopForPay?.razorpay_key_id && shopForPay?.razorpay_key_secret);
+  if (canPayOnline && !s.awaitingPayChoice) {
+    s.awaitingPayChoice = true;
+    const body = tr(s, 'askPayMethod');
+    if (msg.sendButtons) {
+      await msg.sendButtons(body, [
+        { id: 'PAY_ONLINE', title: '💳 Pay online' },
+        { id: 'PAY_CHAT', title: '💬 Pay to shop' },
+      ]);
+    } else {
+      await msg.sendReply(`${body}\n\nReply *ONLINE* to pay now, or *SHOP* to settle directly with the shop.`);
+    }
+    return;
+  }
+
   try {
     const customerPhone = msg.channel === 'whatsapp' || msg.channel === 'sms' ? msg.senderId : undefined;
     const order = await createOrder(
@@ -488,19 +517,21 @@ async function checkout(msg: BotMessage, s: Session): Promise<void> {
     const total = rupee(Number(order.total));
     const discountNote = Number(order.discount) > 0 ? ` _(incl. ${rupee(Number(order.discount))} discount)_` : '';
 
-    // Offer online payment via the SHOP's own Razorpay account (money goes to
-    // them, not us). Best-effort: no connected account or an API hiccup just
-    // means the shopper settles manually with the shop.
-    const shop = await getMerchantBySlug(s.storeSlug);
-    const payLink = await createOrderPaymentLink({
-      orderId: order.id,
-      merchantId: order.merchant_id,
-      storeName: s.storeName,
-      amount: Number(order.total),
-      customerPhone,
-      razorpayKeyId: shop?.razorpay_key_id,
-      razorpayKeySecret: decryptSecret(shop?.razorpay_key_secret),
-    });
+    // Only generate a payment link if the shopper actually chose to pay online.
+    // Money goes to the SHOP's own Razorpay account, not ours. Best-effort: an
+    // API hiccup just means they settle with the shop instead.
+    const shop = shopForPay;
+    const payLink = s.payMethod === 'online'
+      ? await createOrderPaymentLink({
+          orderId: order.id,
+          merchantId: order.merchant_id,
+          storeName: s.storeName,
+          amount: Number(order.total),
+          customerPhone,
+          razorpayKeyId: shop?.razorpay_key_id,
+          razorpayKeySecret: decryptSecret(shop?.razorpay_key_secret),
+        })
+      : null;
 
     if (payLink) {
       await attachOrderPaymentLink(order.id, payLink.url, payLink.id);
@@ -508,17 +539,17 @@ async function checkout(msg: BotMessage, s: Session): Promise<void> {
       if (msg.sendCtaUrl) await msg.sendCtaUrl(body, `Pay ${total} now`, payLink.url);
       else await msg.sendReply(`${body}\n🔗 ${payLink.url}\n\n_Or arrange payment with the shop directly._`);
     } else {
-      await msg.sendReply(`${tr(s, 'orderPlaced', s.storeName, total)}${discountNote}\n\n🔎 ${env.FRONTEND_URL}/o/${order.id}`);
+      // Paying the shop directly — say so explicitly, so nobody sits waiting
+      // for a payment link that isn't coming.
+      const payNote = s.payMethod === 'shop'
+        ? `\n\n💬 The shop will contact you to arrange payment${s.deliveryAddress ? ' and delivery' : ''}.`
+        : '';
+      await msg.sendReply(`${tr(s, 'orderPlaced', s.storeName, total)}${discountNote}${payNote}\n\n🔎 ${env.FRONTEND_URL}/o/${order.id}`);
     }
 
-    // Best-effort: ping the merchant on WhatsApp so they see it immediately.
-    if (s.merchantPhone) {
-      const items = order.items.map((i: any) => `• ${i.quantity} × ${i.title}${i.variant ? ` (${i.variant})` : ''} — ${rupee(Number(i.subtotal))}`).join('\n');
-      await sendNotification(
-        s.merchantPhone,
-        `🔔 *New order on Maghgo!*\n\n${items}${s.deliveryAddress ? `\n\n📍 Deliver to: ${s.deliveryAddress}` : ''}\n\n*Total: ${total}*${discountNote}\n\nReply *ORDERS* to manage it.`
-      ).catch((e) => console.error('Failed to notify merchant of order:', e?.message || e));
-    }
+    // The merchant is notified by createOrder (multi-channel, covers WhatsApp,
+    // Telegram, Instagram and Messenger). The old WhatsApp-only ping here was
+    // sending shop owners a second, duplicate message for every bot order.
 
     sessions.delete(key(msg));
   } catch (err: any) {
@@ -584,6 +615,28 @@ export async function handleShopperMessage(msg: BotMessage, text: string): Promi
       }
       s.deliveryAddress = raw.slice(0, 400);
     }
+    await checkout(msg, s);
+    return true;
+  }
+
+  // How they want to pay. Accepts the button ids and the plain words a shopper
+  // is likely to type on channels without buttons (SMS, or a typed reply).
+  if (s.awaitingPayChoice) {
+    const online = ['PAY_ONLINE', 'ONLINE', 'PAY ONLINE', 'CARD', 'UPI', '1'].includes(upper);
+    const toShop = ['PAY_CHAT', 'SHOP', 'PAY TO SHOP', 'CASH', 'COD', 'LATER', '2'].includes(upper);
+
+    if (upper === 'CANCEL' || upper === 'EXIT' || upper === 'STOP') {
+      s.awaitingPayChoice = false;
+      await msg.sendReply('❎ Okay, checkout cancelled. Reply *CART* to review your items.');
+      return true;
+    }
+    if (!online && !toShop) {
+      await msg.sendReply('Please choose how to pay — reply *ONLINE* to pay now, or *SHOP* to pay the shop directly.');
+      return true;
+    }
+
+    s.payMethod = online ? 'online' : 'shop';
+    s.awaitingPayChoice = false;
     await checkout(msg, s);
     return true;
   }

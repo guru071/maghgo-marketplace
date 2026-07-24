@@ -39,7 +39,12 @@ export default function AnimatedBg({ effect, accent = '#FF7518' }: AnimatedBgPro
 
   return (
     <div style={layer} aria-hidden="true">
-      <style>{`
+      {/* dangerouslySetInnerHTML, not a template-literal child: React does not
+          reliably emit <style>{`…`}</style> content here, so the @keyframes
+          never reached the page and every effect rendered motionless. */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
         @keyframes mgOrbFloat {
           0%   { transform: translate(0, 0) scale(1); }
           50%  { transform: translate(60px, -40px) scale(1.15); }
@@ -59,7 +64,9 @@ export default function AnimatedBg({ effect, accent = '#FF7518' }: AnimatedBgPro
         @media (prefers-reduced-motion: reduce) {
           .mg-bgfx { animation: none !important; }
         }
-      `}</style>
+      `,
+        }}
+      />
 
       {effect === 'orbs' && (
         <>
