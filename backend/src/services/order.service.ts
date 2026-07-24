@@ -1,5 +1,6 @@
 import { supabase } from '../db/supabase';
 import { normalizePhone } from '../utils/phone';
+import { notifyMerchant } from './notify.service';
 import { validateCoupon, redeemCoupon } from './coupon.service';
 import { sendNotification } from './whatsapp.service';
 import { env } from '../config/env';
@@ -97,7 +98,9 @@ export async function createOrder(
 
   const { data: merchant, error: merchantError } = await supabase
     .from('merchants')
-    .select('id, is_active, subscription_ends_at')
+    // Channel ids come along so a new order can be pushed straight to the owner
+    // on whichever channel they actually use.
+    .select('id, is_active, subscription_ends_at, store_name, store_slug, phone_number, telegram_id, instagram_id, messenger_id')
     .eq('store_slug', storeSlug)
     .single();
 
@@ -213,7 +216,48 @@ export async function createOrder(
   if (couponId) await redeemCoupon(couponId);
   if (stockTracked) await decrementStock(merchant.id, lineItems).catch(() => {});
 
+  // Tell the shop owner immediately, on whatever channel they use. Deliberately
+  // not awaited: a slow or unreachable channel must never delay the shopper's
+  // checkout, and the order is already safely recorded either way.
+  notifyOwnerOfNewOrder(merchant, data as Order).catch((e) =>
+    console.error('new-order notification failed:', e?.message || e)
+  );
+
   return data as Order;
+}
+
+/**
+ * Push a new order to the shop owner over WhatsApp / Telegram / Instagram /
+ * Messenger. Previously an order only appeared in the dashboard, so an owner
+ * who wasn't watching it missed the sale entirely.
+ */
+async function notifyOwnerOfNewOrder(merchant: any, order: Order): Promise<void> {
+  const cur = order.currency === 'INR' || !order.currency ? '₹' : `${order.currency} `;
+  const money = (n: number) => `${cur}${Number(n).toLocaleString('en-IN')}`;
+
+  const lines = (order.items ?? [])
+    .map((li: any) => `• ${li.quantity} × ${li.title}${li.variant ? ` (${li.variant})` : ''} — ${money(li.subtotal)}`)
+    .join('\n');
+
+  const who = [order.customer_name, order.customer_phone].filter(Boolean).join(' · ');
+  const paid = (order as any).payment_status === 'paid';
+
+  const text =
+    `🛒 *New order!*\n\n` +
+    `${lines}\n\n` +
+    `*Total: ${money(order.total)}*` +
+    (Number((order as any).discount) > 0 ? `  _(after ${money((order as any).discount)} off)_` : '') +
+    `\n${paid ? '💰 Paid online' : '💵 Not paid yet'}\n` +
+    (who ? `\n👤 ${who}` : '') +
+    ((order as any).delivery_address ? `\n📍 ${(order as any).delivery_address}` : '') +
+    `\n\nReply *ORDERS* to manage it.`;
+
+  const channel = await notifyMerchant(merchant, text);
+  console.log(
+    channel
+      ? `📣 New order ${order.id.slice(0, 8)} pushed to owner via ${channel}`
+      : `⚠️ New order ${order.id.slice(0, 8)}: owner has no reachable channel`
+  );
 }
 
 /**
